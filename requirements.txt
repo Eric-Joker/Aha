@@ -1,0 +1,15 @@
+alembic
+apscheduler --pre
+cachetools
+cryptography
+fastapi
+humanfriendly
+git+https://github.com/Eric-Joker/ncatbot.git@main#egg=ncatbot&depth=1
+pydantic
+pympler
+regex
+ruamel.yaml
+SQLAlchemy
+tenacity
+uvicorn
+uvloop; sys_platform == 'linux'

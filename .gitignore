@@ -1,0 +1,12 @@
+__pycache__
+*.db*
+*.out
+*.zip
+alembic/versions/*.py
+config.*.ym*
+data/*
+logs
+*.pem
+*rhp*
+*eric*
+*er1c*

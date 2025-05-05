@@ -132,4 +132,4 @@ async def group_request(msg: Request):
 async def clear_cache(msg: GroupMessage, _):
     for c in cachers:
         c.clear()
-    await bot.api.post_group_msg(msg.group_id, f"已清理。", reply=msg.message_id)
+    await bot.api.post_group_msg(msg.group_id, "已清理。", reply=msg.message_id)

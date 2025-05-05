@@ -72,7 +72,7 @@ class SchedulerCacheMixin(metaclass=RestrictiveMeta):
             partial(
                 scheduler.add_schedule,
                 self.clear,
-                CronTrigger.from_crontab(clear_time if clear_time else cfg.cache_cron),
+                CronTrigger.from_crontab(clear_time or cfg.cache_cron),
                 id=qualname,
             )
         )

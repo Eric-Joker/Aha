@@ -64,10 +64,9 @@ def calculate_streak_bonus(user: UserSign, now: datetime):
                 (bonus := min(STREAK_BONUS_MAX, user.streak_stage)),  # 奖励点数
                 f"🌟 连续观测奖励 +{bonus}（下次需{STREAK_BONUS_CYCLE if user.streak_stage < STREAK_BONUS_STAGES else f"{STREAK_BONUS_RANGE[0]}-{STREAK_BONUS_RANGE[1]}"}天）",
             )
-    else:
-        if (now - user.last_bonus_date).days >= random.randint(*STREAK_BONUS_RANGE):
-            user.last_bonus_date = now
-            return (bonus := random.randint(*STREAK_BONUS_PONITS)), f"💥 观测暴击！+{bonus} 点随机能量波动"
+    elif (now - user.last_bonus_date).days >= random.randint(*STREAK_BONUS_RANGE):
+        user.last_bonus_date = now
+        return (bonus := random.randint(*STREAK_BONUS_PONITS)), f"💥 观测暴击！+{bonus} 点随机能量波动"
     return 0, None
 
 

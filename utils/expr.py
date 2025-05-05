@@ -106,7 +106,7 @@ class Field:
         extractor: Callable,
         default=None,
         op: Callable = None,
-        overrides: dict[Any:bool] = {},
+        overrides: dict[Any:bool] = None,
         priority=0,
         cache: "CacheConfig" = None,
         unique=False,
@@ -118,9 +118,11 @@ class Field:
             op: 默认表达式，需要评估的表达式若没有该字段的则自动添加。
             overrides: 比较是否相等时，与之比较的值为 `key` 时，最终评估结果为 `value`。
             priority: 在多元表达式评估的优先级，0表示保持原顺序，正数越小越优先，负数越小越靠后。
-            cache: 默认不启用缓存，传递 CacheConfig 启用缓存。
+            cache: 传递 CacheConfig 启用缓存。
             unique: 是否在并列表达式中只能出现一次。
         """
+        if overrides is None:
+            overrides = {}
         self.type = type_
         self.extractor = extractor
         self.default = default
@@ -211,7 +213,7 @@ class BoolExpr(Expr):
     def __init__(self, *clauses):
         clauses = tuple(c if isinstance(c, Expr) else RawCondition(c) for c in clauses)
         positives = sorted((x for x in clauses if x.priority > 0), key=lambda x: x.priority)
-        zeros = list(x for x in clauses if x.priority == 0)
+        zeros = [x for x in clauses if x.priority == 0]
         negatives = sorted((x for x in clauses if x.priority < 0), key=lambda x: x.priority, reverse=True)
         self.clauses = positives + zeros + negatives
         self.priority = 0
@@ -444,11 +446,10 @@ def _validate_expr(expr):
     if isinstance(expr, And):
         unique_fields = set()
         for clause in expr.clauses:
-            if isinstance(clause, Equal) and isinstance(clause.left, FieldClause):
-                if clause.left.field.unique:
-                    if clause.left.name in unique_fields:
-                        raise ValueError(f"Duplicate unique field {clause.left.name} in And clause")
-                    unique_fields.add(clause.left.name)
+            if isinstance(clause, Equal) and isinstance(clause.left, FieldClause) and clause.left.field.unique:
+                if clause.left.name in unique_fields:
+                    raise ValueError(f"Duplicate unique field {clause.left.name} in And clause")
+                unique_fields.add(clause.left.name)
             _validate_expr(clause)
     elif isinstance(expr, Or):
         for clause in expr.clauses:
@@ -472,7 +473,7 @@ def _adjust_field(left, right) -> tuple[FieldClause | Any, bool, FieldClause | A
 
     return (
         left if left_is_field or not right_is_field else right,
-        right if not right_is_field else left,
+        left if right_is_field else right,
         left_is_field or right_is_field,
     )
 
@@ -500,7 +501,7 @@ class CacheConfig:
     key_func: Callable[[str, Any, GroupMessage | PrivateMessage | NoticeMessage | Request], Hashable] = (
         lambda operator, right, _: hashkey(operator, right)
     )
-    ignore_func: Callable[[Any, Any], bool] = None
+    ignore_func: Callable[[Any, FieldClause, Any, GroupMessage | PrivateMessage | NoticeMessage | Request], bool] = None
 
 
 """async def _hash_evaluate(msg, expr):
@@ -606,7 +607,8 @@ def build_cond(conditions: tuple[Expr], msg_type: str) -> Expr:
         for name, field in PM.__fields__.items()
         if name not in used_field_names
         and field.op is not None
-        and not (name == "group" and "private" in used_field_names or name == "private" and "group" in used_field_names)
+        and (name != "group" or "private" not in used_field_names)
+        and (name != "private" or "group" not in used_field_names)
     ]
     _validate_expr(cond := And(*conditions, *default_clauses) if default_clauses else And(*conditions))
     return cond
@@ -617,7 +619,7 @@ async def evaluate(msg, expr: Expr) -> tuple[bool, list]:
     """评估表达式入口"""
     try:
         return await expr.evaluate(msg)
-    except:
+    except Exception:
         logger.exception("Error evaluating expression:")
     return None, ()
 

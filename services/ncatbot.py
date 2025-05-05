@@ -60,9 +60,7 @@ async def on_request_message(msg):
 
 # 处理来自 Fastapi 的请求
 def queue_worker(queue: Queue, loop):
-    while True:
-        if not isinstance((data := queue.get()), tuple):
-            break
+    while isinstance((data := queue.get()), tuple):
         run_coroutine_threadsafe(process_queue(*data), loop)
 
 
@@ -83,9 +81,7 @@ retry_network = retry(
 # ban 掉一些日志
 class LogFilter(Filter):
     def filter(self, record):
-        if "插件" in record.getMessage():
-            return False
-        return True
+        return "插件" not in record.getMessage()
 
 
 getLogger("Logger").addFilter(LogFilter())  # ncatbot 拿这个做日志命名空间是真的抽象

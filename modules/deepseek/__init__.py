@@ -43,4 +43,4 @@ async def create(msg: GroupMessage, match: Match):
 @on_message(r"d(?:eep)?s(?:eek)?\s*重置(?:历史)?\s*(v3|r1|)\s*$")  # ds重置r1
 async def reset(msg: GroupMessage, match: Match):
     await deepseek_reset(msg.user_id, (model := match.group(1).upper()))
-    await bot.api.post_group_msg(msg.group_id, f"已重置{'所有' if not model else model}模型历史记录", reply=msg.message_id)
+    await bot.api.post_group_msg(msg.group_id, f"已重置{model or '所有'}模型历史记录", reply=msg.message_id)

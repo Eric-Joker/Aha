@@ -38,7 +38,7 @@ class CustomDeclarativeMeta(DeclarativeMeta):
             rel_path: str = os.path.relpath(
                 os.path.abspath(module.__file__), os.path.dirname(os.path.abspath(sys.modules["__main__"].__file__))
             )
-            if not any(comp in {"database", "database.py"} for comp in rel_path.split(os.sep)[1:]):
+            if all(comp not in {"database", "database.py"} for comp in rel_path.split(os.sep)[1:]):
                 raise RuntimeError(f"Class '{name}' in module '{rel_path}' must be in a '*modules*.**.database'.")
 
         return new_class

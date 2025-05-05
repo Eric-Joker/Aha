@@ -33,7 +33,7 @@ async def shutup(msg: GroupMessage, match: Match):
     num1 = str2sec(match.group(1)) if match.lastindex else 1
     num2 = str2sec(match.group(2)) if match.lastindex == 2 else num1 if match.lastindex else 60
     if not num1 or not num2:
-        return await bot.api.post_group_msg(msg.group_id, f"无法识别为时间段", reply=msg.message_id)
+        return await bot.api.post_group_msg(msg.group_id, "无法识别为时间段", reply=msg.message_id)
 
     num1 = max(min(num1, 2591940), 1)
     num2 = max(min(num2, 2591940), 1)
@@ -54,9 +54,8 @@ async def su(msg: GroupMessage, _):
 async def speak(msg: GroupMessage, _):
     times = 0
     for g in cfg.action_groups:
-        if await inquiry_money(msg.user_id) < PRICE:
-            if times == 0:
-                return await bot.api.post_group_msg(msg.group_id, f"能量不足{PRICE}点", reply=msg.message_id)
+        if await inquiry_money(msg.user_id) < PRICE and times == 0:
+            return await bot.api.post_group_msg(msg.group_id, f"能量不足{PRICE}点", reply=msg.message_id)
         if await set_group_ban(g, msg.user_id):
             await adjust_money(msg.user_id, -PRICE)
             times += 1

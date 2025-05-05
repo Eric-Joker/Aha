@@ -37,6 +37,7 @@ CONNOT_GET_LEVEL = cfg.get_config(
 )
 LOW_LEVEL = cfg.get_config("low_level", "QQ等级过低", comment="用户等级过低时的拒绝原因。")
 INACTIVE_LIMIT = cfg.get_config("inactive_limit", 480, comment="清理不活跃成员的绝对值阈值，达到阈值后才会触发清理。")
+KICK_LEVEL = cfg.get_config("kick_level", 10, comment="用户的群聊等级小于此值时可能会被踢出群。")
 
 
 async def member_request(user_id, comment: str):
@@ -168,7 +169,7 @@ async def clean_group(force=False):
                 if (
                     member.user_id not in admin_set
                     and datetime.fromtimestamp(member.last_sent_time) <= last_month
-                    and int(member.level) < 10
+                    and int(member.level) < KICK_LEVEL
                 ):
                     user += 1
                     async with semaphore:

@@ -74,7 +74,4 @@ class ProcessSafeSingletonMeta(BaseSingletonMeta):
         return cls._shared_instance
 
 
-if IS_WINDOWS:
-    SingletonMeta = ProcessSafeSingletonMeta
-else:
-    SingletonMeta = BaseSingletonMeta
+SingletonMeta = ProcessSafeSingletonMeta if IS_WINDOWS else BaseSingletonMeta

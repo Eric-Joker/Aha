@@ -22,9 +22,7 @@ def decimal_to_str(d):
     if len(parts := (formatted := format(d, "f")).split(".")) == 2:
         # 去除右侧的零和小数点
         parts[1] = parts[1].rstrip("0")
-        if not parts[1]:  # 如果小数部分全为零
-            return parts[0]
-        return f"{parts[0]}.{parts[1]}"
+        return f"{parts[0]}.{parts[1]}" if parts[1] else parts[0]
     return formatted
 
 
@@ -102,9 +100,7 @@ def _parse_number(s: str):
         return 1
     if s.isdigit():
         return int(s)
-    if all(c in CHINESE_NUM_SET for c in s):
-        return _chinese_to_int(s)
-    return None
+    return _chinese_to_int(s) if all(c in CHINESE_NUM_SET for c in s) else None
 
 
 def split_string(s):

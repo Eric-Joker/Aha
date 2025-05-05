@@ -38,10 +38,9 @@ async def adjust_money(user_id, points: int | Decimal):
         await session.commit()
 
 
-async def inquiry_money(user_id):
+async def inquiry_money(user_id) -> Decimal:
     async with db_session_factory() as session:
-        result: Decimal = await session.scalar(select(Money.points).filter(Money.user_id == user_id))
-        return result if result else Decimal(0)
+        return (await session.scalar(select(Money.points).filter(Money.user_id == user_id))) or Decimal(0)
 
 
 @on_message(r"能量守恒", PM.prefix == True)

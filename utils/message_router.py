@@ -109,12 +109,10 @@ async def process_message(msg: GroupMessage | PrivateMessage, force_trigger=Fals
     # 处理消息前缀
     truly_msg.raw_message = msg.raw_message.removeprefix(cfg.message_prefix).removeprefix(f"[CQ:at,qq={msg.self_id}]").lstrip()
 
-    if msg.message:
-        if is_at := msg.message[0]["data"].get("qq") == str(msg.self_id):
-            del truly_msg.message[0]
+    if msg.message and msg.message[0]["data"].get("qq") == str(msg.self_id):
+        del truly_msg.message[0]
         if (text_data := truly_msg.message[0].get("data")) and (text := text_data.get("text")) is not None:
-            if is_at:
-                text_data["text"] = text.lstrip().removeprefix(cfg.message_prefix)
+            text_data["text"] = text.lstrip().removeprefix(cfg.message_prefix)
 
     # 评估处理逻辑
     for expr, func in message_handlers:

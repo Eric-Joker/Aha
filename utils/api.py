@@ -35,7 +35,7 @@ def at(pattern: str = None):
     这是一个没有用途的函数
     """
 
-    return fr"\[CQ:at,qq=({pattern if pattern else r"\d+"})\]\s*?"
+    return fr"\[CQ:at,qq=({pattern or r"\d+"})\]\s*?"
 
 
 def at_or_int(pattern: str = None):
@@ -45,7 +45,7 @@ def at_or_int(pattern: str = None):
         pattern: 用于匹配 QQ 号的正则表达式，不传参则为任意数字
     """
 
-    return fr"(?:\[CQ:at,qq=)?({pattern if pattern else r"\d+"})(?:\])?\s*?"
+    return fr"(?:\[CQ:at,qq=)?({pattern or r"\d+"})(?:\])?\s*?"
 
 
 def at_or_int_diff(pattern: str = None):
@@ -57,7 +57,7 @@ def at_or_int_diff(pattern: str = None):
         pattern: 用于匹配 QQ 号的正则表达式，不传参则为任意数字
     """
 
-    return fr"(\[CQ:at,qq=)?({pattern if pattern else r"\d+"})(?:\])?\s*?"
+    return fr"(\[CQ:at,qq=)?({pattern or r"\d+"})(?:\])?\s*?"
 
 
 def get_at(msg: GroupMessage | PrivateMessage, index=0):
@@ -68,7 +68,7 @@ def get_at(msg: GroupMessage | PrivateMessage, index=0):
 
     count = 0
     for i, d in enumerate(msg.message):
-        if not (i == 0 and d["data"].get("qq") == str(msg.self_id)):
+        if i != 0 or d["data"].get("qq") != str(msg.self_id):
             if count == index:
                 return d["qq"]
             count += 1
@@ -93,7 +93,7 @@ async def get_nickname(user_id):
 
 async def get_card_by_msg(msg: GroupMessage | PrivateMessage):
     """获取群成员名片，不存在时自动选择昵称"""
-    return msg.sender.card if msg.sender.card else msg.sender.nickname
+    return msg.sender.card or msg.sender.nickname
 
 
 async def get_user_by_groups(user_id):
@@ -122,10 +122,7 @@ async def get_user_by_search(user_id, group_id=None):
         group_id: 指定群时只从该群尝试获取信息
     """
     if group_id:
-        for i in await get_group_member_list(group_id):
-            if user_id == i.user_id:
-                return i
-        return None
+        return next((i for i in await get_group_member_list(group_id) if user_id == i.user_id), None)
     if stranger_user := await get_stranger_info(user_id):
         return stranger_user
     if friend_user := await get_user_by_friend(user_id):

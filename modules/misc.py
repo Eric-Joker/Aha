@@ -24,6 +24,6 @@ async def title(msg: GroupMessage, match: Match):
     new_title = match.group(1).strip()
     if 0 < len(new_title) <= 12:  # QQ头衔长度限制
         await bot.api.set_group_special_title(msg.group_id, msg.user_id, new_title)
-        await bot.api.post_group_msg(msg.group_id, "设置头衔:" + new_title, reply=msg.message_id)
+        await bot.api.post_group_msg(msg.group_id, f"设置头衔:{new_title}", reply=msg.message_id)
     else:
         await bot.api.post_group_msg(msg.group_id, "头衔长度不符合要求(1-12个字符)", reply=msg.message_id)

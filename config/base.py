@@ -22,7 +22,7 @@ import regex as re
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
-from metas import SingletonMeta
+from cores import SingletonMeta
 
 MODULE_PATTERN = re.compile(r"([^.]*modules[^.]*\.[^.]+)")
 

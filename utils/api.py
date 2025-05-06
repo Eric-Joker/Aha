@@ -14,18 +14,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from asyncio import as_completed, create_task
 from time import time
-from typing import Any, Literal, Optional
 
 from humanfriendly import parse_size
 
 from config import cfg
+from cores import Friend, GroupMemberInfo, Stranger
 from ncatbot.core.message import GroupMessage, PrivateMessage
 from services.apscheduler import scheduler
 from services.ncatbot import bot
 
-from . import RobustBaseModel, SchMemLRUCache, TimeTrigger, async_cached, get_byte_length, get_cache, rm_schedules_by_meta
+from . import SchMemLRUCache, TimeTrigger, async_cached, get_byte_length, get_cache, rm_schedules_by_meta
 
 
+# region 正则表达式
 def at(pattern: str = None):
     """@表达式，自带一个捕获组
 
@@ -60,6 +61,10 @@ def at_or_int_diff(pattern: str = None):
     return fr"(\[CQ:at,qq=)?({pattern or r"\d+"})(?:\])?\s*?"
 
 
+# endregion
+
+
+# region 从 msg 直接获取属性
 def get_at(msg: GroupMessage | PrivateMessage, index=0):
     """获取消息中第 `index-1` 个被 @ 的人的 QQ 号
 
@@ -75,6 +80,15 @@ def get_at(msg: GroupMessage | PrivateMessage, index=0):
     return None
 
 
+async def get_card_by_msg(msg: GroupMessage | PrivateMessage):
+    """获取群成员名片，不存在时自动选择昵称"""
+    return msg.sender.card or msg.sender.nickname
+
+
+# endregion
+
+
+# region API 工具
 async def get_card(group_id, user_id, no_cache=False):
     """获取群成员名片，不存在时自动选择昵称"""
     return card if (card := (data := await get_group_member_info(group_id, user_id, no_cache)).card) else data.nickname
@@ -91,13 +105,8 @@ async def get_nickname(user_id):
     return nickname if (nickname := (await get_stranger_info(user_id)).nickname.strip()) else str(user_id)
 
 
-async def get_card_by_msg(msg: GroupMessage | PrivateMessage):
-    """获取群成员名片，不存在时自动选择昵称"""
-    return msg.sender.card or msg.sender.nickname
-
-
 async def get_user_by_groups(user_id):
-    """从所有群中获取群成员信息"""
+    """从所有群中查询群成员信息"""
     tasks = [create_task(get_group_member_list(g["group_id"], True)) for g in (await bot.api.get_group_list(True))["data"]]
     for task in as_completed(tasks):
         for member in await task:
@@ -107,32 +116,38 @@ async def get_user_by_groups(user_id):
                 return member
 
 
+async def get_user_by_friend(user_id):
+    """通过好友列表获取用户信息"""
+    return next((i for i in await get_friend_list(True) if user_id == i.user_id), None)
+
+
 @async_cached(
     get_cache(
         SchMemLRUCache,
         maxsize=parse_size(
             cfg.get_config("user_meta", "16MB", "cache", "从各种渠道获取用户元数据的缓存大小。该缓存定时清空。")
         ),
-    )
+    ),
+    ignore=lambda result, *_: not result or isinstance(result, Stranger) and result.nick is None,
 )
 async def get_user_by_search(user_id, group_id=None):
-    """获取群成员信息，不存在时从陌生人、好友渠道获取
+    """从陌生人、好友、所有群查询用户信息。
 
     Args:
-        group_id: 指定群时只从该群尝试获取信息
+        group_id: 指定群时优先从该群尝试获取信息
     """
     if group_id:
-        return next((i for i in await get_group_member_list(group_id) if user_id == i.user_id), None)
+        return next((i for i in await get_group_member_list(group_id, True) if user_id == i.user_id), None)
     if stranger_user := await get_stranger_info(user_id):
         return stranger_user
     if friend_user := await get_user_by_friend(user_id):
         return friend_user
-    elif user := await get_user_by_groups(user_id):
+    if user := await get_user_by_groups(user_id):
         return user
 
 
 async def get_card_by_search(user_id, group_id=None, force_return_card=False):
-    """获取群成员名片，不存在时从陌生人、好友渠道获取昵称
+    """获取群成员名片，不存在该成员时从陌生人、好友渠道获取昵称
 
     Args:
         force_return_card: 返回Tuple[群名片, 昵称]
@@ -143,21 +158,22 @@ async def get_card_by_search(user_id, group_id=None, force_return_card=False):
 
 
 async def get_level_by_search(user_id):
-    """从群成员、陌生人、好友渠道获取用户等级"""
-    if hasattr((result := await get_user_by_search(user_id, no_cache=True)), "qq_level"):
+    """从陌生人、好友、群成员渠道获取用户等级"""
+    if isinstance(result := await get_user_by_search(user_id), GroupMemberInfo):
         return result.qq_level
-    return result.qqLevel if hasattr(result, "qqLevel") else result.level if hasattr(result, "level") else None
+    return result.qqLevel if isinstance(result, Stranger) else result.level if isinstance(result, Friend) else None
 
 
-async def get_user_by_friend(user_id):
-    """通过好友列表获取用户信息"""
-    for user in await get_friend_list(True):
-        if user_id == user.user_id:
-            return user
+async def is_admin(group_id, user_id):
+    return any(m.user_id == user_id and m.role != "member" for m in (await get_group_member_list(group_id)))
 
 
+# endregion
+
+
+# region 封装 API，模拟正常客户端操作。
 async def set_group_ban(group_id, user_id, seconds=0):
-    """模拟官方客户端操作
+    """模拟正常客户端操作
     - 将禁言时长转为整分后通过定时任务解除禁言
     - 如果目标成员是管理则不禁言
     - 解禁时预先判断其是否被禁言
@@ -193,100 +209,10 @@ async def set_group_kick(group_id: int | str, user_id: int | str, is_ban=False):
     return False
 
 
-class GroupMemberInfo(RobustBaseModel):
-    group_id: Optional[int] = None
-    user_id: Optional[int] = None
-    nickname: Optional[str] = None
-    card: Optional[str] = None
-    sex: Optional[Literal["male", "female", "unknown"]] = None
-    age: Optional[int] = None
-    area: Optional[str] = None
-    join_time: Optional[int] = None
-    last_sent_time: Optional[int] = None
-    level: Optional[str] = None
-    qq_level: Optional[int] = None
-    role: Optional[Literal["owner", "admin", "member"]] = None
-    unfriendly: Optional[bool] = None
-    title: Optional[str] = None
-    title_expire_time: Optional[int] = None
-    card_changeable: Optional[bool] = None
-    shut_up_timestamp: Optional[int] = None
-    is_robot: Optional[bool] = None
+# endregion
 
 
-class Stranger(RobustBaseModel):
-    uid: Optional[str] = None
-    uin: Optional[str] = None
-    nick: Optional[str] = None
-    remark: Optional[str] = None
-    constellation: Optional[int] = None
-    shengXiao: Optional[int] = None
-    kBloodType: Optional[int] = None
-    homeTown: Optional[str] = None
-    makeFriendCareer: Optional[int] = None
-    pos: Optional[str] = None
-    college: Optional[str] = None
-    country: Optional[str] = None
-    province: Optional[str] = None
-    city: Optional[str] = None
-    postCode: Optional[str] = None
-    address: Optional[str] = None
-    regTime: Optional[int] = None
-    interest: Optional[str] = None
-    labels: Optional[list[str]] = None
-    qqLevel: Optional[int] = None
-    qid: Optional[str] = None
-    longNick: Optional[str] = None
-    birthday_year: Optional[int] = None
-    birthday_month: Optional[int] = None
-    birthday_day: Optional[int] = None
-    age: Optional[int] = None
-    sex: Optional[Literal["male", "female", "unknown"]] = None
-    eMail: Optional[str] = None
-    phoneNum: Optional[str] = None
-    categoryId: Optional[int] = None
-    richTime: Optional[int] = None
-    richBuffer: Optional[dict[str, int]] = None
-    status: Optional[int] = None
-    extStatus: Optional[int] = None
-    batteryStatus: Optional[int] = None
-    termType: Optional[int] = None
-    netType: Optional[int] = None
-    iconType: Optional[int] = None
-    customStatus: Optional[Any] = None
-    setTime: Optional[str] = None
-    specialFlag: Optional[int] = None
-    abiFlag: Optional[int] = None
-    eNetworkType: Optional[int] = None
-    showName: Optional[str] = None
-    termDesc: Optional[str] = None
-    musicInfo: Optional[dict[str, Any]] = None
-    extOnlineBusinessInfo: Optional[dict[str, Any]] = None
-    extBuffer: Optional[dict[str, Any]] = None
-    user_id: Optional[int] = None
-    nickname: Optional[str] = None
-    long_nick: Optional[str] = None
-    reg_time: Optional[int] = None
-    is_vip: Optional[bool] = None
-    is_years_vip: Optional[bool] = None
-    vip_level: Optional[int] = None
-    login_days: Optional[int] = None
-
-
-class Friend(RobustBaseModel):
-    birthday_year: Optional[int] = None
-    birthday_month: Optional[int] = None
-    user_id: Optional[int] = None
-    age: Optional[int] = None
-    phone_num: Optional[str] = None
-    email: Optional[str] = None
-    category_id: Optional[int] = None
-    nickname: Optional[str] = None
-    remark: Optional[str] = None
-    sex: Optional[Literal["male", "female", "unknown"]] = None
-    level: Optional[int] = None
-
-
+# region 封装 API，返回数据类
 async def get_group_member_info(group_id: int | str, user_id: int | str, no_cache=False):
     return GroupMemberInfo(**((await bot.api.get_group_member_info(group_id, user_id, no_cache))["data"] or {}))
 
@@ -303,5 +229,4 @@ async def get_friend_list(no_cache=False):
     return [Friend(**d) for d in (await bot.api.get_friend_list(no_cache))["data"]]
 
 
-async def is_admin(group_id, user_id):
-    return any(m.user_id == user_id and m.role != "member" for m in (await get_group_member_list(group_id)))
+# endregion

@@ -34,6 +34,7 @@ Aha 目前是一个基于但不止基于 [ncatbot](https://github.com/liyihao111
   @on_message(PM.super == True, PM.admin == True) # 要求同时为超级用户和管理员
   ```
 - 封装部分 API，模拟正常客户端操作，防止将来被滥封。(在 utils.api 中)
+- 实现了一些 API 工具，比如从陌生人、好友或所有群成员渠道查询用户信息。(在 utils.api 中)
 - 将一些 API 返回值解析为对象，以简化取用。(在 utils.api 中)
 - 为 ncatbot API 网络请求添加自动重试以照顾远程调试需求。
 - 对部分逻辑实施了缓存(基于内存占用的 LRU、定时清空)，以便在大体量下加快响应速度。

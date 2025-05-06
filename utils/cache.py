@@ -21,7 +21,7 @@ from cachetools import Cache, LRUCache
 from cachetools.keys import hashkey
 from pympler import asizeof
 
-from metas import RestrictiveMeta
+from cores import RestrictiveMeta
 from services.apscheduler import scheduler
 
 from .misc import async_run_func

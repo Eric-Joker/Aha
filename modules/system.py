@@ -117,14 +117,14 @@ async def cannel_trigger(msg: GroupMessage, _):
 
 
 @on_request("group", "invite")
-async def group_request(msg: Request):
+async def group_invite(msg: Request):
     if msg.user_id in cfg.super:
         return await bot.api.set_group_add_request(msg.flag, True)
     await bot.api.set_group_add_request(msg.flag, False)
 
 
 @on_request("friend")
-async def group_request(msg: Request):
+async def friend_request(msg: Request):
     await bot.api.set_friend_add_request(msg.flag, True)
 
 

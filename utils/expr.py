@@ -364,18 +364,13 @@ async def _is_admin(msg: GroupMessage | PrivateMessage | NoticeMessage | Request
 
 # endregion
 # region private
-WRAPPERS = {
-    "message": lambda c: Equal(PM.message, re.compile(c, re.I | re.M) if isinstance(c, str) else c),
-    "notice": lambda c: Equal(PM.notice, c),
-    "request": lambda c: Equal(PM.request, c),
-}
-
 logger = getLogger(__name__)
 
 
 def _wrap_conditions(conditions, msg_type):
     """包装原始条件"""
-    wrapper = WRAPPERS.get(msg_type, lambda c: c)
+    is_message = msg_type == "message"
+    message_wrapper = lambda c: Equal(PM.message, re.compile(c, re.I | re.M) if isinstance(c, str) else c)
 
     def convert_expr(expr):
         if isinstance(expr, (And, Or)):
@@ -385,9 +380,9 @@ def _wrap_conditions(conditions, msg_type):
         elif isinstance(expr, BinaryExpr):
             return expr.__class__(convert_expr(expr.left), convert_expr(expr.right), expr.negate)
         elif isinstance(expr, RawCondition):
-            return wrapper(expr.value)
+            return message_wrapper(expr.value) if is_message else expr.value
         elif isinstance(expr, (str, re.Pattern)):
-            return wrapper(expr)
+            return message_wrapper(expr) if is_message else expr
         return expr
 
     # 处理顶层条件
@@ -400,27 +395,24 @@ def _wrap_conditions(conditions, msg_type):
             processed.append(converted)
 
     # 特殊处理
-    if msg_type in ("notice", "request") and root_strings:
-        type_cls = getattr(PM, msg_type)
-        sub_type_cls = PM.sub_type
-
+    if not is_message and root_strings:
         if len(root_strings) > 2:
             raise ValueError(f"Too many string arguments. Expected at most 2, got {len(root_strings)}.")
+
         # [0] -> 类型，[1] -> 子类型
         if root_strings:
-            processed.insert(0, Equal(type_cls, root_strings[0]))
+            processed.insert(0, Equal(getattr(PM, msg_type), root_strings[0]))
         if len(root_strings) == 2:
-            processed.append(Equal(sub_type_cls, root_strings[1]))
+            processed.append(Equal(PM.sub_type, root_strings[1]))
 
     # 去重校验
     seen_fields = set()
     final_conditions = []
     for expr in processed:
         if isinstance(expr, Equal) and isinstance(expr.left, FieldClause):
-            field_name = expr.left.name
-            if field_name in seen_fields:
+            if expr.left.name in seen_fields:
                 continue
-            seen_fields.add(field_name)
+            seen_fields.add(expr.left.name)
         final_conditions.append(expr)
 
     return final_conditions

@@ -37,6 +37,7 @@ class Config(metaclass=SingletonMeta):
         self._loaded = False
         self._default_types = {}
         self._default_used = False
+        self._modified = set()
 
     def _ensure_loaded(self):
         if not self._loaded and self._config_file.exists():
@@ -60,7 +61,7 @@ class Config(metaclass=SingletonMeta):
             self.set_config(key, value, module=self._caller_module())
 
     def _convert_type(self, value, target_type):
-        if isinstance(value, dict):  # 忽略字典类型的转换
+        if isinstance(value, dict):
             return value
         if target_type is tuple:
             if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
@@ -110,13 +111,13 @@ class Config(metaclass=SingletonMeta):
         if comment:
             self._data[storage_module].yaml_set_comment_before_after_key(key, comment, 2)
 
-        # 记录使用了默认值
         self._default_used = True
-
         return default
 
     def set_config(self, key: str, value, module: str = None):
         self._check_permission(module, (caller := self._caller_module()))
+        module = module or caller
+        self._modified.add((module, key))
 
         if isinstance(value, Iterable) and not isinstance(value, (tuple, frozenset, str, bytes)):
             raise TypeError("Iterable default must be tuple or frozenset.")
@@ -127,8 +128,23 @@ class Config(metaclass=SingletonMeta):
 
     def save(self):
         self._config_file.parent.mkdir(parents=True, exist_ok=True)
+        current_data = CommentedMap()
+        if self._config_file.exists():
+            with open(self._config_file, "r", encoding="utf-8") as f:
+                current_data = self._yaml.load(f) or CommentedMap()
+
+        # 将程序修改的项合并到当前配置
+        for module, key in self._modified:
+            if (module_data := self._data.get(module)) and key in module_data:
+                if module not in current_data:
+                    current_data[module] = CommentedMap()
+                current_data[module][key] = module_data[key]
+
         with open(self._config_file, "w", encoding="utf-8") as f:
-            self._yaml.dump(self._data, f)
+            self._yaml.dump(current_data, f)
+
+        self._data = current_data
+        self._modified.clear()
 
     def finalize_initialization(self):
         if self._default_used:

@@ -59,6 +59,12 @@ Aha 目前是一个基于但不止基于 [ncatbot](https://github.com/liyihao111
     # 每个会话最大历史记录数，必须大于2。
     max_length: 20
   ```
+- 基于 Playwright 的网页元素截图
+  ```python
+  from utils import capture_element
+
+  await capture_element("https://minecraft.wiki/w/grass", "div.notaninfobox")
+  ```
 - 基于 FastAPI 的被动触发特性
   ```python
   # fastapi_modules/test/__init__.py
@@ -109,9 +115,11 @@ Aha 目前是一个基于但不止基于 [ncatbot](https://github.com/liyihao111
 git clone https://github.com/Eric-Joker/Aha.git
 cd Aha
 ```
-然后，使用 pip 安装依赖：
+然后，安装依赖：
 ```sh
 pip install -r requirements.txt
+apt update && apt install -y libgtk-4-1 libgraphene-1.0-0 libxslt1.1 woff2 libevent-2.1-7 libgstreamer-plugins-base1.0-0 libwebpdemux2 libharfbuzz-icu0 libenchant-2-2 libhyphen0 libmanette-0.2-0 gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly # debian/ubuntu
+playwright install
 ```
 目前未实现模块依赖处理特性。
 

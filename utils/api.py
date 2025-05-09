@@ -31,9 +31,9 @@ def at(pattern: str = None):
     """@表达式，自带一个捕获组
 
     Args:
-        pattern: 用于匹配 QQ 号的正则表达式，不传参则为任意数字
+        pattern: 用于匹配 QQ 号的正则表达式，不传参则为任意数字。
 
-    这是一个没有用途的函数
+    这是一个没有用途的函数。
     """
 
     return fr"\[CQ:at,qq=({pattern or r"\d+"})\]\s*?"
@@ -43,7 +43,7 @@ def at_or_int(pattern: str = None):
     """@表达式，也可以是纯QQ号，自带一个捕获组
 
     Args:
-        pattern: 用于匹配 QQ 号的正则表达式，不传参则为任意数字
+        pattern: 用于匹配 QQ 号的正则表达式，不传参则为任意数字。
     """
 
     return fr"(?:\[CQ:at,qq=)?({pattern or r"\d+"})(?:\])?\s*?"
@@ -51,11 +51,11 @@ def at_or_int(pattern: str = None):
 
 def at_or_int_diff(pattern: str = None):
     """@表达式，也可以是纯QQ号，有两个捕获组
-    - 可以通过判断第一个捕获组有没有值来检测是否是通过@返回的
-    - 第二个捕获组是 QQ 号
+    - 可以通过判断第一个捕获组有没有值来检测是否是通过@返回的。
+    - 第二个捕获组是 QQ 号。
 
     Args:
-        pattern: 用于匹配 QQ 号的正则表达式，不传参则为任意数字
+        pattern: 用于匹配 QQ 号的正则表达式，不传参则为任意数字。
     """
 
     return fr"(\[CQ:at,qq=)?({pattern or r"\d+"})(?:\])?\s*?"
@@ -134,7 +134,7 @@ async def get_user_by_search(user_id, group_id=None):
     """从陌生人、好友、所有群查询用户信息。
 
     Args:
-        group_id: 指定群时优先从该群尝试获取信息
+        group_id: 指定群时优先从该群尝试获取信息。
     """
     if group_id:
         return next((i for i in await get_group_member_list(group_id, True) if user_id == i.user_id), None)
@@ -150,7 +150,7 @@ async def get_card_by_search(user_id, group_id=None, force_return_card=False):
     """获取群成员名片，不存在该成员时从陌生人、好友渠道获取昵称
 
     Args:
-        force_return_card: 返回Tuple[群名片, 昵称]
+        force_return_card: 返回Tuple[群名片, 昵称]。
     """
     card = result.card if hasattr((result := await get_user_by_search(user_id, group_id)), "card") else None
     nickname = (result.nickname if hasattr(result, "nickname") else result.nick).strip() or user_id

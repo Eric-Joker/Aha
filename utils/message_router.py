@@ -64,7 +64,7 @@ def queue_handler(key):
     - func(data)
 
     Args:
-        key: 区分调用函数的特征id
+        key: 区分调用函数的特征id。
 
     """
 

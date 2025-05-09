@@ -6,6 +6,7 @@ alembic/versions/*.py
 config.*.ym*
 data/*
 logs
+test.py
 *.pem
 *rhp*
 *eric*

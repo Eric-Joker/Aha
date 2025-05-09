@@ -12,6 +12,15 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from .api import Friend, GroupMemberInfo, Stranger
-from .metas import RestrictiveMeta, SingletonMeta
-from .sqlalchemy import Iterable, YarlURL
+from sqlalchemy import Column, Integer
+
+from cores import Iterable, YarlURL
+from services.database import dbBase
+
+
+class WikiSearch(dbBase):
+    __tablename__ = "wiki_search"
+    user_id = Column(Integer, primary_key=True)
+    base_url = Column(YarlURL)
+    results = Column(Iterable)
+    timestamp = Column(Integer)

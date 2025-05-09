@@ -12,7 +12,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from sqlalchemy import Column, Float, Integer, String
+from sqlalchemy import VARCHAR, Column, Float, Integer, String
 
 from services.database import dbBase
 
@@ -21,6 +21,6 @@ class History(dbBase):
     __tablename__ = "deepseek"
     time = Column(Float, primary_key=True)
     user_id = Column(Integer, index=True)
-    model = Column(String, index=True)
-    role = Column(String, index=True)
+    model = Column(VARCHAR(32), index=True)
+    role = Column(VARCHAR(16), index=True)
     content = Column(String)

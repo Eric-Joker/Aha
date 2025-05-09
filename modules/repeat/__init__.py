@@ -17,8 +17,7 @@ from decimal import Decimal
 from regex import Match
 
 from config import cfg
-from ncatbot.core.element import MessageChain
-from ncatbot.core.message import GroupMessage
+from ncatbot.core import MessageChain, GroupMessage
 from services.ncatbot import bot
 from utils import PM, on_message, round_decimal
 

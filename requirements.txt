@@ -5,6 +5,7 @@ cryptography
 fastapi
 humanfriendly
 git+https://github.com/Eric-Joker/ncatbot.git@main#egg=ncatbot&depth=1
+playwright
 pydantic
 pympler
 regex

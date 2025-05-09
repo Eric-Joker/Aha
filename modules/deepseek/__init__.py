@@ -16,13 +16,13 @@ from regex import Match
 
 from ncatbot.core.message import GroupMessage
 from services.ncatbot import bot
-from utils import PM, on_message, Or
+from utils import PM, And, on_message
 from utils.api import get_card_by_msg
 
 from .ds import MODEL_MAP, deepseek, deepseek_reset
 
 
-@on_message(Or("deepseek", "ds") & (PM.prefix == True), registered_menu={"deepseek": "和猫娘 Neko 聊天"})  # ~ds
+@on_message(And("deepseek|ds", PM.prefix == True), registered_menu={"deepseek": "和猫娘 Neko 聊天"})  # ~ds
 async def ds(msg: GroupMessage, _):
     await bot.api.post_group_msg(
         msg.group_id,

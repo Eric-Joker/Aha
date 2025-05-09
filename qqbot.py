@@ -14,6 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import signal
 import sys
+from asyncio import run
 from codecs import getwriter
 from multiprocessing import Process, Queue, freeze_support
 
@@ -27,7 +28,12 @@ def handle_sigterm(*_):
 
 
 if __name__ == "__main__":
-    from services import ncatbot
+    import fastapi_modules
+    import modules
+    from services.database import db_init
+    from services.ncatbot import run_bot
+
+    run(db_init())
 
     # 启动 FastAPI 服务
     task_queue = Queue()
@@ -41,6 +47,6 @@ if __name__ == "__main__":
 
     # 启动 NcatBot
     signal.signal(signal.SIGTERM, handle_sigterm)
-    ncatbot.run_bot(task_queue)
+    run_bot(task_queue)
     if cfg.enable_fastapi:
         api_process.join()

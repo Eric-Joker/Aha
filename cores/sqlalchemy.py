@@ -12,6 +12,26 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from .api import Friend, GroupMemberInfo, Stranger
-from .metas import RestrictiveMeta, SingletonMeta
-from .sqlalchemy import Iterable, YarlURL
+from sqlalchemy import TypeDecorator, VARCHAR, JSON
+from yarl import URL
+
+
+class Iterable(TypeDecorator):
+    impl = JSON
+    cache_ok = True  # 避免警告
+
+    def process_bind_param(self, value, _):
+        return list(value) if value else None
+
+    def process_result_value(self, value, _):
+        return tuple(value) if value else None
+
+class YarlURL(TypeDecorator):
+    impl = VARCHAR(2048)  # 假设 URL 最大长度 2048
+    cache_ok = True  # 避免警告
+
+    def process_bind_param(self, value: URL | None, _):
+        return str(value)
+
+    def process_result_value(self, value: str | None, _):
+        return URL(value)

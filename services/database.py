@@ -50,6 +50,7 @@ db_session_factory = async_sessionmaker(bind=db_engine)
 
 alembic_cfg = Config("alembic.ini")
 alembic_cfg.set_main_option("script_location", "alembic")
+alembic_cfg.set_main_option("sqlalchemy.url", cfg.alembic)
 
 
 async def db_init():

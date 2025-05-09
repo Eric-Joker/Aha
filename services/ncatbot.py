@@ -24,7 +24,8 @@ from config import cfg
 from ncatbot.core import BotClient
 from ncatbot.utils import config
 from services.apscheduler import scheduler, scheduler_init
-from services.database import db_engine, db_init
+from services.database import db_engine
+from services.playwright import browser
 from utils import install_uvloop, process_clean, process_message, process_notice, process_queue, process_request, process_start
 
 # ncatbot 配置
@@ -90,8 +91,6 @@ getLogger("PluginLoader").addFilter(LogFilter())
 
 def run_bot(queue):
     async def init_services():
-        await db_init()
-
         bot.api._http.post = retry_network(bot.api._http.post.__func__).__get__(
             bot.api._http, bot.api._http.__class__
         )  # 为 API 添加网络错误重试
@@ -100,6 +99,8 @@ def run_bot(queue):
         await scheduler.start_in_background()
         scheduler_init()
 
+        await browser.start()
+        
         await process_start()
 
         Thread(target=queue_worker, args=(queue, get_event_loop()), daemon=True).start()
@@ -108,13 +109,14 @@ def run_bot(queue):
         task = get_event_loop().run_in_executor(None, cfg.save)
         await process_clean()
 
+        await browser.close()
+
         setattr(scheduler, "_services_task_group", None)
         await scheduler.stop()
 
         await db_engine.dispose()
         await task
 
-    import modules
     import utils.api
 
     cfg.finalize_initialization()

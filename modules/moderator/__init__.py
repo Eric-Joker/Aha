@@ -17,7 +17,7 @@ from asyncio import create_task
 from regex import Match
 
 from config import cfg
-from ncatbot.core.element import At, MessageChain
+from ncatbot.core import At, MessageChain
 from ncatbot.core.message import GroupMessage
 from ncatbot.core.notice import NoticeMessage
 from ncatbot.core.request import Request

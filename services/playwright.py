@@ -13,11 +13,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from asyncio import Semaphore
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import AsyncGenerator
 
-from playwright.async_api import Browser, Page
-from playwright.async_api import async_playwright
+from playwright.async_api import Browser, Page, async_playwright
 
 from config import cfg
 from cores import SingletonMeta
@@ -45,9 +44,13 @@ class BrowserManager(metaclass=SingletonMeta):
 
     async def close(self):
         if self.browser:
-            await self.browser.close()
+            with suppress(Exception):
+                await self.browser.close()
+            self.browser = None
         if self.playwright:
-            await self.playwright.stop()
+            with suppress(Exception):
+                await self.playwright.stop()
+            self.playwright = None
 
     @asynccontextmanager
     async def acquire_page(self) -> AsyncGenerator[Page, None]:

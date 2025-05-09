@@ -5,8 +5,9 @@ while pgrep -f "python qqbot.py" > /dev/null; do
     echo "🕒 等待进程退出..."
     sleep 1
 done
-cd "$( cd "$( dirname "$0" )" && pwd )"
-rm -f nohup.out
-export BOT_ENV="main"
-nohup python qqbot.py > nohup.out 2>&1 </dev/null &
-echo "✅ 已启动 ncatbot"
+
+cd "$(dirname "$0")"
+
+screen -dmS aha bash -c "export BOT_ENV='main' && python qqbot.py"
+
+echo "✅ 已启动 ncatbot。通过 screen -r aha 附加对话，Ctrl+A D 分离；pkill -f 'python qqbot.py' 终止进程"

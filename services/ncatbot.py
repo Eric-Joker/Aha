@@ -100,7 +100,7 @@ def run_bot(queue):
         scheduler_init()
 
         await browser.start()
-        
+
         await process_start()
 
         Thread(target=queue_worker, args=(queue, get_event_loop()), daemon=True).start()
@@ -117,9 +117,10 @@ def run_bot(queue):
         await db_engine.dispose()
         await task
 
-    import utils.api
+    import utils.api  # 提前注册 config
 
     cfg.finalize_initialization()
+
     install_uvloop()
 
     bot.add_startup_handler(init_services)

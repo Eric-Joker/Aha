@@ -33,6 +33,9 @@ if __name__ == "__main__":
     from services.database import db_init
     from services.ncatbot import run_bot
 
+    signal.signal(signal.SIGTERM, handle_sigterm)
+    signal.signal(signal.SIGINT, handle_sigterm)
+
     run(db_init())
 
     # 启动 FastAPI 服务
@@ -46,7 +49,6 @@ if __name__ == "__main__":
         api_process.start()
 
     # 启动 NcatBot
-    signal.signal(signal.SIGTERM, handle_sigterm)
     run_bot(task_queue)
     if cfg.enable_fastapi:
         api_process.join()

@@ -45,7 +45,7 @@ if __name__ == "__main__":
 
         if sys.platform == "win32":
             freeze_support()
-        api_process = Process(target=run_fastapi, args=[task_queue], daemon=True)
+        api_process = Process(target=run_fastapi, args=(task_queue,), daemon=True)
         api_process.start()
 
     # 启动 NcatBot

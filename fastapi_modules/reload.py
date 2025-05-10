@@ -12,10 +12,10 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from services.fastapi import app, task_queue
+import services.fastapi as sf
 
 
-@app.get("/reload")
+@sf.app.get("/reload")
 async def reload():
-    task_queue.put(("reload", None))
+    sf.task_queue.put(("reload", None))
     return {"status": "request_queued"}

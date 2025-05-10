@@ -12,6 +12,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import sys
 from asyncio import get_event_loop, run_coroutine_threadsafe
 from logging import Filter, getLogger
 from multiprocessing import Queue
@@ -120,6 +121,10 @@ def run_bot(queue):
     import utils.api  # 提前注册 config
 
     cfg.finalize_initialization()
+
+    # 卸载主进程的 fastapi modules
+    for name in tuple(name for name in sys.modules if name == "fastapi_modules" or name.startswith("fastapi_modules.")):
+        del sys.modules[name]
 
     install_uvloop()
 

@@ -345,7 +345,7 @@ async def _is_validated(msg: GroupMessage | PrivateMessage | NoticeMessage | Req
 def _strip_message_prefix(msg: str, self_id: int):
     """去除消息前缀"""
     for prefix in (cfg.message_prefix, f"[CQ:at,qq={self_id}]"):
-        msg = msg.removeprefix(prefix)
+        msg = msg.removeprefix(prefix).lstrip()
     return msg
 
 

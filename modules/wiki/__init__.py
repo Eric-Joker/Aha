@@ -34,7 +34,7 @@ WIKI_MAP = {
 }
 
 
-@on_message(And("wiki", PM.prefix == True), registered_menu={"wiki": None})  # ~ds
+@on_message(And("wiki", PM.prefix == True), registered_menu={"wiki": "查询 Wiki 词条"})
 async def wk(msg: GroupMessage, _):
     await bot.api.post_group_msg(
         msg.group_id, "Wiki：\n[wiki/enwiki/devwiki 词条] - 中文MCwiki/英文MCwiki/基岩开发wiki", reply=msg.message_id

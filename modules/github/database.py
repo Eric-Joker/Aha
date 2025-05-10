@@ -12,22 +12,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from multiprocessing import Queue
+from sqlalchemy import Column, Integer
 
-from fastapi import FastAPI
-from uvicorn import run
-
-from config import cfg
-from utils import install_uvloop
-
-app = FastAPI()
-task_queue: Queue = None
+from cores import Iterable
+from services.database import dbBase
 
 
-def run_fastapi(queue):
-    global task_queue
-    task_queue = queue
-    import fastapi_modules
-
-    install_uvloop()
-    run(app, host="0.0.0.0", port=cfg.fastapi_port)
+class GithubSearch(dbBase):
+    __tablename__ = "github_search"
+    user_id = Column(Integer, primary_key=True)
+    results = Column(Iterable)
+    timestamp = Column(Integer, index=True)

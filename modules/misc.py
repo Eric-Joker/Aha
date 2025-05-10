@@ -15,8 +15,9 @@
 from regex import Match
 
 from ncatbot.core.message import GroupMessage
+from ncatbot.core.notice import NoticeMessage
 from services.ncatbot import bot
-from utils import PM, on_message
+from utils import PM, on_message, on_notice
 
 
 @on_message(r"头衔\s+(.+)", PM.group == False)
@@ -27,3 +28,9 @@ async def title(msg: GroupMessage, match: Match):
         await bot.api.post_group_msg(msg.group_id, f"设置头衔:{new_title}", reply=msg.message_id)
     else:
         await bot.api.post_group_msg(msg.group_id, "头衔长度不符合要求(1-12个字符)", reply=msg.message_id)
+
+
+@on_notice("notify", "poke")
+async def poke(msg: NoticeMessage):
+    if msg.target_id == msg.self_id:
+        await bot.api.send_poke(msg.user_id, msg.group_id)

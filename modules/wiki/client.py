@@ -13,7 +13,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from time import time
-from urllib.parse import quote
 
 import aiohttp
 from sqlalchemy import select, insert
@@ -76,7 +75,7 @@ class MediaWikiClient:
 
         return page.get("extract", ""), page.get("fullurl", "")
 
-    async def search_similar(self, term: str, limit: int = 5):
+    async def search_similar(self, term: str, limit: int = 3):
         """搜索相似词条
 
         Args:
@@ -103,7 +102,6 @@ class MediaWikiClient:
     async def get_cached_intro(self, user_id: int, index: int):
         current_time = int(time())
         async with db_session_factory() as session:
-            # 精准查询最近5分钟内且用户对应的最新缓存记录
             record = await session.scalar(
                 select(WikiSearch)
                 .where(WikiSearch.user_id == user_id, WikiSearch.timestamp >= current_time - 300)

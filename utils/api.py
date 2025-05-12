@@ -178,21 +178,23 @@ async def set_group_ban(group_id, user_id, seconds=0):
     - 如果目标成员是管理则不禁言
     - 解禁时预先判断其是否被禁言
     """
-    if seconds:
-        if (await get_group_member_info(group_id, user_id)).role == "member":
-            await bot.api.set_group_ban(group_id, user_id, (seconds + 59) // 60 * 60)
+    if (member := await get_group_member_info(group_id, user_id, True)).role == "member":
+        if seconds:
+            create_task(bot.api.set_group_ban(group_id, user_id, (seconds + 59) // 60 * 60))
             if seconds % 60 != 0:
-                await scheduler.add_schedule(
-                    bot.api.set_group_ban,
-                    TimeTrigger(seconds),
-                    args=(group_id, user_id, 0),
-                    metadata={"user_id": user_id, "tag": "ban"},
+                create_task(
+                    scheduler.add_schedule(
+                        bot.api.set_group_ban,
+                        TimeTrigger(seconds),
+                        args=(group_id, user_id, 0),
+                        metadata={"user_id": user_id, "tag": "ban"},
+                    )
                 )
             return True
-    elif (ts := (await get_group_member_info(group_id, user_id, True)).shut_up_timestamp) and ts > time():
-        await bot.api.set_group_ban(group_id, user_id, 0)
-        await rm_schedules_by_meta({"tag": "ban", "user_id": user_id}, group_id)
-        return True
+        elif member.shut_up_timestamp and member.shut_up_timestamp > time():
+            create_task(bot.api.set_group_ban(group_id, user_id, 0))
+            create_task(rm_schedules_by_meta({"tag": "ban", "user_id": user_id}, group_id))
+            return True
     return False
 
 

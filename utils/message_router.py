@@ -111,7 +111,7 @@ async def process_message(msg: GroupMessage | PrivateMessage, force_trigger=Fals
 
     if msg.message and msg.message[0]["data"].get("qq") == str(msg.self_id):
         del truly_msg.message[0]
-        if (text_data := truly_msg.message[0].get("data")) and (text := text_data.get("text")) is not None:
+        if truly_msg.message and (text_data := truly_msg.message[0].get("data")) and (text := text_data.get("text")) is not None:
             text_data["text"] = text.lstrip().removeprefix(cfg.message_prefix)
 
     # 评估处理逻辑

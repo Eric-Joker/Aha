@@ -16,7 +16,7 @@ from asyncio import create_task
 from base64 import b64encode
 from traceback import format_exc
 
-import aiohttp
+from aiohttp import ClientSession
 from regex import Match
 
 from config import cfg
@@ -49,7 +49,7 @@ async def send_wiki_response(group_id, result, reply_id):
 
 
 async def handle_wiki_error(group_id, reply_id):
-    await bot.api.post_private_msg(cfg.super[0], f"请求 wiki 时报错：\n{format_exc()}")
+    create_task(bot.api.post_private_msg(cfg.super[0], f"请求 wiki 时报错：\n{format_exc()}"))
     await bot.api.post_group_msg(group_id, "出错了。", reply=reply_id)
 
 
@@ -61,7 +61,7 @@ async def fetch(msg: GroupMessage, match: Match):
     await bot.api.send_poke(msg.user_id, msg.group_id)
 
     try:
-        async with aiohttp.ClientSession() as session:
+        async with ClientSession() as session:
             if result := await (client := MediaWikiClient(session, url)).fetch_intro(term := match.group(2).strip()):
                 await send_wiki_response(msg.group_id, result, msg.message_id)
             else:
@@ -78,7 +78,7 @@ async def fetch(msg: GroupMessage, match: Match):
 @on_message(r"(\d+)", PM.limit == False)
 async def reget(msg: GroupMessage, match: Match):
     try:
-        async with aiohttp.ClientSession() as session:
+        async with ClientSession() as session:
             if result := await MediaWikiClient(session).get_cached_intro(msg.user_id, int(match.group(1)) - 1):
                 await send_wiki_response(msg.group_id, result, msg.message_id)
     except Exception:

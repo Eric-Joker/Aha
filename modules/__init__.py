@@ -30,7 +30,7 @@ def reload_modules():
     modules.extend(
         sys.modules[modname]
         for modname in list(sys.modules)
-        if modname.startswith(f"{__name__}.") and modname != f"{__name__}.reload" and ".database" not in modname
+        if modname.startswith(f"{__name__}.") and ".database" not in modname
     )
     # 按模块层级深度降序排序（确保先加载子模块）
     modules.sort(key=lambda m: m.__name__.count("."), reverse=True)

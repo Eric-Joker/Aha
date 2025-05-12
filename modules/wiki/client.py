@@ -14,8 +14,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from time import time
 
-import aiohttp
-from sqlalchemy import select, insert
+from aiohttp import ClientSession
+from sqlalchemy import insert, select
 from tenacity import retry, stop_after_attempt, wait_exponential
 from yarl import URL
 
@@ -27,7 +27,7 @@ from .database import WikiSearch
 class MediaWikiClient:
     def __init__(
         self,
-        session: aiohttp.ClientSession,
+        session: ClientSession,
         base_url: str = None,
     ):
         """
@@ -40,7 +40,7 @@ class MediaWikiClient:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=5), reraise=True)
     async def _fetch_api(self, params: dict) -> dict:
-        async with self._session.get((self._base_url / "api.php").with_query(params)) as resp:
+        async with self._session.get(self._base_url / "api.php", params=params) as resp:
             resp.raise_for_status()
             if "error" in (data := await resp.json()):
                 raise ValueError(f"API Error: {data['error']['info']}")

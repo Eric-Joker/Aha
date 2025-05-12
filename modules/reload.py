@@ -33,6 +33,7 @@ async def reload():
     from . import reload_modules
 
     reload_modules()
+    
 
 
 @on_message("重载", PM.prefix == True, PM.super == True)

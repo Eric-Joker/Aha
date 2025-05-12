@@ -14,7 +14,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from traceback import format_exc
 
-import aiohttp
+from asyncio import create_task
+from aiohttp import ClientSession
 from regex import Match
 
 from config import cfg
@@ -24,8 +25,8 @@ from utils import PM, And, on_message
 
 from .client import GithubClient, Repository
 
-
 SHORTCUT = cfg.get_config("github_shortcut", {"aha": "Eric-Joker/Aha"})
+
 
 @on_message(And("github", PM.prefix == True), registered_menu={"github": "查询 Github 仓库/用户信息"})
 async def gh(msg: GroupMessage, _):
@@ -51,7 +52,7 @@ async def send_repo_response(group_id, result: Repository, reply_id):
 
 
 async def handle_error(group_id, reply_id):
-    await bot.api.post_private_msg(cfg.super[0], f"请求 Github 时报错：\n{format_exc()}")
+    create_task(bot.api.post_private_msg(cfg.super[0], f"请求 Github 时报错：\n{format_exc()}"))
     await bot.api.post_group_msg(group_id, "出错了。", reply=reply_id)
 
 
@@ -61,7 +62,7 @@ async def fetch_repo(msg: GroupMessage, match: Match):
 
     is_repo = "/" in (term := SHORTCUT.get((term := match.group(1).strip()).lower()) or term)
     try:
-        async with aiohttp.ClientSession() as session:
+        async with ClientSession() as session:
             client = GithubClient(session)
             if is_repo and (result := await client.get_repo(term)):
                 await send_repo_response(msg.group_id, result, msg.message_id)
@@ -80,7 +81,7 @@ async def fetch_repo(msg: GroupMessage, match: Match):
 async def fetch_gh_user(msg: GroupMessage, match: Match):
     await bot.api.send_poke(msg.user_id, msg.group_id)
     try:
-        async with aiohttp.ClientSession() as session:
+        async with ClientSession() as session:
             await bot.api.post_group_msg(
                 msg.group_id,
                 (
@@ -104,7 +105,7 @@ async def fetch_gh_user(msg: GroupMessage, match: Match):
 @on_message(r"(\d+)", PM.limit == False)
 async def reget(msg: GroupMessage, match: Match):
     try:
-        async with aiohttp.ClientSession() as session:
+        async with ClientSession() as session:
             if result := await GithubClient(session).get_cached_repo(msg.user_id, int(match.group(1)) - 1):
                 await send_repo_response(msg.group_id, result, msg.message_id)
     except Exception:

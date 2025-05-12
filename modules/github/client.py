@@ -15,7 +15,7 @@
 from time import time
 from typing import Optional
 
-import aiohttp
+from aiohttp import ClientResponseError, ClientSession
 from pydantic import Field
 from sqlalchemy import insert, select
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -60,7 +60,7 @@ class User(RobustBaseModel):
 
 
 class GithubClient:
-    def __init__(self, session: aiohttp.ClientSession):
+    def __init__(self, session: ClientSession):
         self._session = session
         self._base_url = URL("https://api.github.com")
 
@@ -73,7 +73,7 @@ class GithubClient:
     async def get_repo(self, repo: str):
         try:
             return Repository(**await self._fetch_api(f"repos/{repo}"))
-        except aiohttp.ClientResponseError as e:
+        except ClientResponseError as e:
             if e.status == 404:
                 return None
             raise
@@ -81,7 +81,7 @@ class GithubClient:
     async def get_user(self, username: str):
         try:
             return User(**await self._fetch_api(f"users/{username}"))
-        except aiohttp.ClientResponseError as e:
+        except ClientResponseError as e:
             if e.status == 404:
                 return None
             raise

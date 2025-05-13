@@ -100,7 +100,7 @@ async def verify_message(message: str, user_id, group_id):
             await session.commit()
             return True
         if (result := await session.get(Verify, user_id)) and not result.is_validated:
-            if result >= 4:
+            if result.times >= 4:
                 create_task(rm_schedules_by_meta({"tag": "verify", "user_id": user_id}), group_id)
                 create_task(bot.api.set_group_kick(group_id, user_id))
             result.times += 1

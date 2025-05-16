@@ -38,7 +38,7 @@ async def capture_element(url: str, selector: str, wait_until: str = "networkidl
     """
     async with browser.acquire_page() as page:
         try:
-            await page.goto(url, timeout=60000, wait_until=wait_until)
+            await page.goto(url, timeout=120000, wait_until=wait_until)
             if not (element := await page.query_selector(selector)):
                 return None
             if not await element.is_visible():

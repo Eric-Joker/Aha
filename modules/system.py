@@ -20,6 +20,7 @@ from regex import Match
 from config import cfg
 from ncatbot.core.message import GroupMessage
 from ncatbot.core.request import Request
+from pympler import asizeof
 from services.apscheduler import scheduler
 from services.ncatbot import bot
 from utils import (
@@ -133,3 +134,8 @@ async def clear_cache(msg: GroupMessage, _):
     for c in cachers:
         c.clear()
     await bot.api.post_group_msg(msg.group_id, "已清理。", reply=msg.message_id)
+
+
+@on_message(r"缓存(?:使用)?状(?:况|态)", PM.super == True, PM.prefix == True)
+async def clear_cache(msg: GroupMessage, _):
+    await bot.api.post_group_msg(msg.group_id, f"已使用{sum(asizeof.asizeof(c) for c in cachers)}", reply=msg.message_id)

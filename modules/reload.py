@@ -19,7 +19,7 @@ from services.ncatbot import bot
 from utils import PM, on_message, queue_handler
 
 
-async def reload():
+def reload():
     ul.message_handlers.clear()
     ul.notice_handlers.clear()
     ul.queue_handlers.clear()
@@ -39,11 +39,11 @@ async def reload():
 @on_message("重载", PM.prefix == True, PM.super == True)
 async def msg_entry(msg: GroupMessage, _):
     await bot.api.send_poke(msg.user_id, msg.group_id)
-    await reload()
+    reload()
     await bot.api.post_group_msg(msg.group_id, "已重载所有模块", reply=msg.message_id)
 
 
 @queue_handler("reload")
 async def api_entry(_):
-    await reload()
+    reload()
     await bot.api.post_private_msg(cfg.super[0], "已重载所有模块")

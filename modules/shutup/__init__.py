@@ -45,7 +45,7 @@ async def shutup(msg: GroupMessage, match: Match):
 async def su(msg: GroupMessage, _):
     await bot.api.post_group_msg(
         msg.group_id,
-        f"闭嘴！：\n🔥[随机禁言/sjjy]🔥 - 1-60s\n[禁言我/jy 时长 时长] - 随机禁言\n[{cfg.message_prefix}禁言我/jy 时长]\n\n最小1s，最大29天23时59秒，自动校正\n作死后可以加其他分群发送“解除禁言”",
+        f"闭嘴！：\n🔥[随机禁言/sjjy]🔥 - 1~60s\n[禁言我/jy 时长 时长] - 随机禁言\n[{cfg.message_prefix}禁言我/{cfg.message_prefix}jy 时长]\n\n最小1s，最大29天23时59秒，自动校正\n作死后可以加其他分群发送“解除禁言”",
         reply=msg.message_id,
     )
 

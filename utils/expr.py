@@ -31,7 +31,7 @@ from ncatbot.core.request import Request
 from services.database import db_session_factory, dbBase
 
 from .cache import MemLRUCache, async_cached, get_cache
-from .misc import async_run_func
+from .misc import async_run_func, convert_text
 from .typekit import is_hashable, is_in_supported
 
 
@@ -110,7 +110,7 @@ class Field:
         priority=0,
         cache: "CacheConfig" = None,
         unique=False,
-        always_true=False
+        always_true=False,
     ):
         """
         Args:
@@ -349,13 +349,16 @@ async def _is_validated(msg: GroupMessage | PrivateMessage | NoticeMessage | Req
 
 def _strip_message_prefix(msg: str, self_id: int):
     """去除消息前缀"""
-    for prefix in (cfg.message_prefix, f"[CQ:at,qq={self_id}]"):
+    for prefix in (cfg.message_prefix, convert_text(cfg.message_prefix), f"[CQ:at,qq={self_id}]"):
         msg = msg.removeprefix(prefix).lstrip()
     return msg
 
 
 def _has_message_prefix(msg: GroupMessage | PrivateMessage | NoticeMessage | Request):
-    return any(msg.raw_message.startswith(prefix) for prefix in (cfg.message_prefix, f"[CQ:at,qq={msg.self_id}]"))
+    return any(
+        msg.raw_message.startswith(prefix)
+        for prefix in (cfg.message_prefix, convert_text(cfg.message_prefix), f"[CQ:at,qq={msg.self_id}]")
+    )
 
 
 # endregion
@@ -581,6 +584,8 @@ class PM(metaclass=ExprMeta):
         ),
     )
     limit = Field(bool, _check_rate_limit, True, overrides={False: True}, priority=-999)
+
+    # 属性字段
     ttl = Field(float, lambda _: True, priority=999, unique=True, always_true=True)
 
 
@@ -620,7 +625,7 @@ def build_cond(conditions: tuple[Expr], msg_type: str) -> Expr:
 # @async_cached(expr_cache, key=hash_evaluate)
 async def evaluate(msg, expr: Expr | BoolExpr) -> tuple[bool, list]:
     """评估表达式入口
-    
+
     Results:
         bool: 评估结果。若为 `None` 说明该表达式已过期。
         iterable: 评估时产生的上下文，比如正则表达式捕获组内容。

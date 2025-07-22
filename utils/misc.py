@@ -42,3 +42,21 @@ class Wrapper:
 
     def __getattr__(self, name):
         return self._wrapped_methods.get(name) or getattr(self.wrapped_obj, name)
+
+
+def convert_char(char):
+    # 处理半角字符
+    if (code := ord(char)) == 0x20:  # 空格
+        return chr(0x3000)
+    elif 0x21 <= code <= 0x7E:
+        return chr(code + 0xFEE0)
+    # 处理全角字符
+    elif code == 0x3000:  # 空格
+        return chr(0x20)
+    elif 0xFF01 <= code <= 0xFF5E:
+        return chr(code - 0xFEE0)
+    return char
+
+
+def convert_text(text):
+    return ''.join(convert_char(c) for c in text)

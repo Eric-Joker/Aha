@@ -30,6 +30,6 @@ from .message_router import (
     process_start,
     queue_handler,
 )
-from .misc import get_byte_length, install_uvloop, round_decimal
+from .misc import get_byte_length, round_decimal
 from .playwright import capture_element
 from .typekit import decimal_to_str, sec2str, str2sec

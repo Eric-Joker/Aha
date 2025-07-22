@@ -12,20 +12,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import sys
-from asyncio import set_event_loop_policy
 from decimal import ROUND_HALF_UP, Decimal
 from inspect import iscoroutinefunction
-
-
-def install_uvloop():
-    if sys.platform != "win32":
-        import uvloop
-
-        if sys.version_info >= (3, 11):
-            set_event_loop_policy(uvloop.EventLoopPolicy())
-        else:
-            uvloop.install()
 
 
 def round_decimal(num: Decimal, digits=2):

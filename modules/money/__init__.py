@@ -48,7 +48,7 @@ async def conservation_handler(msg: GroupMessage, _):
     async with db_session_factory() as session:
         result = await session.execute(select(func.sum(Money.points)).where(Money.user_id.notin_(cfg.super)))
     await bot.api.post_group_msg(
-        msg.group_id, f"📊 当前时空总能量：{result.scalar() or 0}点（守恒率99.{randint(80,99)}%）", reply=msg.message_id
+        msg.group_id, f"📊 当前时空总能量：{decimal_to_str(round_decimal(result.scalar())) or 0}点（守恒率99.{randint(80,99)}%）", reply=msg.message_id
     )
 
 

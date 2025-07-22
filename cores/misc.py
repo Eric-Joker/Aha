@@ -12,14 +12,15 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from sqlalchemy import Column, Integer
-
-from cores import Iterable, YarlURL
-from services.database import dbBase
+import sys
+from asyncio import set_event_loop_policy
 
 
-class WikiSearch(dbBase):
-    __tablename__ = "wiki_search"
-    user_id = Column(Integer, primary_key=True)
-    base_url = Column(YarlURL)
-    results = Column(Iterable)
+def install_uvloop():
+    if sys.platform != "win32":
+        import uvloop
+
+        if sys.version_info >= (3, 11):
+            set_event_loop_policy(uvloop.EventLoopPolicy())
+        else:
+            uvloop.install()

@@ -100,14 +100,8 @@ class MediaWikiClient:
         )
 
     async def get_cached_intro(self, user_id: int, index: int):
-        current_time = int(time())
         async with db_session_factory() as session:
-            record = await session.scalar(
-                select(WikiSearch)
-                .where(WikiSearch.user_id == user_id, WikiSearch.timestamp >= current_time - 300)
-                .order_by(WikiSearch.timestamp.desc())
-                .limit(1)
-            )
+            record = await session.scalar(select(WikiSearch).where(WikiSearch.user_id == user_id))
 
             if not record or index >= len(record.results):
                 return None
@@ -120,12 +114,11 @@ class MediaWikiClient:
             return await self.fetch_intro(record.results[index])
 
     async def search_and_cache_results(self, user_id: int, term: str, limit: int = 3):
-        current_ts = int(time())
         if results := tuple(await self.search_similar(term, limit)):
             async with db_session_factory() as session:
                 await session.execute(
                     insert(WikiSearch)
-                    .values(user_id=user_id, base_url=self._base_url, results=results, timestamp=current_ts)
+                    .values(user_id=user_id, base_url=self._base_url, results=results)
                     .prefix_with("OR REPLACE")
                 )
                 await session.commit()

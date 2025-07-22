@@ -96,12 +96,11 @@ class GithubClient:
 
     async def cache_search(self, user_id: int, query: str, limit: int = 5):
         """缓存搜索结果"""
-        current_time = int(time())
         if results := tuple(await self.search_repos(query, limit)):
             async with db_session_factory() as session:
                 await session.execute(
                     insert(GithubSearch)
-                    .values(user_id=user_id, results=results, timestamp=current_time)
+                    .values(user_id=user_id, results=results)
                     .prefix_with("OR REPLACE")
                 )
                 await session.commit()
@@ -109,14 +108,8 @@ class GithubClient:
 
     async def get_cached_repo(self, user_id: int, index: int):
         """获取缓存结果"""
-        current_time = int(time())
         async with db_session_factory() as session:
-            record = await session.scalar(
-                select(GithubSearch)
-                .where(GithubSearch.user_id == user_id, GithubSearch.timestamp >= current_time - 300)
-                .order_by(GithubSearch.timestamp.desc())
-                .limit(1)
-            )
+            record = await session.scalar(select(GithubSearch).where(GithubSearch.user_id == user_id))
 
             if not record or index >= len(record.results):
                 return None

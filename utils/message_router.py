@@ -111,17 +111,25 @@ async def process_message(msg: GroupMessage | PrivateMessage, force_trigger=Fals
 
     if msg.message and msg.message[0]["data"].get("qq") == str(msg.self_id):
         del truly_msg.message[0]
-        if truly_msg.message and (text_data := truly_msg.message[0].get("data")) and (text := text_data.get("text")) is not None:
+        if (
+            truly_msg.message
+            and (text_data := truly_msg.message[0].get("data"))
+            and (text := text_data.get("text")) is not None
+        ):
             text_data["text"] = text.lstrip().removeprefix(cfg.message_prefix)
-
     # 评估处理逻辑
-    for expr, func in message_handlers:
+    for i in range(len(message_handlers) - 1, -1, -1):
+        expr, func = message_handlers[i]
         if force_trigger:
             expr = expr.modify(PM.prefix == False)
 
-        result, context = await evaluate(msg, expr)
+        result, context, is_onetime = await evaluate(msg, expr)
         if result:
             create_task(func(truly_msg, context[0] if context else None))
+            if is_onetime:
+                del message_handlers[i]
+        elif result is None:
+            del message_handlers[i]
 
 
 # 防止腾讯服务器抽风

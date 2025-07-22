@@ -18,8 +18,6 @@ from asyncio import run
 from codecs import getwriter
 from multiprocessing import Process, Queue, freeze_support
 
-from config.base import cfg
-
 sys.stdout = getwriter("utf-8")(sys.stdout.detach())
 
 
@@ -30,6 +28,7 @@ def handle_sigterm(*_):
 if __name__ == "__main__":
     import fastapi_modules
     import modules
+    from config.base import cfg
     from services.database import db_init
     from services.ncatbot import run_bot
 
@@ -45,7 +44,7 @@ if __name__ == "__main__":
 
         if sys.platform == "win32":
             freeze_support()
-        api_process = Process(target=run_fastapi, args=(task_queue,), daemon=True)
+        api_process = Process(target=run_fastapi, args=(cfg.fastapi_port, task_queue), daemon=True)
         api_process.start()
 
     # 启动 NcatBot

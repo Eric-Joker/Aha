@@ -15,4 +15,5 @@
 from .api import Friend, GroupMemberInfo, Stranger
 from .base import RobustBaseModel
 from .metas import RestrictiveMeta, SingletonMeta
+from .misc import install_uvloop
 from .sqlalchemy import Iterable, YarlURL

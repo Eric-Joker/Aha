@@ -98,7 +98,7 @@ class FieldClause(Expr):
 class Field:
     """字段描述符"""
 
-    __slots__ = ("name", "type", "extractor", "default", "op", "overrides", "priority", "cache", "unique")
+    __slots__ = ("name", "type", "extractor", "default", "op", "overrides", "priority", "cache", "unique", "always_true")
 
     def __init__(
         self,
@@ -110,6 +110,7 @@ class Field:
         priority=0,
         cache: "CacheConfig" = None,
         unique=False,
+        always_true=False
     ):
         """
         Args:
@@ -117,9 +118,10 @@ class Field:
             default: 默认值，用于自动生成 `op`。
             op: 默认表达式，需要评估的表达式若没有该字段的则自动添加。
             overrides: 比较是否相等时，与之比较的值为 `key` 时，最终评估结果为 `value`。
-            priority: 在多元表达式评估的优先级，0表示保持原顺序，正数越小越优先，负数越小越靠后。
-            cache: 传递 CacheConfig 启用缓存。
+            priority: 在多元表达式评估的优先级，0表示保持原顺序，正数越大越优先，负数越小越靠后。
+            cache: 默认不启用缓存，传递 CacheConfig 启用缓存。
             unique: 是否在并列表达式中只能出现一次。
+            always_true: 二元表达式评估时始终返回 `True`。
         """
         if overrides is None:
             overrides = {}
@@ -131,6 +133,7 @@ class Field:
         self.priority = priority
         self.cache = cache
         self.unique = unique
+        self.always_true = always_true
 
 
 class ExprMeta(type):
@@ -166,21 +169,23 @@ class BinaryExpr(Expr):
     __slots__ = ("negate", "left", "right", "priority", "cache_config")
 
     def __init__(self, left, right, negate=False):
-        if is_hashable(left, right):
-            self.left, self.right, left_is_field = _adjust_field(left, right)
-
-            self.negate = negate
-            self.priority = self.left.priority if left_is_field and self.left.priority else 0
-            self.cache_config = self.left.field.cache if left_is_field and self.left.field.cache else None
-            if self.cache_config:
-                self._evaluate_wrapper = async_cached(
-                    self.cache_config.cache,
-                    ignore=self.cache_config.ignore_func,
-                )(self._evaluate_wrapper)
-        else:
+        if not is_hashable(left, right):
             raise TypeError("Expression elements must be hashable")
+        self.left, self.right, left_is_field = _adjust_field(left, right)
+
+        self.negate = negate
+        self.priority = self.left.priority if left_is_field else 0
+        self.always_true = self.left.field.always_true if left_is_field else False
+        self.cache_config = self.left.field.cache if left_is_field and self.left.field.cache else None
+        if self.cache_config:
+            self._evaluate_wrapper = async_cached(
+                self.cache_config.cache,
+                ignore=self.cache_config.ignore_func,
+            )(self._evaluate_wrapper)
 
     async def evaluate(self, msg):
+        if self.always_true:
+            return True, []
         if self.cache_config:
             return await self._evaluate_wrapper(
                 self.left,
@@ -212,7 +217,7 @@ class BoolExpr(Expr):
 
     def __init__(self, *clauses):
         clauses = tuple(c if isinstance(c, Expr) else RawCondition(c) for c in clauses)
-        positives = sorted((x for x in clauses if x.priority > 0), key=lambda x: x.priority)
+        positives = sorted((x for x in clauses if x.priority > 0), key=lambda x: x.priority, reverse=True)
         zeros = [x for x in clauses if x.priority == 0]
         negatives = sorted((x for x in clauses if x.priority < 0), key=lambda x: x.priority, reverse=True)
         self.clauses = positives + zeros + negatives
@@ -378,7 +383,11 @@ def _wrap_conditions(conditions, msg_type):
         elif isinstance(expr, Not):
             return Not(convert_expr(expr.clause))
         elif isinstance(expr, BinaryExpr):
-            return expr.__class__(convert_expr(expr.left), convert_expr(expr.right), expr.negate)
+            return expr.__class__(
+                convert_expr(expr.left),
+                convert_expr((time() + expr.right) if expr.left.name == "ttl" and expr.right < 1000000000 else expr.right),
+                expr.negate,
+            )
         elif isinstance(expr, RawCondition):
             return message_wrapper(expr.value) if is_message else expr.value
         elif isinstance(expr, (str, re.Pattern)):
@@ -529,6 +538,7 @@ class PM(metaclass=ExprMeta):
         prefix: 消息前端是否为 `cfg.message_prefix` 或@机器人。
         validated: 消息发送者是否已通过 `moderator` 模块验证。默认限定通过验证的。
         limit: 消息发送者是否遵循全局限速。默认遵循。未限定 `message`、`request_type`、`notice_type` 和 `sub_type` 时务必声明 `PM.limit == False`。
+        ttl: 该表达式实例将在几秒钟后/何时优先销毁，一般用于一次性表达式。若传入的值小于10^9，将会被 `build_cond` 修正为与当前秒级时间戳累加。
         admin: 消息发送者是否是群管理员。
         super: 消息发送者是否 in `cfg.super`。
     """
@@ -539,7 +549,7 @@ class PM(metaclass=ExprMeta):
     message = Field(
         re.Pattern,
         lambda msg: getattr(msg, "raw_message", None),
-        priority=2,
+        priority=1,
         cache=CacheConfig(
             cache=match_cache, key_func=lambda operator, right, msg: hashkey(operator, right.pattern, msg.raw_message)
         ),
@@ -547,13 +557,13 @@ class PM(metaclass=ExprMeta):
     )
     request = Field(str, lambda msg: getattr(msg, "request_type", None), unique=True)
     notice = Field(str, lambda msg: getattr(msg, "notice_type", None), unique=True)
-    sub_type = Field(str, lambda msg: getattr(msg, "sub_type", None), priority=1, unique=True)
+    sub_type = Field(str, lambda msg: getattr(msg, "sub_type", None), priority=2, unique=True)
 
     # 消息来源字段
     group = Field(bool, lambda msg: hasattr(msg, "group_id"), True)
     private = Field(bool, lambda msg: not hasattr(msg, "group_id"))
     groups = Field(int, lambda msg: getattr(msg, "group_id", None), op=lambda f: f.in_(cfg.action_groups))
-    users = Field(int, lambda msg: msg.user_id)
+    users = Field(int, lambda msg: msg.user_id, priority=998)
 
     # 功能控制字段
     prefix = Field(bool, _has_message_prefix, unique=True)
@@ -570,7 +580,8 @@ class PM(metaclass=ExprMeta):
             ignore_func=lambda _, __, right, ___: not right,
         ),
     )
-    limit = Field(bool, _check_rate_limit, True, overrides={False: True}, priority=-3)
+    limit = Field(bool, _check_rate_limit, True, overrides={False: True}, priority=-999)
+    ttl = Field(float, lambda _: True, priority=999, unique=True, always_true=True)
 
 
 def modify_expr(expr, *conditions: BinaryExpr):
@@ -607,13 +618,22 @@ def build_cond(conditions: tuple[Expr], msg_type: str) -> Expr:
 
 
 # @async_cached(expr_cache, key=hash_evaluate)
-async def evaluate(msg, expr: Expr) -> tuple[bool, list]:
-    """评估表达式入口"""
+async def evaluate(msg, expr: Expr | BoolExpr) -> tuple[bool, list]:
+    """评估表达式入口
+    
+    Results:
+        bool: 评估结果。若为 `None` 说明该表达式已过期。
+        iterable: 评估时产生的上下文，比如正则表达式捕获组内容。
+        bool: 是否是一次性表达式。
+    """
+    ttl: Equal = next((item for item in expr.clauses if hasattr(item, "left") and item.left.name == "ttl"), None)
+    if ttl and ttl.right <= time():
+        return None, (), True
     try:
-        return await expr.evaluate(msg)
+        return *(await expr.evaluate(msg)), bool(ttl)
     except Exception:
         logger.exception("Error evaluating expression:")
-    return None, ()
+    return False, (), bool(ttl)
 
 
 # endregion

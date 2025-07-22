@@ -68,6 +68,7 @@ async def fetch_repo(msg: GroupMessage, match: Match):
                 await send_repo_response(msg.group_id, result, msg.message_id)
             else:
                 similar = await client.cache_search(msg.user_id, term)
+                on_message(r"(\d+)", PM.users == msg.user_id, PM.ttl == 300)(reget)
                 await bot.api.post_group_msg(
                     msg.group_id,
                     f"{"找不到该仓库。" if is_repo else ""}{f"相似的有：\n{"\n".join(f"{i+1}. {v}" for i, v in enumerate(similar))}\n五分钟内发送序号即可获取" if similar else ""}",
@@ -102,7 +103,6 @@ async def fetch_gh_user(msg: GroupMessage, match: Match):
         await handle_error(msg.group_id, msg.message_id)
 
 
-@on_message(r"(\d+)", PM.limit == False)
 async def reget(msg: GroupMessage, match: Match):
     try:
         async with ClientSession() as session:

@@ -22,12 +22,13 @@ from tenacity import RetryCallState, retry, retry_if_exception_type, stop_after_
 from websockets.exceptions import WebSocketException
 
 from config import cfg
+from cores import install_uvloop
 from ncatbot.core import BotClient
 from ncatbot.utils import config
 from services.apscheduler import scheduler, scheduler_init
 from services.database import db_engine
 from services.playwright import browser
-from utils import install_uvloop, process_clean, process_message, process_notice, process_queue, process_request, process_start
+from utils import process_clean, process_message, process_notice, process_queue, process_request, process_start
 
 # ncatbot 配置
 config.set_bot_uin(str(cfg.get_config("bot_qq", 114514, "ncatbot")))

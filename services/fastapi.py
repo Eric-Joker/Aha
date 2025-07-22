@@ -27,9 +27,6 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn import run
 
-from config import cfg
-from utils import install_uvloop
-
 logger = getLogger(__name__)
 
 
@@ -126,7 +123,7 @@ task_queue: Queue = None
 public_key: Ed25519PublicKey = None
 
 
-def run_fastapi(queue):
+def run_fastapi(port, queue):
     global task_queue, public_key
     task_queue = queue
     public_key = load_public_key(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "ed25519.pem"))
@@ -134,6 +131,7 @@ def run_fastapi(queue):
         logger.warning("Running without signature verification! This is insecure for non-GET/HEAD requests.")
 
     import fastapi_modules
+    from cores import install_uvloop
 
     install_uvloop()
-    run(app, host="0.0.0.0", port=cfg.fastapi_port)
+    run(app, host="0.0.0.0", port=port)

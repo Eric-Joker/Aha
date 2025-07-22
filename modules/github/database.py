@@ -22,4 +22,3 @@ class GithubSearch(dbBase):
     __tablename__ = "github_search"
     user_id = Column(Integer, primary_key=True)
     results = Column(Iterable)
-    timestamp = Column(Integer, index=True)

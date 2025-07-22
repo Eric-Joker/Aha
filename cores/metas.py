@@ -12,10 +12,11 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import multiprocessing
 import threading
 from abc import ABCMeta
 import sys
+from multiprocessing import current_process
+from logging import getLogger
 
 
 IS_WINDOWS = sys.platform == "win32"
@@ -28,7 +29,7 @@ class RestrictiveMeta(ABCMeta):
         return super().__call__(*args, **kwargs)
 
 
-class BaseSingletonMeta(type):
+class SingletonMeta(type):
     """
     线程安全的进程内单例元类
     """
@@ -37,41 +38,14 @@ class BaseSingletonMeta(type):
     _thread_lock = threading.Lock()
 
     def __call__(cls, *args, **kwargs):
+        if current_process().name != "MainProcess":
+            getLogger(cls.__qualname__).warning(
+                f"Creating {cls.__name__} instance in child process. "
+                "Note: This will create a separate instance per process, not a true singleton."
+            )
+
         if cls not in cls._instances:
             with cls._thread_lock:
                 if cls not in cls._instances:
                     cls._instances[cls] = super().__call__(*args, **kwargs)
         return cls._instances[cls]
-
-
-class ProcessSafeSingletonMeta(BaseSingletonMeta):
-    """
-    跨进程安全的单例元类
-    """
-
-    _process_lock = None
-
-    def __init__(cls, name, bases, attrs):
-        super().__init__(name, bases, attrs)
-        if IS_WINDOWS:
-            # Windows使用spawn上下文
-            cls._mp_ctx = multiprocessing.get_context("spawn")
-            cls._process_lock = cls._mp_ctx.Lock()
-        else:
-            cls._process_lock = multiprocessing.Lock()
-
-    def __call__(cls, *args, **kwargs):
-        if not hasattr(cls, "_shared_instance"):
-            with cls._process_lock:
-                if not hasattr(cls, "_shared_instance"):
-                    # 主进程创建实例并共享
-                    if multiprocessing.parent_process() is None:
-                        cls._shared_instance = super().__call__(*args, **kwargs)
-                    else:
-                        # 子进程等待主进程初始化完成
-                        while not hasattr(cls, "_shared_instance"):
-                            threading.Event().wait(0.1)
-        return cls._shared_instance
-
-
-SingletonMeta = ProcessSafeSingletonMeta if IS_WINDOWS else BaseSingletonMeta

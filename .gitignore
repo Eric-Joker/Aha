@@ -2,6 +2,7 @@ __pycache__
 *.db*
 *.out
 *.zip
+*.pem
 alembic/versions/*.py
 config.*.ym*
 data/*

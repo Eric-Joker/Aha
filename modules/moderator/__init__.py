@@ -55,7 +55,7 @@ async def cancel_blacklist(msg: GroupMessage, match: Match):
 
 
 @on_message(Or(And(rf"踢([出黑])\s*{at_or_int()}", PM.admin == True), rf"(kick|ban)\s*{at_or_int()}") & (PM.admin == True))
-async def kick(msg: GroupMessage, match: Match):
+async def kick_or_black(msg: GroupMessage, match: Match):
     await bot.api.post_group_msg(
         msg.group_id,
         f"已将 {await get_nickname(user_id := int(match.group(2)))} 从{await kick(user_id, is_ban := (m := match.group(1)) == "黑" or m == "ban")}个群里踢{"黑" if is_ban else "出"}。",
@@ -112,7 +112,7 @@ async def group_request(msg: Request):
 
 
 @on_message(r"清理中转[站群]?|中转[站群]?清人", PM.admin == True)
-async def hub(msg: GroupMessage, _):
+async def clean_hub(msg: GroupMessage, _):
     create_task(clean_hub())
     await bot.api.post_group_msg(msg.group_id, "正在清人", reply=msg.message_id)
 

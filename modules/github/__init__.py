@@ -68,7 +68,7 @@ async def fetch_repo(msg: GroupMessage, match: Match):
                 await send_repo_response(msg.group_id, result, msg.message_id)
             else:
                 similar = await client.cache_search(msg.user_id, term)
-                on_message(r"(\d+)", PM.users == msg.user_id, PM.ttl == 300)(reget)
+                on_message(r"(\d+)", PM.users == msg.user_id, PM.exp == 300)(reget)
                 await bot.api.post_group_msg(
                     msg.group_id,
                     f"{"找不到该仓库。" if is_repo else ""}{f"相似的有：\n{"\n".join(f"{i+1}. {v}" for i, v in enumerate(similar))}\n五分钟内发送序号即可获取" if similar else ""}",
@@ -104,6 +104,7 @@ async def fetch_gh_user(msg: GroupMessage, match: Match):
 
 
 async def reget(msg: GroupMessage, match: Match):
+    create_task(bot.api.send_poke(msg.user_id, msg.group_id))
     try:
         async with ClientSession() as session:
             if result := await GithubClient(session).get_cached_repo(msg.user_id, int(match.group(1)) - 1):

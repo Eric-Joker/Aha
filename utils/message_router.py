@@ -123,13 +123,9 @@ async def process_message(msg: GroupMessage | PrivateMessage, force_trigger=Fals
         if force_trigger:
             expr = expr.modify(PM.prefix == False)
 
-        result, context, is_onetime = await evaluate(msg, expr)
+        result, context = await evaluate(msg, expr, lambda: message_handlers.pop(i))
         if result:
             create_task(func(truly_msg, context[0] if context else None))
-            if is_onetime:
-                del message_handlers[i]
-        elif result is None:
-            del message_handlers[i]
 
 
 # 防止腾讯服务器抽风

@@ -68,9 +68,11 @@ Aha 目前是一个基于但不止基于 [ncatbot](https://github.com/liyihao111
 - 基于 FastAPI 的被动触发特性
   ```python
   # fastapi_modules/test/__init__.py
+  from services.fastapi import app, put_queue
+
   @app.post("/test")
   async def abc(body)
-    task_queue.put(("test", body)) 
+    put_queue("test", body))
 
   # modules/test/__init__.py
   @queue_handler("test")

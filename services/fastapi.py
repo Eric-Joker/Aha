@@ -119,13 +119,17 @@ class SignatureVerificationMiddleware:
 app = FastAPI()
 app.add_middleware(SignatureVerificationMiddleware)
 
-task_queue: Queue = None
+_task_queue: Queue = None
 public_key: Ed25519PublicKey = None
 
 
+def put_queue(tag, data):
+    _task_queue.put((tag, data))
+
+
 def run_fastapi(port, queue):
-    global task_queue, public_key
-    task_queue = queue
+    global _task_queue, public_key
+    _task_queue = queue
     public_key = load_public_key(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "ed25519.pem"))
     if public_key is None:
         logger.warning("Running without signature verification! This is insecure for non-GET/HEAD requests.")

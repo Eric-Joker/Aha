@@ -49,6 +49,8 @@ def load_public_key(public_key_path: str) -> Ed25519PublicKey:
 
 
 class SignatureVerificationMiddleware:
+    __slots__ = ("app",)
+
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 

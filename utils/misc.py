@@ -29,6 +29,8 @@ async def async_run_func(func, *args, **kwargs):
 
 
 class Wrapper:
+    __slots__ = ("wrapped_obj", "_wrapped_methods")
+
     def __init__(self, wrapped_obj, method_names, action, *args, **kwargs):
         self.wrapped_obj = wrapped_obj
         self._wrapped_methods = {}
@@ -59,4 +61,4 @@ def convert_char(char):
 
 
 def convert_text(text):
-    return ''.join(convert_char(c) for c in text)
+    return "".join(convert_char(c) for c in text)

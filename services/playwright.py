@@ -25,6 +25,8 @@ LOW_MEM = cfg.get_config("low_memory", False, "aha", "声明服务器内存低�
 
 
 class BrowserManager(metaclass=SingletonMeta):
+    __slots__ = ('_semaphore', 'playwright', 'browser')
+    
     def __init__(self):
         self._semaphore = Semaphore(1 if LOW_MEM else 1000)
         self.playwright = None

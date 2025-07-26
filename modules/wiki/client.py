@@ -25,6 +25,8 @@ from .database import WikiSearch
 
 
 class MediaWikiClient:
+    __slots__ = ("_session", "_base_url")
+
     def __init__(
         self,
         session: ClientSession,

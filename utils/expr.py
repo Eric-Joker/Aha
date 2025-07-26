@@ -659,12 +659,12 @@ def build_cond(conditions: tuple[Expr], msg_type: str) -> Expr:
 # @async_cached(expr_cache, key=hash_evaluate)
 async def evaluate(msg, expr: Expr | BoolExpr, destroy_callback: Callable[[], None] = lambda: None) -> tuple[bool, list]:
     """评估表达式入口"""
-    if getattr(expr, "exp", None):
-        destroy_callback()
-        if expr.exp <= time():
-            return None, ()
+    if (exp := getattr(expr, "exp", None)) and exp <= time():
+        return destroy_callback(), ()
     try:
-        return await expr.evaluate(msg)
+        if (result := await expr.evaluate(msg))[0] and exp:
+            destroy_callback()
+        return result
     except Exception:
         logger.exception("Error evaluating expression:")
     return False, ()

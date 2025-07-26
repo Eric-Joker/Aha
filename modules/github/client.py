@@ -60,6 +60,8 @@ class User(RobustBaseModel):
 
 
 class GithubClient:
+    __slots__ = ("_session", "_base_url")
+
     def __init__(self, session: ClientSession):
         self._session = session
         self._base_url = URL("https://api.github.com")
@@ -98,11 +100,7 @@ class GithubClient:
         """缓存搜索结果"""
         if results := tuple(await self.search_repos(query, limit)):
             async with db_session_factory() as session:
-                await session.execute(
-                    insert(GithubSearch)
-                    .values(user_id=user_id, results=results)
-                    .prefix_with("OR REPLACE")
-                )
+                await session.execute(insert(GithubSearch).values(user_id=user_id, results=results).prefix_with("OR REPLACE"))
                 await session.commit()
         return results
 

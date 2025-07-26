@@ -32,6 +32,8 @@ class TimeTrigger(DateTrigger):
     :param seconds: the number of seconds to wait before triggering
     """
 
+    __slots__ = ()
+
     seconds: int = field(converter=int)
     run_time: datetime = field(init=False, converter=as_aware_datetime, validator=validators.instance_of(datetime))
 

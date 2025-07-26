@@ -28,6 +28,8 @@ MODULE_PATTERN = re.compile(r"([^.]*modules[^.]*\.[^.]+)")
 
 
 class Config(metaclass=SingletonMeta):
+    __slots__ = ("_yaml", "_data", "_env", "_config_file", "_loaded", "_default_types", "_default_used", "_modified")
+
     def __init__(self):
         self._yaml = YAML()
         self._yaml.preserve_quotes = True

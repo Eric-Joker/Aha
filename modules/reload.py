@@ -20,10 +20,10 @@ from utils import PM, on_message, queue_handler
 
 
 def reload():
-    ul.message_handlers.clear()
-    ul.notice_handlers.clear()
+    ul.message_handlers[:] = [obj for obj in ul.message_handlers if hasattr(obj, 'exp')]
+    ul.notice_handlers[:] = [obj for obj in ul.notice_handlers if hasattr(obj, 'exp')]
+    ul.request_handlers[:] = [obj for obj in ul.request_handlers if hasattr(obj, 'exp')]
     ul.queue_handlers.clear()
-    ul.request_handlers.clear()
     ul.start_handlers.clear()
 
     if cfg.enable_fastapi:

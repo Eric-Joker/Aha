@@ -123,7 +123,7 @@ async def process_message(msg: GroupMessage | PrivateMessage, force_trigger=Fals
         if force_trigger:
             expr = expr.modify(PM.prefix == False)
 
-        result, context = await evaluate(msg, expr, lambda: message_handlers.pop(i))
+        result, context = await evaluate(msg, expr, lambda: message_handlers.remove(message_handlers[i]))
         if result:
             create_task(func(truly_msg, context[0] if context else None))
 
@@ -153,14 +153,16 @@ def group_increase_limit(func):
 
 @group_increase_limit
 async def process_notice(msg: NoticeMessage):
-    for expr, func in notice_handlers:
-        if (await evaluate(msg, expr))[0]:
+    for i in range(len(notice_handlers) - 1, -1, -1):
+        expr, func = notice_handlers[i]
+        if (await evaluate(msg, expr, lambda: notice_handlers.remove(notice_handlers[i])))[0]:
             create_task(func(msg))
 
 
 async def process_request(msg: Request):
-    for expr, func in request_handlers:
-        if (await evaluate(msg, expr))[0]:
+    for i in range(len(request_handlers) - 1, -1, -1):
+        expr, func = request_handlers[i]
+        if (await evaluate(msg, expr, lambda: request_handlers.remove(request_handlers[i])))[0]:
             create_task(func(msg))
 
 

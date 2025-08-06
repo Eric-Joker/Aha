@@ -16,10 +16,6 @@ import threading
 from abc import ABCMeta
 import sys
 from multiprocessing import current_process
-from logging import getLogger
-
-
-IS_WINDOWS = sys.platform == "win32"
 
 
 class RestrictiveMeta(ABCMeta):
@@ -39,9 +35,8 @@ class SingletonMeta(type):
 
     def __call__(cls, *args, **kwargs):
         if current_process().name != "MainProcess":
-            getLogger(cls.__qualname__).warning(
-                f"Creating {cls.__name__} instance in child process. "
-                "Note: This will create a separate instance per process, not a true singleton."
+            raise ImportError(
+                f"Creating {cls.__name__} instance in child process. This will create a separate instance per process, not a true singleton."
             )
 
         if cls not in cls._instances:

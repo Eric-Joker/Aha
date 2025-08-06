@@ -14,7 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Any, Literal, Optional
 
-from .base import RobustBaseModel
+from .misc import RobustBaseModel
 
 
 class GroupMemberInfo(RobustBaseModel):

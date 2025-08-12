@@ -14,14 +14,15 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import random
 from datetime import datetime, timedelta
+from enum import Enum
 
 from sqlalchemy import insert
 
 from config import cfg
 from services.database import db_session_factory
-from utils import round_decimal
+from utils import decimal_to_str, round_decimal
 
-from ..money import adjust_money, decimal_to_str, inquiry_money
+from ..money import adjust_money, inquiry_money
 from .database import UserSign
 
 POINT_ITEMS = ((1, 18), (2, 28), (3, 35), (4, 12), (5, 5), (6, 2), (10, 1))  # (点数, 权重)
@@ -51,6 +52,12 @@ def weighted_choice(items):
     return items[-1][0]
 
 
+class BonusType(Enum):
+    NONE = 0
+    FIXED = 1
+    RANDOM = 2
+
+
 # 连续签到奖励算法
 def calculate_streak_bonus(user: UserSign, now: datetime):
     user.continuous_days = (
@@ -60,14 +67,11 @@ def calculate_streak_bonus(user: UserSign, now: datetime):
         if user.continuous_days >= STREAK_BONUS_CYCLE * (user.streak_stage + 1):
             user.streak_stage += 1
             user.last_bonus_date = now
-            return (
-                (bonus := min(STREAK_BONUS_MAX, user.streak_stage)),  # 奖励点数
-                f"🌟 连续观测奖励 +{bonus}（下次需{STREAK_BONUS_CYCLE if user.streak_stage < STREAK_BONUS_STAGES else f"{STREAK_BONUS_RANGE[0]}-{STREAK_BONUS_RANGE[1]}"}天）",
-            )
+            return min(STREAK_BONUS_MAX, user.streak_stage), BonusType.FIXED
     elif (now - user.last_bonus_date).days >= random.randint(*STREAK_BONUS_RANGE):
         user.last_bonus_date = now
-        return (bonus := random.randint(*STREAK_BONUS_PONITS)), f"💥 观测暴击！+{bonus} 点随机能量波动"
-    return 0, None
+        return random.randint(*STREAK_BONUS_PONITS), BonusType.RANDOM
+    return 0, BonusType.NONE
 
 
 async def sign(user_id, nickname):
@@ -84,36 +88,61 @@ async def sign(user_id, nickname):
             remaining_seconds = (today_0am + timedelta(days=1) - now).total_seconds()
             hours = int(remaining_seconds // 3600)
             minutes = int((remaining_seconds % 3600) // 60)
-            await session.commit()
-            return [f"⏳ 时空稳定协议生效中（剩余{hours}小时{minutes}分钟）"]
+            return f"⏳ 时空稳定协议生效中（剩余{hours}小时{minutes}分钟）"
+
+        user.last_continuous_days = user.continuous_days
 
         # 基础积分
-        points = (base_points := weighted_choice(POINT_ITEMS))
-        response = [
-            f"📅 {nickname} 签到成功：",
-            f"- 获得能量：{base_points}点",
-        ]
+        points = base_points = weighted_choice(POINT_ITEMS)
 
         # 连续签到
-        points += (bonus := calculate_streak_bonus(user, now))[0]
-        user.last_sign = now
-        response.append(bonus[1])
+        bonus_points, bonus_type = calculate_streak_bonus(user, now)
+        points += bonus_points
 
         # 随机事件
+        event_points = 0
+        event_text = ""
         if random.random() < EVENT_PROB:
-            points += (event_points := (event_type := random.choice(RANDOM_EVENTS))["points"])
-            response.append(f"⚡ {random.choice(event_type['text'])}能量{event_points:+}")
+            event_text = random.choice((event_type := random.choice(RANDOM_EVENTS))["text"])
+            points += (event_points := event_type["points"])
 
-        # 更新数据
-        if len(tuple(x for x in response if x)) > 2:
-            response.append(f"- 累计总量：{points}点")
-        response.extend(
-            [
-                f"- 连续观测：{user.continuous_days}天",
-                f"- 当前持有：{decimal_to_str(round_decimal((await inquiry_money(user_id)) + points))}点",
-            ]
-        )
+        user.last_sign = now
+        user.last_base_points = base_points
+        user.last_bonus_points = bonus_points
+        user.last_bonus_type = bonus_type.value
+        user.last_event_points = event_points
+        user.last_event_text = event_text
+
         await session.commit()
-    await adjust_money(user_id, points)
 
-    return response
+    return f"{nickname} 签到成功，当前持有 {decimal_to_str(round_decimal(await inquiry_money(user_id)))}+{await adjust_money(user_id, points)} 点。"
+
+
+async def detail(user_id):
+    async with db_session_factory() as session:
+        if not (user := await session.get(UserSign, user_id)) or not user.last_sign:
+            return "暂无签到记录"
+
+        response = [f"📅 签到时间：{user.last_sign.strftime('%Y-%m-%d %H:%M:%S')}", f"- 获得能量：{user.last_base_points}点"]
+
+        # 连续签到
+        if user.last_bonus_points > 0:
+            if user.last_bonus_type == BonusType.FIXED.value:
+                response.append(f"- 🌟 连续观测奖励 +{user.last_bonus_points}点")
+            elif user.last_bonus_type == BonusType.RANDOM.value:
+                response.append(f"- 💥 观测暴击！+{user.last_bonus_points}点随机能量波动")
+
+        # 随机事件
+        if user.last_event_text:
+            sign = "+" if user.last_event_points > 0 else ""
+            response.append(f"- ⚡ {user.last_event_text} 能量{sign}{user.last_event_points}点")
+
+        # 连续天数
+        response.append(f"- 连续观测：{user.last_continuous_days}天")
+
+        # 总点数
+        total = user.last_base_points + user.last_bonus_points + user.last_event_points
+        if total != user.last_base_points:  # 有额外点数
+            response.append(f"- 累计总量：{total}点")
+
+        return "\n".join(response)

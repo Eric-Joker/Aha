@@ -31,12 +31,12 @@ from .database import BlackList, HubIncrease, Verify
 
 logger = getLogger(__name__)
 
-LIMIT_LEVEL = cfg.get_config("limit_level", 8, comment="只有用户等级大于此值时才会允许加群。")
+LIMIT_LEVEL = cfg.get_config("limit_level", 0, comment="只有用户等级大于此值时才会允许加群。")
 CONNOT_GET_LEVEL = cfg.get_config(
     "connot_get_level", "无法获取QQ等级，请在资料卡展示等级且加中转群%s", comment="无法获取用户等级时的拒绝原因。"
 )
 LOW_LEVEL = cfg.get_config("low_level", "QQ等级过低", comment="用户等级过低时的拒绝原因。")
-INACTIVE_LIMIT = cfg.get_config("inactive_limit", 480, comment="清理不活跃成员的绝对值阈值，达到阈值后才会触发清理。")
+INACTIVE_LIMIT = cfg.get_config("inactive_limit", 9999, comment="清理不活跃成员的绝对值阈值，达到阈值后才会触发清理。")
 KICK_LEVEL = cfg.get_config("kick_level", 10, comment="用户的群聊等级小于此值时可能会被踢出群。")
 
 

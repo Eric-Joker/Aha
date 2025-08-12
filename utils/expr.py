@@ -13,21 +13,26 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from abc import abstractmethod
+from asyncio import Lock, sleep
+from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
+from importlib.util import find_spec
 from itertools import chain
 from logging import getLogger
+from secrets import token_bytes
 from time import time
-from typing import Any, Callable, Hashable
+from typing import Any, AsyncGenerator, Callable, Hashable
 
 import regex as re
 from cachetools.keys import hashkey
 from humanfriendly import parse_size
-from sqlalchemy import Column, Float, Integer, insert, select, update
-
-from config import cfg
 from ncatbot.core.message import GroupMessage, PrivateMessage
 from ncatbot.core.notice import NoticeMessage
 from ncatbot.core.request import Request
+from sqlalchemy import Column, Float, Integer, insert, select, update
+
+from config import cfg
 from services.database import db_session_factory, dbBase
 
 from .cache import MemLRUCache, async_cached, get_cache
@@ -36,6 +41,144 @@ from .typekit import is_hashable, is_in_supported
 
 
 # region 基类/元类
+class MsgType(Enum):
+    CHAT = "message"
+    NOTICE = "notice"
+    REQUEST = "request"
+
+
+class ExprPool:
+    __slots__ = ("_single_data", "_multi_data", "_token_map", "_key_locks", "_global_lock", "msg_type")
+
+    def __init__(self, msg_type: MsgType):
+        self._single_data: dict[Expr, tuple[Callable, bytes]] = {}  # key -> (value, token)
+        self._multi_data: dict[Expr, list[tuple[Callable, bytes]]] = {}  # key -> list of (value, token)
+        self._token_map: dict[bytes, Expr] = {}  # token -> key
+        self._key_locks: dict[Expr, Lock] = defaultdict(Lock)
+        self._global_lock = Lock()
+        self.msg_type = msg_type
+
+    def _add_to_data(self, key: "Expr", value: Callable):
+        token = token_bytes(16)
+        if key not in self._single_data and key not in self._multi_data:
+            self._single_data[key] = (value, token)
+        elif key in self._single_data:
+            self._multi_data[key] = [self._single_data.pop(key), (value, token)]
+        else:
+            self._multi_data[key].append((value, token))
+        return token
+
+    async def add(self, *args: "Expr", callback: Callable):
+        async with self._key_locks[expr := build_cond(args, self.msg_type)]:
+            token = self._add_to_data(expr, callback)
+
+        async with self._global_lock:
+            self._token_map[token] = expr
+
+        return token
+
+    def add_sync(self, key: "Expr", value: Callable):
+        self._key_locks[key]
+        self._token_map[token := self._add_to_data(key, value)] = key
+        return token
+
+    async def remove(self, token: bytes):
+        async with self._global_lock:
+            key = self._token_map.pop(token, None)
+        if key is None:
+            return False
+
+        async with self._key_locks[key]:
+            if key in self._single_data:  # 单值
+                if self._single_data[key][1] == token:
+                    del self._single_data[key]
+                    return True
+                return False
+
+            if key in self._multi_data:  # 多值
+                for i, (_, entry_token) in enumerate(entries := self._multi_data[key]):
+                    if entry_token == token:
+                        del entries[i]
+                        if len(entries) == 1:  # 降级到单值
+                            self._single_data[key] = entries[0]
+                            del self._multi_data[key]
+                        elif not entries:  # 清理键
+                            del self._multi_data[key]
+                        return True
+            return False
+
+    async def remove_key(self, key: "Expr"):
+        async with self._key_locks[key]:
+            if key in self._single_data:
+                del self._single_data[key]
+                removed = True
+            elif key in self._multi_data:
+                del self._multi_data[key]
+                removed = True
+            else:
+                return False
+
+        # 令牌映射
+        async with self._global_lock:
+            for token in [t for t, k in self._token_map.items() if k == key]:
+                del self._token_map[token]
+
+        return removed
+
+    async def is_valid(self, token: bytes):
+        """验证令牌是否仍然有效"""
+        async with self._global_lock:
+            if (key := self._token_map.get(token)) is None:
+                return False
+
+        async with self._key_locks[key]:
+            if key in self._single_data:  # 单值
+                return self._single_data[key][1] == token
+
+            if key in self._multi_data:  # 多值
+                return any(entry_token == token for _, entry_token in self._multi_data[key])
+
+            return False
+
+    async def iter_entries(self) -> AsyncGenerator[tuple["Expr", Callable, bytes], None]:
+        async with self._global_lock:
+            single_keys = tuple(self._single_data.keys())
+            multi_keys = tuple(self._multi_data.keys())
+
+        for key in single_keys:  # 单值
+            async with self._key_locks[key]:
+                if key in self._single_data:
+                    yield key, *self._single_data[key]
+                    await sleep(0)
+
+        for key in multi_keys:  # 多值
+            async with self._key_locks[key]:
+                if key in self._multi_data:
+                    for item in self._multi_data[key]:
+                        yield key, *item
+                        await sleep(0)
+
+    async def clear(self):
+        """移除所有没有exp属性的key"""
+        async with self._global_lock:
+            single_keys = tuple(self._single_data.keys())
+            multi_keys = tuple(self._multi_data.keys())
+
+        tokens = []
+        for key in (key for key in single_keys if not hasattr(key, "exp")):
+            async with self._key_locks[key]:
+                tokens.append(self._single_data.pop(key)[1])
+                self._key_locks.pop(key)
+        for key in (key for key in multi_keys if not hasattr(key, "exp")):
+            async with self._key_locks[key]:
+                tokens.extend(item[1] for item in self._multi_data.pop(key))
+                self._key_locks.pop(key)
+
+        async with self._global_lock:
+            for token in tokens:
+                self._token_map.pop(token, None)
+
+
 class Expr:
     """表达式基类"""
 
@@ -51,7 +194,7 @@ class Expr:
         return Not(self)
 
     def __hash__(self):
-        return hash((self.__class__,) + tuple(getattr(self, slot) for slot in self.__slots__))
+        return hash((self.__class__, getattr(self, "exp", None)) + tuple(getattr(self, slot) for slot in self.__slots__))
 
     def modify(self, *overrides: "BinaryExpr") -> "Expr":
         """递归修改表达式中的指定字段"""
@@ -401,9 +544,9 @@ async def _is_admin(msg: GroupMessage | PrivateMessage | NoticeMessage | Request
 logger = getLogger(__name__)
 
 
-def _wrap_conditions(conditions, msg_type):
+def _wrap_conditions(conditions, msg_type: MsgType):
     """包装原始条件"""
-    is_message = msg_type == "message"
+    is_message = msg_type == MsgType.CHAT
     message_wrapper = lambda c: Equal(PM.message, re.compile(c, re.I | re.M) if isinstance(c, str) else c)
     exp = None
 
@@ -444,7 +587,7 @@ def _wrap_conditions(conditions, msg_type):
 
         # [0] -> 类型，[1] -> 子类型
         if root_strings:
-            processed.insert(0, Equal(getattr(PM, msg_type), root_strings[0]))
+            processed.insert(0, Equal(getattr(PM, msg_type.value), root_strings[0]))
         if len(root_strings) == 2:
             processed.append(Equal(PM.sub_type, root_strings[1]))
 
@@ -538,7 +681,7 @@ class CacheConfig:
     key_func: Callable[[str, Any, GroupMessage | PrivateMessage | NoticeMessage | Request], Hashable] = (
         lambda operator, right, _: hashkey(operator, right)
     )
-    ignore_func: Callable[[Any, FieldClause, Any, GroupMessage | PrivateMessage | NoticeMessage | Request], bool] = None
+    ignore_func: Callable[[Any, Any], bool] = None
 
 
 """async def _hash_evaluate(msg, expr):
@@ -608,7 +751,7 @@ class PM(metaclass=ExprMeta):
     validated = Field(
         bool,
         _is_validated,
-        True,
+        True if find_spec("modules.moderator") and cfg.get_config("verify", module="modules.moderator") else None,
         priority=-2,
         cache=CacheConfig(
             cache=validated_cache,
@@ -639,7 +782,7 @@ def modify_expr(expr, *conditions: BinaryExpr):
         return traversal(expr, override)
 
 
-def build_cond(conditions: tuple[Expr], msg_type: str) -> Expr:
+def build_cond(conditions: tuple[Expr], msg_type: MsgType) -> Expr:
     """构建条件"""
     conditions, exp = _wrap_conditions(conditions, msg_type)
     used_field_names = frozenset(chain.from_iterable(_collect_used_fields(cond) for cond in conditions))
@@ -651,19 +794,29 @@ def build_cond(conditions: tuple[Expr], msg_type: str) -> Expr:
         and (name != "group" or "private" not in used_field_names)
         and (name != "private" or "group" not in used_field_names)
     ]
-    _validate_expr(cond := And(*conditions, *default_clauses) if default_clauses else And(*conditions))
-    cond.exp = exp
+
+    if len(conditions := conditions + default_clauses) == 1:
+        cond = conditions[0]
+    else:
+        cond = And(*conditions)
+
+    if exp:
+        cond.exp = exp
+
     return cond
 
 
 # @async_cached(expr_cache, key=hash_evaluate)
-async def evaluate(msg, expr: Expr | BoolExpr, destroy_callback: Callable[[], None] = lambda: None) -> tuple[bool, list]:
+async def evaluate(msg, expr: Expr | BoolExpr, token=None, valid=lambda _: True, destroy=lambda _: None) -> tuple[bool, list]:
     """评估表达式入口"""
     if (exp := getattr(expr, "exp", None)) and exp <= time():
-        return destroy_callback(), ()
+        destroy(expr)
+        return None, ()
     try:
         if (result := await expr.evaluate(msg))[0] and exp:
-            destroy_callback()
+            if not valid(token):
+                return None, ()
+            destroy(expr)
         return result
     except Exception:
         logger.exception("Error evaluating expression:")

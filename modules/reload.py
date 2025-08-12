@@ -12,38 +12,34 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from asyncio import gather
+
+from ncatbot.core.message import GroupMessage
+
 import utils.message_router as ul
 from config import cfg
-from ncatbot.core.message import GroupMessage
 from services.ncatbot import bot
 from utils import PM, on_message, queue_handler
 
 
-def reload():
-    ul.message_handlers[:] = [obj for obj in ul.message_handlers if hasattr(obj, 'exp')]
-    ul.notice_handlers[:] = [obj for obj in ul.notice_handlers if hasattr(obj, 'exp')]
-    ul.request_handlers[:] = [obj for obj in ul.request_handlers if hasattr(obj, 'exp')]
+async def reload():
+    await gather(ul.message_handlers.clear(), ul.notice_handlers.clear(), ul.request_handlers.clear())
     ul.queue_handlers.clear()
     ul.start_handlers.clear()
 
-    if cfg.enable_fastapi:
-        from fastapi_modules import reload_fastapi_modules
-
-        reload_fastapi_modules()
     from . import reload_modules
 
     reload_modules()
-    
 
 
 @on_message("重载", PM.prefix == True, PM.super == True)
 async def msg_entry(msg: GroupMessage, _):
     await bot.api.send_poke(msg.user_id, msg.group_id)
-    reload()
+    await reload()
     await bot.api.post_group_msg(msg.group_id, "已重载所有模块", reply=msg.message_id)
 
 
 @queue_handler("reload")
 async def api_entry(_):
-    reload()
+    await reload()
     await bot.api.post_private_msg(cfg.super[0], "已重载所有模块")

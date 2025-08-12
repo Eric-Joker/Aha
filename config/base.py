@@ -97,6 +97,8 @@ class Config(metaclass=SingletonMeta):
                 return self._data[mod][key] if target_type is None else self._convert_type(self._data[mod][key], target_type)
 
         # 设置默认值
+        if default is None:
+            return None
         self._check_permission(module, caller)
         if storage_module not in self._data:
             self._data[storage_module] = CommentedMap()
@@ -106,11 +108,8 @@ class Config(metaclass=SingletonMeta):
             raise TypeError("Iterable default must be tuple or frozenset.")
 
         # 记录默认类型并存储值
-        if default is not None:
-            self._default_types.setdefault(storage_module, {})[key] = type(default)
-            stored_value = list(default) if isinstance(default, (tuple, frozenset)) else default
-        else:
-            stored_value = default
+        self._default_types.setdefault(storage_module, {})[key] = type(default)
+        stored_value = list(default) if isinstance(default, (tuple, frozenset)) else default
 
         self._data[storage_module][key] = stored_value
         self._modified.add((storage_module, key))

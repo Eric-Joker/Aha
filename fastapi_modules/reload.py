@@ -18,4 +18,8 @@ import services.fastapi as sf
 @sf.app.get("/reload")
 async def reload():
     sf.task_queue.put(("reload", None))
+
+    from . import reload_fastapi_modules
+
+    reload_fastapi_modules()
     return {"status": "request_queued"}

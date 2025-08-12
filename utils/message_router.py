@@ -24,13 +24,13 @@ from ncatbot.core.message import GroupMessage, PrivateMessage
 from ncatbot.core.notice import NoticeMessage
 from ncatbot.core.request import Request
 
-from .expr import PM, Expr, build_cond, evaluate
+from .expr import PM, Expr, ExprPool, MsgType, build_cond, evaluate
 from .misc import async_run_func
 
-message_handlers: list[tuple[Expr, Callable]] = []
+message_handlers = ExprPool(MsgType.CHAT)
+notice_handlers = ExprPool(MsgType.NOTICE)
+request_handlers = ExprPool(MsgType.REQUEST)
 queue_handlers: dict[str, Callable] = {}
-notice_handlers: list[tuple[Expr, Callable]] = []
-request_handlers: list[tuple[Expr, Callable]] = []
 start_handlers: list[Callable] = []
 clean_handlers: list[Callable] = []
 menu_commands: list[tuple[str, Expr, str | None]] = []
@@ -46,13 +46,13 @@ def on_message(*conditions: Expr, registered_menu: dict[str, str | None] = {}):
     """
 
     def decorator(func):
-        expr = build_cond(conditions, "message")
+        expr = build_cond(conditions, MsgType.CHAT)
 
         # 注册菜单
         if registered_menu:
             for k, v in registered_menu.items():
                 menu_commands.append((k, expr.modify(PM.limit == False), v))
-        message_handlers.append((expr, func))
+        message_handlers.add_sync(expr, func)
         return func
 
     return decorator
@@ -77,7 +77,7 @@ def queue_handler(key):
 
 def on_notice(*conditions: Expr):
     def decorator(func):
-        notice_handlers.append((build_cond(conditions, "notice"), func))
+        notice_handlers.add_sync(build_cond(conditions, MsgType.NOTICE), func)
         return func
 
     return decorator
@@ -85,7 +85,7 @@ def on_notice(*conditions: Expr):
 
 def on_request(*conditions: Expr):
     def decorator(func):
-        request_handlers.append((build_cond(conditions, "request"), func))
+        request_handlers.add_sync(build_cond(conditions, MsgType.REQUEST), func)
         return func
 
     return decorator
@@ -118,12 +118,11 @@ async def process_message(msg: GroupMessage | PrivateMessage, force_trigger=Fals
         ):
             text_data["text"] = text.lstrip().removeprefix(cfg.message_prefix)
     # 评估处理逻辑
-    for i in range(len(message_handlers) - 1, -1, -1):
-        expr, func = message_handlers[i]
+    async for expr, func, token in message_handlers.iter_entries():
         if force_trigger:
             expr = expr.modify(PM.prefix == False)
 
-        result, context = await evaluate(msg, expr, lambda: message_handlers.remove(message_handlers[i]))
+        result, context = await evaluate(msg, expr, token, message_handlers.is_valid, message_handlers.remove_key)
         if result:
             create_task(func(truly_msg, context[0] if context else None))
 
@@ -153,16 +152,14 @@ def group_increase_limit(func):
 
 @group_increase_limit
 async def process_notice(msg: NoticeMessage):
-    for i in range(len(notice_handlers) - 1, -1, -1):
-        expr, func = notice_handlers[i]
-        if (await evaluate(msg, expr, lambda: notice_handlers.remove(notice_handlers[i])))[0]:
+    async for expr, func, token in notice_handlers.iter_entries():
+        if (await evaluate(msg, expr, token, notice_handlers.is_valid, notice_handlers.remove_key))[0]:
             create_task(func(msg))
 
 
 async def process_request(msg: Request):
-    for i in range(len(request_handlers) - 1, -1, -1):
-        expr, func = request_handlers[i]
-        if (await evaluate(msg, expr, lambda: request_handlers.remove(request_handlers[i])))[0]:
+    async for expr, func, token in request_handlers.iter_entries():
+        if (await evaluate(msg, expr, token, request_handlers.is_valid, request_handlers.remove_key))[0]:
             create_task(func(msg))
 
 

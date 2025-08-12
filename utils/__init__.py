@@ -18,6 +18,9 @@ from .expr import PM, And, Not, Or, evaluate, match_cache
 from .message_router import (
     menu_commands,
     on_message,
+    message_handlers,
+    notice_handlers,
+    request_handlers,
     on_notice,
     on_request,
     on_shutup,

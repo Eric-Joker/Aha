@@ -17,13 +17,13 @@ from base64 import b64encode
 from traceback import format_exc
 
 from aiohttp import ClientSession
+from ncatbot.core import Image, MessageChain
+from ncatbot.core.message import GroupMessage
 from regex import Match
 
 from config import cfg
-from ncatbot.core import Image, MessageChain
-from ncatbot.core.message import GroupMessage
 from services.ncatbot import bot
-from utils import PM, And, capture_element, on_message
+from utils import PM, And, capture_element, message_handlers, on_message
 
 from .client import MediaWikiClient
 
@@ -43,9 +43,9 @@ async def wk(msg: GroupMessage, _):
 
 async def send_wiki_response(group_id, result, reply_id):
     task = create_task(capture_element(result[1], "div.notaninfobox"))
-    await bot.api.post_group_msg(group_id, "\n".join(result), reply=reply_id)
+    await bot.api.post_group_msg(group_id, "\n".join(result))
     if img := await task:
-        await bot.api.post_group_msg(group_id, rtf=MessageChain([Image(f"base64://{b64encode(img).decode()}")]), reply=reply_id)
+        await bot.api.post_group_msg(group_id, rtf=MessageChain([Image(f"base64://{b64encode(img).decode()}")]))
 
 
 async def handle_wiki_error(group_id, reply_id):
@@ -66,7 +66,7 @@ async def fetch(msg: GroupMessage, match: Match):
                 await send_wiki_response(msg.group_id, result, msg.message_id)
             else:
                 similar = await client.search_and_cache_results(msg.user_id, term)
-                on_message(r"(\d+)", PM.users == msg.user_id, PM.exp == 300)(reget)
+                await message_handlers.add(r"(\d+)", PM.users == msg.user_id, PM.exp == 300, callback=reget)
                 await bot.api.post_group_msg(
                     msg.group_id,
                     f"找不到该词条{f"，相似的有：\n{"\n".join(f"{i+1}. {v}" for i, v in enumerate(similar))}\n五分钟内发送序号即可获取" if similar else "。"}",

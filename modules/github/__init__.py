@@ -12,16 +12,16 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from asyncio import create_task
 from traceback import format_exc
 
-from asyncio import create_task
 from aiohttp import ClientSession
+from ncatbot.core.message import GroupMessage
 from regex import Match
 
 from config import cfg
-from ncatbot.core.message import GroupMessage
 from services.ncatbot import bot
-from utils import PM, And, on_message
+from utils import PM, And, message_handlers, on_message
 
 from .client import GithubClient, Repository
 
@@ -47,7 +47,6 @@ async def send_repo_response(group_id, result: Repository, reply_id):
             f"📜 证书: {(result.license.name if result.license else None) or '无'}\n"
             f"⏰ 创建于: {result.created_at} | 更新于: {result.updated_at}"
         ),
-        reply=reply_id,
     )
 
 
@@ -68,7 +67,7 @@ async def fetch_repo(msg: GroupMessage, match: Match):
                 await send_repo_response(msg.group_id, result, msg.message_id)
             else:
                 similar = await client.cache_search(msg.user_id, term)
-                on_message(r"(\d+)", PM.users == msg.user_id, PM.exp == 300)(reget)
+                await message_handlers.add(r"(\d+)", PM.users == msg.user_id, PM.exp == 300, callback=reget)
                 await bot.api.post_group_msg(
                     msg.group_id,
                     f"{"找不到该仓库。" if is_repo else ""}{f"相似的有：\n{"\n".join(f"{i+1}. {v}" for i, v in enumerate(similar))}\n五分钟内发送序号即可获取" if similar else ""}",

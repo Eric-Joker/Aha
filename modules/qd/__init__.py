@@ -13,15 +13,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from ncatbot.core.message import GroupMessage
+
 from services.ncatbot import bot
-from utils import PM, And, on_message, Or
+from utils import PM, And, Or, on_message
 from utils.api import get_card_by_msg
 
-from .qd import sign
+from .qd import detail, sign
 
 
-@on_message(Or(r"q+d+|早|签到", And("sign", (PM.prefix == True))), registered_menu={"签到": None})
+@on_message(Or(r"q+d+|早|签到", And("sign", (PM.prefix == True))))
 async def dk(msg: GroupMessage, _):
-    await bot.api.post_group_msg(
-        msg.group_id, "\n".join(filter(None, await sign(msg.user_id, await get_card_by_msg(msg)))), reply=msg.message_id
-    )
+    await bot.api.post_group_msg(msg.group_id, await sign(msg.user_id, await get_card_by_msg(msg)))
+
+
+@on_message(r"签到(详情|明细)", registered_menu={"签到详情": "查询上次签到明细"})
+async def dt(msg: GroupMessage, _):
+    await bot.api.post_group_msg(msg.group_id, await detail(msg.user_id), reply=msg.message_id)

@@ -28,7 +28,8 @@ from utils.api import at_or_int, get_nickname, set_group_add_request
 from .managing_member import clean_group, clean_hub, hub_notice, kick, member_notice, member_request, verify_message
 from .shutup import shutup_msg, shutup_notice
 
-HUB = cfg.get_config("hub", 114514, comment="中转站")
+VERIFY = cfg.get_config("verify", False, comment="启用动态码验证。")
+HUB = cfg.get_config("hub", 114514, comment="中转站。")
 WELCOME_MSG = cfg.get_config("welcome_msg", "✨验证成功~ ", comment="验证成功后发的消息。")
 
 
@@ -63,19 +64,20 @@ async def kick_or_black(msg: GroupMessage, match: Match):
     )
 
 
-@on_notice("group_increase")
+@on_notice("group_increase", (PM.validated == False) | (PM.validated == True), PM.limit == False)
 async def start_verify(msg: NoticeMessage):
-    create_task(shutup_notice(msg.user_id, msg.group_id))
-    if code := await member_notice(msg.user_id, msg.group_id):
-        await bot.api.post_group_msg(
-            msg.group_id,
-            rtf=MessageChain(
-                [
-                    At(msg.user_id),
-                    f"\n📢请在5分钟内发送【{code}】4位验证码以验证不是人机\n⚠️ 验证成功前会撤回你的所有消息，感谢配合！",
-                ]
-            ),
-        )
+    if VERIFY:
+        create_task(shutup_notice(msg.user_id, msg.group_id))
+        if code := await member_notice(msg.user_id, msg.group_id):
+            await bot.api.post_group_msg(
+                msg.group_id,
+                rtf=MessageChain(
+                    [
+                        At(msg.user_id),
+                        f"\n📢请在5分钟内发送【{code}】4位验证码以验证不是人机\n⚠️ 验证成功前会撤回你的所有消息，感谢配合！",
+                    ]
+                ),
+            )
 
 
 @on_message(PM.validated == False, PM.limit == False)
@@ -101,12 +103,12 @@ async def hub(msg: NoticeMessage):
     )
 
 
-@on_notice("group_decrease", PM.groups == HUB)
+@on_notice("group_decrease", PM.groups == HUB, PM.validated == False, PM.limit == False)
 async def group_decrease(msg: NoticeMessage):
     await rm_schedules_by_meta({"tag": "verify", "user_id": msg.user_id}, msg.group_id)
 
 
-@on_request("group", "add")
+@on_request("group", "add", (PM.validated == False) | (PM.validated == True), PM.limit == False)
 async def group_request(msg: Request):
     await set_group_add_request(msg.flag, *await member_request(msg.user_id, msg.comment))
 

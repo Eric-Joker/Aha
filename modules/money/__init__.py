@@ -15,14 +15,14 @@
 from decimal import Decimal
 from random import randint
 
+from ncatbot.core.message import GroupMessage
 from regex import Match
 from sqlalchemy import func, insert, select, update
 
 from config import cfg
-from ncatbot.core.message import GroupMessage
 from services.database import db_session_factory
 from services.ncatbot import bot
-from utils import PM, Or, decimal_to_str, on_message, round_decimal
+from utils import PM, And, Or, decimal_to_str, on_message, round_decimal
 from utils.api import at_or_int, get_card_by_search, get_group_member_list
 
 from .database import Money
@@ -36,6 +36,7 @@ async def adjust_money(user_id, points: int | Decimal):
         if result.rowcount == 0:
             await session.execute(insert(Money).values(user_id=user_id, points=points))
         await session.commit()
+    return points
 
 
 async def inquiry_money(user_id) -> Decimal:
@@ -43,12 +44,23 @@ async def inquiry_money(user_id) -> Decimal:
         return (await session.scalar(select(Money.points).filter(Money.user_id == user_id))) or Decimal(0)
 
 
+@on_message(And("(能量|积分|货币)系统", PM.prefix == True), registered_menu={"能量系统": None})
+async def money_system(msg: GroupMessage, _):
+    await bot.api.post_group_msg(
+        msg.group_id,
+        f"能量系统：\n[{cfg.message_prefix}能量守恒] - 查询全体用户能量总量\n[{cfg.message_prefix}(能量)查询] - 查询个人能量数量\n[(能量)转账 @或QQ号 数量]",
+        reply=msg.message_id,
+    )
+
+
 @on_message(r"能量守恒", PM.prefix == True)
 async def conservation_handler(msg: GroupMessage, _):
     async with db_session_factory() as session:
         result = await session.execute(select(func.sum(Money.points)).where(Money.user_id.notin_(cfg.super)))
     await bot.api.post_group_msg(
-        msg.group_id, f"📊 当前时空总能量：{decimal_to_str(round_decimal(result.scalar())) or 0}点（守恒率99.{randint(80,99)}%）", reply=msg.message_id
+        msg.group_id,
+        f"📊 当前时空总能量：{decimal_to_str(round_decimal(result.scalar())) or 0}点（守恒率99.{randint(80,99)}%）",
+        reply=msg.message_id,
     )
 
 

@@ -22,7 +22,7 @@ from itertools import chain
 from logging import getLogger
 from secrets import token_bytes
 from time import time
-from typing import Any, AsyncGenerator, Callable, Hashable
+from typing import Any, Callable, Hashable
 
 import regex as re
 from cachetools.keys import hashkey
@@ -33,6 +33,7 @@ from ncatbot.core.request import Request
 from sqlalchemy import Column, Float, Integer, insert, select, update
 
 from config import cfg
+from cores import non_awaitable
 from services.database import db_session_factory, dbBase
 
 from .cache import MemLRUCache, async_cached, get_cache
@@ -48,15 +49,18 @@ class MsgType(Enum):
 
 
 class ExprPool:
-    __slots__ = ("_single_data", "_multi_data", "_token_map", "_key_locks", "_global_lock", "msg_type")
+    __slots__ = ("_single_data", "_multi_data", "token_map", "_key_locks", "_global_lock", "msg_type")
 
     def __init__(self, msg_type: MsgType):
         self._single_data: dict[Expr, tuple[Callable, bytes]] = {}  # key -> (value, token)
         self._multi_data: dict[Expr, list[tuple[Callable, bytes]]] = {}  # key -> list of (value, token)
-        self._token_map: dict[bytes, Expr] = {}  # token -> key
         self._key_locks: dict[Expr, Lock] = defaultdict(Lock)
         self._global_lock = Lock()
+        self.token_map: dict[bytes, Expr] = {}  # token -> key
         self.msg_type = msg_type
+
+    def __contains__(self, item):
+        return item in self._single_data or item in self._multi_data
 
     def _add_to_data(self, key: "Expr", value: Callable):
         token = token_bytes(16)
@@ -68,34 +72,33 @@ class ExprPool:
             self._multi_data[key].append((value, token))
         return token
 
+    @non_awaitable
     async def add(self, *args: "Expr", callback: Callable):
         async with self._key_locks[expr := build_cond(args, self.msg_type)]:
             token = self._add_to_data(expr, callback)
 
         async with self._global_lock:
-            self._token_map[token] = expr
-
-        return token
+            self.token_map[token] = expr
 
     def add_sync(self, key: "Expr", value: Callable):
-        self._key_locks[key]
-        self._token_map[token := self._add_to_data(key, value)] = key
-        return token
+        self.token_map[self._add_to_data(key, value)] = key
 
+    @non_awaitable
     async def remove(self, token: bytes):
         async with self._global_lock:
-            key = self._token_map.pop(token, None)
+            key = self.token_map.pop(token, None)
         if key is None:
-            return False
+            return
 
         async with self._key_locks[key]:
             if key in self._single_data:  # 单值
                 if self._single_data[key][1] == token:
+                    del self._key_locks[key]
                     del self._single_data[key]
-                    return True
-                return False
+                    return
+                return
 
-            if key in self._multi_data:  # 多值
+            elif key in self._multi_data:  # 多值
                 for i, (_, entry_token) in enumerate(entries := self._multi_data[key]):
                     if entry_token == token:
                         del entries[i]
@@ -103,80 +106,58 @@ class ExprPool:
                             self._single_data[key] = entries[0]
                             del self._multi_data[key]
                         elif not entries:  # 清理键
+                            del self._key_locks[key]
                             del self._multi_data[key]
-                        return True
-            return False
+                        return
 
+    @non_awaitable
     async def remove_key(self, key: "Expr"):
+        tokens = []
+
         async with self._key_locks[key]:
-            if key in self._single_data:
-                del self._single_data[key]
-                removed = True
-            elif key in self._multi_data:
-                del self._multi_data[key]
-                removed = True
-            else:
-                return False
+            if (value := self._single_data.pop(key, None)) is not None:
+                tokens.append(value[1])
+            elif (value := self._multi_data.pop(key, None)) is not None:
+                tokens.append(value[1])
+            self._key_locks.pop(key, None)
 
         # 令牌映射
         async with self._global_lock:
-            for token in [t for t, k in self._token_map.items() if k == key]:
-                del self._token_map[token]
+            for token in tokens:
+                self.token_map.pop(token, None)
 
-        return removed
-
-    async def is_valid(self, token: bytes):
-        """验证令牌是否仍然有效"""
-        async with self._global_lock:
-            if (key := self._token_map.get(token)) is None:
-                return False
-
-        async with self._key_locks[key]:
-            if key in self._single_data:  # 单值
-                return self._single_data[key][1] == token
-
-            if key in self._multi_data:  # 多值
-                return any(entry_token == token for _, entry_token in self._multi_data[key])
-
-            return False
-
-    async def iter_entries(self) -> AsyncGenerator[tuple["Expr", Callable, bytes], None]:
-        async with self._global_lock:
-            single_keys = tuple(self._single_data.keys())
-            multi_keys = tuple(self._multi_data.keys())
-
-        for key in single_keys:  # 单值
+    async def iter_entries(self):
+        for key in tuple(self._single_data.keys()):  # 单值
             async with self._key_locks[key]:
                 if key in self._single_data:
                     yield key, *self._single_data[key]
                     await sleep(0)
 
-        for key in multi_keys:  # 多值
+        for key in tuple(self._multi_data.keys()):  # 多值
             async with self._key_locks[key]:
                 if key in self._multi_data:
                     for item in self._multi_data[key]:
                         yield key, *item
                         await sleep(0)
 
+    @non_awaitable
     async def clear(self):
         """移除所有没有exp属性的key"""
-        async with self._global_lock:
-            single_keys = tuple(self._single_data.keys())
-            multi_keys = tuple(self._multi_data.keys())
-
         tokens = []
-        for key in (key for key in single_keys if not hasattr(key, "exp")):
+        for key in (key for key in tuple(self._single_data.keys()) if not hasattr(key, "exp")):
             async with self._key_locks[key]:
-                tokens.append(self._single_data.pop(key)[1])
-                self._key_locks.pop(key)
-        for key in (key for key in multi_keys if not hasattr(key, "exp")):
+                if value := self._single_data.pop(key, None) is not None:
+                    tokens.append(value[1])
+                self._key_locks.pop(key, None)
+        for key in (key for key in tuple(self._multi_data.keys()) if not hasattr(key, "exp")):
             async with self._key_locks[key]:
-                tokens.extend(item[1] for item in self._multi_data.pop(key))
-                self._key_locks.pop(key)
+                if value := self._multi_data.pop(key, None) is not None:
+                    tokens.extend(item[1] for item in value)
+                self._key_locks.pop(key, None)
 
         async with self._global_lock:
             for token in tokens:
-                self._token_map.pop(token, None)
+                self.token_map.pop(token, None)
 
 
 class Expr:
@@ -241,42 +222,36 @@ class FieldClause(Expr):
 class Field:
     """字段描述符"""
 
-    __slots__ = ("name", "type", "extractor", "default", "op", "overrides", "priority", "cache", "unique", "always_true")
+    __slots__ = ("name", "type", "extractor", "default", "overrides", "priority", "cache", "unique")
 
     def __init__(
         self,
         type_,
         extractor: Callable,
-        default=None,
-        op: Callable = None,
+        default: Callable = None,
         overrides: dict[Any:bool] = None,
         priority=0,
         cache: "CacheConfig" = None,
         unique=False,
-        always_true=False,
     ):
         """
         Args:
             extractor: 从消息中获取该属性所用到的值的方法。
-            default: 默认值，用于自动生成 `op`。
-            op: 默认表达式，需要评估的表达式若没有该字段的则自动添加。
+            default: 默认表达式，需要评估的表达式若没有该字段的则自动添加。
             overrides: 比较是否相等时，与之比较的值为 `key` 时，最终评估结果为 `value`。
             priority: 在多元表达式评估的优先级，0表示保持原顺序，正数越大越优先，负数越小越靠后。
             cache: 默认不启用缓存，传递 CacheConfig 启用缓存。
             unique: 是否在并列表达式中只能出现一次。
-            always_true: 二元表达式评估时始终返回 `True`。
         """
         if overrides is None:
             overrides = {}
         self.type = type_
         self.extractor = extractor
         self.default = default
-        self.op = op or (None if default is None else (lambda f: f == default))
         self.overrides = overrides
         self.priority = priority
         self.cache = cache
         self.unique = unique
-        self.always_true = always_true
 
 
 class ExprMeta(type):
@@ -319,7 +294,6 @@ class BinaryExpr(Expr):
         "right_contexts",
         "left_val",
         "left_contexts",
-        "always_true",
         "_cached_evaluate",
     )
 
@@ -330,7 +304,6 @@ class BinaryExpr(Expr):
 
         self.negate = negate
         self.priority = self.left.priority if left_is_field else 0
-        self.always_true = self.left.field.always_true if left_is_field else False
         self.cache_config = self.left.field.cache if left_is_field and self.left.field.cache else None
         if self.cache_config:
             self._cached_evaluate = async_cached(
@@ -339,8 +312,6 @@ class BinaryExpr(Expr):
             )(self._evaluate_wrapper)
 
     async def evaluate(self, msg):
-        if self.always_true:
-            return True, []
         if self.cache_config:
             return await self._cached_evaluate(
                 self.left,
@@ -739,9 +710,9 @@ class PM(metaclass=ExprMeta):
     sub_type = Field(str, lambda msg: getattr(msg, "sub_type", None), priority=2, unique=True)
 
     # 消息来源字段
-    group = Field(bool, lambda msg: hasattr(msg, "group_id"), True)
+    group = Field(bool, lambda msg: hasattr(msg, "group_id"), lambda v: v == True)
     private = Field(bool, lambda msg: not hasattr(msg, "group_id"))
-    groups = Field(int, lambda msg: getattr(msg, "group_id", None), op=lambda f: f.in_(cfg.action_groups))
+    groups = Field(int, lambda msg: getattr(msg, "group_id", None), lambda f: f.in_(cfg.action_groups))
     users = Field(int, lambda msg: msg.user_id, priority=998)
 
     # 功能控制字段
@@ -751,7 +722,11 @@ class PM(metaclass=ExprMeta):
     validated = Field(
         bool,
         _is_validated,
-        True if find_spec("modules.moderator") and cfg.get_config("verify", module="modules.moderator") else None,
+        (
+            (lambda v: v == True)
+            if find_spec("modules.moderator") and cfg.get_config("verify", module="modules.moderator")
+            else None
+        ),
         priority=-2,
         cache=CacheConfig(
             cache=validated_cache,
@@ -759,10 +734,10 @@ class PM(metaclass=ExprMeta):
             ignore_func=lambda _, __, right, ___: not right,
         ),
     )
-    limit = Field(bool, _check_rate_limit, True, overrides={False: True}, priority=-999)
+    limit = Field(bool, _check_rate_limit, lambda v: v == True, overrides={False: True}, priority=-999)
 
     # 属性字段
-    exp = Field(float, lambda _: True, priority=999, unique=True, always_true=True)
+    exp = Field(float, lambda _: True, priority=999, unique=True)
 
 
 def modify_expr(expr, *conditions: BinaryExpr):
@@ -787,10 +762,10 @@ def build_cond(conditions: tuple[Expr], msg_type: MsgType) -> Expr:
     conditions, exp = _wrap_conditions(conditions, msg_type)
     used_field_names = frozenset(chain.from_iterable(_collect_used_fields(cond) for cond in conditions))
     default_clauses = [
-        field.op(FieldClause(name, field))
+        field.default(FieldClause(name, field))
         for name, field in PM.__fields__.items()
         if name not in used_field_names
-        and field.op is not None
+        and field.default is not None
         and (name != "group" or "private" not in used_field_names)
         and (name != "private" or "group" not in used_field_names)
     ]
@@ -807,17 +782,18 @@ def build_cond(conditions: tuple[Expr], msg_type: MsgType) -> Expr:
 
 
 # @async_cached(expr_cache, key=hash_evaluate)
-async def evaluate(msg, expr: Expr | BoolExpr, token=None, valid=lambda _: True, destroy=lambda _: None) -> tuple[bool, list]:
+async def evaluate(msg, expr: Expr | BoolExpr, token=None, token_pool=None, destroy=None) -> tuple[bool, list]:
     """评估表达式入口"""
-    if (exp := getattr(expr, "exp", None)) and exp <= time():
+    if (exp := destroy is not None and getattr(expr, "exp", None)) and exp <= time():
         destroy(expr)
         return None, ()
     try:
-        if (result := await expr.evaluate(msg))[0] and exp:
-            if not valid(token):
-                return None, ()
-            destroy(expr)
-        return result
+        if (result := await expr.evaluate(msg))[0]:
+            if token is not None and token_pool is not None and token not in token_pool:
+                result = (None, ())
+            if exp:
+                destroy(expr)
+            return result
     except Exception:
         logger.exception("Error evaluating expression:")
     return False, ()

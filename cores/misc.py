@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import sys
-from asyncio import get_running_loop, set_event_loop_policy
+from asyncio import Task, create_task, get_running_loop, iscoroutine, set_event_loop_policy
 from logging import getLogger
 
 from pydantic import BaseModel, ConfigDict
@@ -75,3 +75,32 @@ class RobustBaseModel(BaseModel):
             getLogger(self.__qualname__).warning(f"Missing fields in {self.__class__.__name__}: {missing}")
         if extra := set(data.keys()) - set(alias_map) - set(self.__class__.model_fields.keys()):
             getLogger(self.__qualname__).warning(f"Extra fields in {self.__class__.__name__}: {extra}")
+
+
+class NonAwaitable:
+    __slots__ = ("task",)
+
+    def __init__(self, task: Task):
+        self.task = task
+
+    def __await__(self):
+        raise RuntimeError("Directly awaiting this operation is disallowed. Use background execution")
+
+    def done(self):
+        return self.task.done()
+
+    def result(self):
+        return self.task.result()
+
+    def exception(self):
+        return self.task.exception()
+
+    def cancel(self):
+        return self.task.cancel()
+
+
+def non_awaitable(coro_func):
+    def wrapper(*args, **kwargs):
+        return NonAwaitable(create_task(coro_func(*args, **kwargs)))
+
+    return wrapper

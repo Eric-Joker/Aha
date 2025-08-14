@@ -14,5 +14,5 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from .api import Friend, GroupMemberInfo, Stranger
 from .metas import RestrictiveMeta, SingletonMeta
-from .misc import RobustBaseModel, install_uvloop
+from .misc import NonAwaitable, RobustBaseModel, install_uvloop, non_awaitable
 from .sqlalchemy import Iterable, YarlURL

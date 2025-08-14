@@ -67,7 +67,7 @@ async def fetch_repo(msg: GroupMessage, match: Match):
                 await send_repo_response(msg.group_id, result, msg.message_id)
             else:
                 similar = await client.cache_search(msg.user_id, term)
-                await message_handlers.add(r"(\d+)", PM.users == msg.user_id, PM.exp == 300, callback=reget)
+                message_handlers.add(r"(\d+)", PM.users == msg.user_id, PM.exp == 300, callback=reget)
                 await bot.api.post_group_msg(
                     msg.group_id,
                     f"{"找不到该仓库。" if is_repo else ""}{f"相似的有：\n{"\n".join(f"{i+1}. {v}" for i, v in enumerate(similar))}\n五分钟内发送序号即可获取" if similar else ""}",

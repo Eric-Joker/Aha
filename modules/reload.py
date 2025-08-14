@@ -12,8 +12,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from asyncio import gather
-
 from ncatbot.core.message import GroupMessage
 
 import utils.message_router as ul
@@ -23,7 +21,9 @@ from utils import PM, on_message, queue_handler
 
 
 async def reload():
-    await gather(ul.message_handlers.clear(), ul.notice_handlers.clear(), ul.request_handlers.clear())
+    ul.message_handlers.clear()
+    ul.notice_handlers.clear()
+    ul.request_handlers.clear()
     ul.queue_handlers.clear()
     ul.start_handlers.clear()
 

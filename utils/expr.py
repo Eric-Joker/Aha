@@ -312,6 +312,10 @@ class BinaryExpr(Expr):
             )(self._evaluate_wrapper)
 
     async def evaluate(self, msg):
+        # 覆盖
+        if isinstance(self.left, FieldClause) and (result := self.left.field.overrides.get(self.right)) is not None:
+            return result ^ self.negate, []
+
         if self.cache_config:
             return await self._cached_evaluate(
                 self.left,
@@ -325,11 +329,6 @@ class BinaryExpr(Expr):
 
     async def _evaluate_wrapper(self, left, right, msg):
         self.right_val, self.right_contexts = right, []
-
-        # 覆盖逻辑
-        if isinstance(left, FieldClause) and (result := left.field.overrides.get(self.right_val)) is not None:
-            return result ^ self.negate, []
-
         self.left_val, self.left_contexts = (await left.evaluate(msg)) if isinstance(left, FieldClause) else (left, [])
         return await self._evaluate_logic(msg)
 

@@ -16,19 +16,28 @@ from collections.abc import Iterable
 from logging import getLogger
 from os import getenv
 from pathlib import Path
-from sys import _getframe, exit
+from sys import exit
 
-import regex as re
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
-from cores import SingletonMeta
+from cores import MODULE_PATTERN, SingletonMeta, caller_module
 
-MODULE_PATTERN = re.compile(r"([^.]*modules[^.]*\.[^.]+)")
+logger = getLogger(__name__)
 
 
 class Config(metaclass=SingletonMeta):
-    __slots__ = ("_yaml", "_data", "_env", "_config_file", "_loaded", "_default_types", "_default_used", "_modified")
+    __slots__ = (
+        "_yaml",
+        "_data",
+        "_old_data",
+        "_env",
+        "_config_file",
+        "_loaded",
+        "_default_types",
+        "_default_used",
+        "_modified",
+    )
 
     def __init__(self):
         self._yaml = YAML()
@@ -42,25 +51,24 @@ class Config(metaclass=SingletonMeta):
         self._modified = set()
 
     def _ensure_loaded(self):
-        if not self._loaded and self._config_file.exists():
-            with open(self._config_file, "r", encoding="utf-8") as f:
-                if loaded := self._yaml.load(f):
-                    self._data.update(loaded)
+        if not self._loaded:
+            if self._config_file.exists():
+                with open(self._config_file, "r", encoding="utf-8") as f:
+                    self._old_data = self._yaml.load(f)
+                    if self._old_data:
+                        self._data.update(self._old_data)
             self._loaded = True
 
-    def _caller_module(self, level: int = 2) -> str:
-        return match.group(1) if (match := MODULE_PATTERN.match(_getframe(level).f_globals.get("__name__", ""))) else None
-
     def __getattr__(self, key: str):
-        if key.startswith("_"):
-            raise AttributeError(key)
-        return self.get_config(key, module=self._caller_module())
+        if key[0] == "_" and key[:2] != "__":
+            logger.warning(f"Attempting to access a private attribute: {key}")
+        return self.get_config(key, module=caller_module())
 
     def __setattr__(self, key: str, value):
         if key.startswith("_"):
             super().__setattr__(key, value)
         else:
-            self.set_config(key, value, module=self._caller_module())
+            self.set_config(key, value, module=caller_module())
 
     def _convert_type(self, value, target_type):
         if isinstance(value, dict):
@@ -83,7 +91,7 @@ class Config(metaclass=SingletonMeta):
 
     def get_config(self, key: str, default=None, module: str = None, comment: str = None):
         self._ensure_loaded()
-        caller = self._caller_module()
+        caller = caller_module()
         storage_module = module or caller
 
         # 查找配置项
@@ -95,6 +103,9 @@ class Config(metaclass=SingletonMeta):
                 else:
                     target_type = self._default_types.setdefault(mod, {}).setdefault(key, type(default))
                 return self._data[mod][key] if target_type is None else self._convert_type(self._data[mod][key], target_type)
+        if (expr_extractors := self._data.get("expr_extractors")) is not None:
+            if (key_dict := expr_extractors.get(key)) is not None and (mod_name := storage_module[8:]) in key_dict:
+                return key_dict[mod_name]
 
         # 设置默认值
         if default is None:
@@ -105,7 +116,7 @@ class Config(metaclass=SingletonMeta):
             self._data.yaml_set_comment_before_after_key(storage_module, before="\n")
 
         if isinstance(default, Iterable) and not isinstance(default, (tuple, frozenset, dict, str, bytes)):
-            raise TypeError("Iterable default must be tuple or frozenset.")
+            logger.error(f"Iterable default must be tuple or frozenset. Module: {caller}")
 
         # 记录默认类型并存储值
         self._default_types.setdefault(storage_module, {})[key] = type(default)
@@ -120,12 +131,12 @@ class Config(metaclass=SingletonMeta):
         return default
 
     def set_config(self, key: str, value, module: str = None):
-        self._check_permission(module, (caller := self._caller_module()))
+        self._check_permission(module, (caller := caller_module()))
         module = module or caller
         self._modified.add((module, key))
 
         if isinstance(value, Iterable) and not isinstance(value, (tuple, frozenset, dict, str, bytes)):
-            raise TypeError("Iterable default must be tuple or frozenset.")
+            logger.error(f"Iterable value must be tuple or frozenset. Module: {caller}")
 
         self._data.setdefault(module or caller, CommentedMap())[key] = (
             list(value) if isinstance(value, (tuple, frozenset)) else value
@@ -151,10 +162,31 @@ class Config(metaclass=SingletonMeta):
         self._data = current_data
         self._modified.clear()
 
+    def _has_new_keys(self, new_data, old_data):
+        if not isinstance(new_data, dict):
+            return False
+        if not isinstance(old_data, dict):
+            return True
+
+        for key in new_data:
+            if key not in old_data:
+                return True
+            if self._has_new_keys(new_data[key], old_data[key]):
+                return True
+        return False
+
     def finalize_initialization(self):
+        if not self._default_used:
+            for module, key in self._modified:
+                if self._has_new_keys(self._data[module][key], self._old_data.get(module, {}).get(key, None)):
+                    self._default_used = True
+                    break
+
+        self._old_data = None
+
         if self._default_used:
             self.save()
-            getLogger(__name__).warning("检测到新的配置，已写入至配置文件，请修改后重启。")
+            logger.warning("检测到新的配置，已写入至配置文件，请修改后重启。")
             exit(1)
 
     # region 公共属性

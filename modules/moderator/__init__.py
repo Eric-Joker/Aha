@@ -14,21 +14,22 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from asyncio import create_task
 
-from regex import Match
-
-from config import cfg
 from ncatbot.core import At, MessageChain
 from ncatbot.core.message import GroupMessage
 from ncatbot.core.notice import NoticeMessage
 from ncatbot.core.request import Request
+from regex import Match
+from sqlalchemy import select
+
+from config import cfg
+from services.database import db_session_factory
 from services.ncatbot import bot
-from utils import PM, And, Or, on_message, on_notice, on_request, rm_schedules_by_meta, sec2str, str2sec
+from utils import PM, And, Or, on_message, on_notice, on_request, register_extractor, rm_schedules_by_meta, sec2str, str2sec
 from utils.api import at_or_int, get_nickname, set_group_add_request
 
 from .managing_member import clean_group, clean_hub, hub_notice, kick, member_notice, member_request, verify_message
 from .shutup import shutup_msg, shutup_notice
 
-VERIFY = cfg.get_config("verify", False, comment="启用动态码验证。")
 HUB = cfg.get_config("hub", 114514, comment="中转站。")
 WELCOME_MSG = cfg.get_config("welcome_msg", "✨验证成功~ ", comment="验证成功后发的消息。")
 
@@ -64,9 +65,18 @@ async def kick_or_black(msg: GroupMessage, match: Match):
     )
 
 
-@on_notice("group_increase", (PM.validated == False) | (PM.validated == True), PM.limit == False)
-async def start_verify(msg: NoticeMessage):
-    if VERIFY:
+@register_extractor(PM.validated)
+async def is_validated(msg: GroupMessage):
+    import modules.moderator.managing_member as mm
+
+    async with db_session_factory() as session:
+        result = await session.scalar(select(mm.Verify.is_validated).filter(mm.Verify.user_id == msg.user_id))
+        return result is None or bool(result)
+
+if cfg.validated:
+
+    @on_notice("group_increase", (PM.validated == False) | (PM.validated == True), PM.limit == False)
+    async def start_verify(msg: NoticeMessage):
         create_task(shutup_notice(msg.user_id, msg.group_id))
         if code := await member_notice(msg.user_id, msg.group_id):
             await bot.api.post_group_msg(
@@ -79,33 +89,17 @@ async def start_verify(msg: NoticeMessage):
                 ),
             )
 
+    @on_notice("group_decrease", PM.validated == False, PM.limit == False)
+    async def group_decrease(msg: NoticeMessage):
+        await rm_schedules_by_meta({"tag": "verify", "user_id": msg.user_id}, msg.group_id)
 
-@on_message(PM.validated == False, PM.limit == False)
-async def verify(msg: GroupMessage, _):
-    result = await verify_message(msg.raw_message, msg.user_id, msg.group_id)
-    if result:
-        return await bot.api.post_group_msg(msg.group_id, WELCOME_MSG, reply=msg.message_id)
-    elif result is False:
-        await bot.api.delete_msg(msg.message_id)
-
-
-@on_notice("group_increase", PM.groups == HUB, (PM.validated == False) | (PM.validated == True))
-async def hub(msg: NoticeMessage):
-    create_task(hub_notice(msg.user_id))
-    await bot.api.post_group_msg(
-        HUB,
-        rtf=MessageChain(
-            [
-                At(msg.user_id),
-                "\n" + "\n".join([f"{len(cfg.action_groups)-i}群：{num}" for i, num in enumerate(cfg.action_groups)]),
-            ]
-        ),
-    )
-
-
-@on_notice("group_decrease", PM.groups == HUB, PM.validated == False, PM.limit == False)
-async def group_decrease(msg: NoticeMessage):
-    await rm_schedules_by_meta({"tag": "verify", "user_id": msg.user_id}, msg.group_id)
+    @on_message(PM.validated == False, PM.limit == False)
+    async def verify(msg: GroupMessage, _):
+        result = await verify_message(msg.raw_message, msg.user_id, msg.group_id)
+        if result:
+            return await bot.api.post_group_msg(msg.group_id, WELCOME_MSG, reply=msg.message_id)
+        elif result is False:
+            await bot.api.delete_msg(msg.message_id)
 
 
 @on_request("group", "add", (PM.validated == False) | (PM.validated == True), PM.limit == False)
@@ -113,10 +107,25 @@ async def group_request(msg: Request):
     await set_group_add_request(msg.flag, *await member_request(msg.user_id, msg.comment))
 
 
-@on_message(r"清理中转[站群]?|中转[站群]?清人", PM.admin == True)
-async def clean_hub(msg: GroupMessage, _):
-    create_task(clean_hub())
-    await bot.api.post_group_msg(msg.group_id, "正在清人", reply=msg.message_id)
+if HUB:
+
+    @on_notice("group_increase", PM.groups == HUB, (PM.validated == False) | (PM.validated == True))
+    async def hub(msg: NoticeMessage):
+        create_task(hub_notice(msg.user_id))
+        await bot.api.post_group_msg(
+            HUB,
+            rtf=MessageChain(
+                [
+                    At(msg.user_id),
+                    "\n" + "\n".join([f"{len(cfg.action_groups)-i}群：{num}" for i, num in enumerate(cfg.action_groups)]),
+                ]
+            ),
+        )
+
+    @on_message(r"清理中转[站群]?|中转[站群]?清人", PM.admin == True)
+    async def clean_hub(msg: GroupMessage, _):
+        create_task(clean_hub())
+        await bot.api.post_group_msg(msg.group_id, "正在清人", reply=msg.message_id)
 
 
 @on_message(r"(强制)(?:清人|清理不活跃(?:成员)?)", PM.admin == True, PM.prefix == True)

@@ -15,7 +15,6 @@
 from decimal import ROUND_HALF_UP, Decimal
 from inspect import iscoroutinefunction
 
-
 def round_decimal(num: Decimal, digits=2):
     return num.quantize(Decimal(f'0.{"0" * digits}'), rounding=ROUND_HALF_UP).normalize()
 

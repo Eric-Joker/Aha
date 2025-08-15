@@ -14,13 +14,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from .apscheduler import TimeTrigger, rm_schedules_by_meta, stat_schedules_by_meta
 from .cache import SchMemLRUCache, async_cached, cachers, get_cache
-from .expr import PM, And, Not, Or, evaluate, match_cache
+from .expr import PM, And, Not, Or, evaluate, extractor_registrations, match_cache, register_extractor
 from .message_router import (
     menu_commands,
-    on_message,
     message_handlers,
     notice_handlers,
-    request_handlers,
+    on_message,
     on_notice,
     on_request,
     on_shutup,
@@ -32,6 +31,7 @@ from .message_router import (
     process_request,
     process_start,
     queue_handler,
+    request_handlers,
 )
 from .misc import get_byte_length, round_decimal
 from .playwright import capture_element

@@ -65,7 +65,7 @@ class SchedulerCacheMixin(metaclass=RestrictiveMeta):
         super().__init__(*args, **kwargs)
 
         if not (qualname := _getframe(1).f_globals.get("__name__")):
-            raise RuntimeError("Caller's module could not be determined")
+            raise RuntimeError("Caller's module could not be determined.")
         qualname = f"{qualname}.{self.__class__.__name__}"
 
         on_start(

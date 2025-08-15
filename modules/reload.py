@@ -17,7 +17,7 @@ from ncatbot.core.message import GroupMessage
 import utils.message_router as ul
 from config import cfg
 from services.ncatbot import bot
-from utils import PM, on_message, queue_handler
+from utils import PM, extractor_registrations, on_message, queue_handler
 
 
 async def reload():
@@ -30,6 +30,7 @@ async def reload():
     from . import reload_modules
 
     reload_modules()
+    extractor_registrations.clear()
 
 
 @on_message("重载", PM.prefix == True, PM.super == True)

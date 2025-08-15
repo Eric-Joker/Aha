@@ -13,9 +13,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import sys
-from asyncio import Task, create_task, get_running_loop, iscoroutine, set_event_loop_policy
+from asyncio import Task, create_task, get_running_loop, set_event_loop_policy
 from logging import getLogger
+from sys import _getframe
 
+import regex as re
 from pydantic import BaseModel, ConfigDict
 
 
@@ -27,6 +29,13 @@ def install_uvloop():
             set_event_loop_policy(uvloop.EventLoopPolicy())
         else:
             uvloop.install()
+
+
+MODULE_PATTERN = re.compile(r"([^.]*modules[^.]*\.[^.]+)")
+
+
+def caller_module(level: int = 2, pattern = MODULE_PATTERN) -> str:
+    return match.group(1) if (match := pattern.match(_getframe(level).f_globals.get("__name__", ""))) else None
 
 
 class RobustBaseModel(BaseModel):
@@ -84,7 +93,7 @@ class NonAwaitable:
         self.task = task
 
     def __await__(self):
-        raise RuntimeError("Directly awaiting this operation is disallowed. Use background execution")
+        getLogger(self.task).warning("Directly awaiting this operation is disallowed. Use background execution.")
 
     def done(self):
         return self.task.done()

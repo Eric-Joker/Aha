@@ -17,7 +17,6 @@ from asyncio import Lock, sleep
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from importlib.util import find_spec
 from itertools import chain
 from logging import getLogger
 from secrets import token_bytes
@@ -30,10 +29,10 @@ from humanfriendly import parse_size
 from ncatbot.core.message import GroupMessage, PrivateMessage
 from ncatbot.core.notice import NoticeMessage
 from ncatbot.core.request import Request
-from sqlalchemy import Column, Float, Integer, insert, select, update
+from sqlalchemy import Column, Float, Integer, insert, update
 
 from config import cfg
-from cores import non_awaitable
+from cores import caller_module, non_awaitable
 from services.database import db_session_factory, dbBase
 
 from .cache import MemLRUCache, async_cached, get_cache
@@ -211,24 +210,25 @@ class FieldClause(Expr):
     def in_(self, other):
         if is_in_supported(other):
             return Contains(self, other)
-        raise TypeError("contains() argument must support the 'in' operator")
+        getLogger(f"Aha Expr({self.name})").warning("contains() argument must support the 'in' operator")
 
     def notin(self, other):
         if is_in_supported(other):
             return NotContains(self, other)
-        raise TypeError("notcontains() argument must support the 'in' operator")
+        getLogger(f"Aha Expr({self.name})").warning("notcontains() argument must support the 'in' operator")
 
 
 class Field:
     """字段描述符"""
 
-    __slots__ = ("name", "type", "extractor", "default", "overrides", "priority", "cache", "unique")
+    __slots__ = ("type", "extractor", "default", "overrides", "priority", "cache", "unique", "requires_extractor")
 
     def __init__(
         self,
         type_,
-        extractor: Callable,
+        extractor: Callable = None,
         default: Callable = None,
+        requires_extractor=False,
         overrides: dict[Any:bool] = None,
         priority=0,
         cache: "CacheConfig" = None,
@@ -238,6 +238,7 @@ class Field:
         Args:
             extractor: 从消息中获取该属性所用到的值的方法。
             default: 默认表达式，需要评估的表达式若没有该字段的则自动添加。
+            requires_extractor: 声明该字段需要由模块通过 `register_extractor` 注册 `extractor`。若为 `True` 且 `extractor` 未被注册，`build_cond` 将不会自动添加默认表达式。
             overrides: 比较是否相等时，与之比较的值为 `key` 时，最终评估结果为 `value`。
             priority: 在多元表达式评估的优先级，0表示保持原顺序，正数越大越优先，负数越小越靠后。
             cache: 默认不启用缓存，传递 CacheConfig 启用缓存。
@@ -248,6 +249,7 @@ class Field:
         self.type = type_
         self.extractor = extractor
         self.default = default
+        self.requires_extractor = requires_extractor
         self.overrides = overrides
         self.priority = priority
         self.cache = cache
@@ -261,7 +263,6 @@ class ExprMeta(type):
         fields = {}
         for k, v in list(namespace.items()):
             if isinstance(v, Field):
-                v.name = k
                 fields[k] = v
                 namespace[k] = FieldClause(k, v)
         namespace["__fields__"] = fields
@@ -278,7 +279,7 @@ class RawCondition(Expr):
         self.priority = priority
 
     async def evaluate(*_):
-        raise NotImplementedError("RawCondition should be converted during _wrap_conditions")
+        getLogger("Aha Expr").warning("RawCondition should be converted during _wrap_conditions")
 
 
 class BinaryExpr(Expr):
@@ -475,14 +476,6 @@ async def _check_rate_limit(msg: GroupMessage | PrivateMessage | NoticeMessage |
 # endregion
 
 
-async def _is_validated(msg: GroupMessage | PrivateMessage | NoticeMessage | Request):
-    import modules.moderator.managing_member as mm
-
-    async with db_session_factory() as session:
-        result = await session.scalar(select(mm.Verify.is_validated).filter(mm.Verify.user_id == msg.user_id))
-        return result is None or bool(result)
-
-
 # region 消息处理
 
 
@@ -521,16 +514,28 @@ def _wrap_conditions(conditions, msg_type: MsgType):
     exp = None
 
     def convert_expr(expr):
-        if isinstance(expr, (And, Or)):
+        if isinstance(expr, And):
+            expr = expr.__class__(*(converted for c in expr.clauses if (converted := convert_expr(c)) is not None))
+
+            # 独有校验
+            unique_fields = set()
+            for clause in expr.clauses:
+                if isinstance(clause, Equal) and isinstance(clause.left, FieldClause) and clause.left.field.unique:
+                    if clause.left.name in unique_fields:
+                        raise ValueError(f"Duplicate unique field {clause.left.name} in And clause.")
+                    unique_fields.add(clause.left.name)
+            return expr
+        elif isinstance(expr, Or):
             return expr.__class__(*(converted for c in expr.clauses if (converted := convert_expr(c)) is not None))
         elif isinstance(expr, Not):
             return None if (converted := convert_expr(expr.clause)) is None else Not(converted)
         elif isinstance(expr, BinaryExpr):
             if expr.left.name == "exp":
                 nonlocal exp
-                if exp is not None:
-                    raise ValueError("Only one exp can exist in a single expression.")
-                exp = (time() + expr.right) if expr.right < 1000000000 else expr.right
+                if exp is None:
+                    exp = (time() + expr.right) if expr.right < 1000000000 else expr.right
+                else:
+                    getLogger(f"Aha Expr({conditions})").warning("Only one exp can exist in a single expression.")
                 return
             converted_left, converted_right = convert_expr(expr.left), convert_expr(expr.right)
             if converted_left is not None and converted_right is not None:
@@ -591,29 +596,12 @@ def _collect_used_fields(expr: Expr) -> frozenset[str]:
     return used
 
 
-def _validate_expr(expr):
-    """验证表达式结构"""
-    if isinstance(expr, And):
-        unique_fields = set()
-        for clause in expr.clauses:
-            if isinstance(clause, Equal) and isinstance(clause.left, FieldClause) and clause.left.field.unique:
-                if clause.left.name in unique_fields:
-                    raise ValueError(f"Duplicate unique field {clause.left.name} in And clause")
-                unique_fields.add(clause.left.name)
-            _validate_expr(clause)
-    elif isinstance(expr, Or):
-        for clause in expr.clauses:
-            _validate_expr(clause)  # 递归验证子句
-    elif isinstance(expr, Not):
-        _validate_expr(expr.clause)  # 验证被取反的子表达式
-    elif isinstance(expr, BinaryExpr):
-        _validate_expr(expr.left)
-        _validate_expr(expr.right)
-
-
 async def _get_field_value(field: FieldClause, msg: GroupMessage | PrivateMessage | NoticeMessage | Request):
-    if not field.field.extractor:
-        raise ValueError(f"Missing extractor for field {field.name}")
+    if field.field.extractor is None:
+        if field.field.requires_extractor:
+            return True
+        getLogger(f"Aha Expr({field.name})").error("Missing extractor.")
+        return
     return await async_run_func(field.field.extractor, msg)
 
 
@@ -685,7 +673,7 @@ class PM(metaclass=ExprMeta):
         users: `user_id`。
 
         prefix: 消息前端是否为 `cfg.message_prefix` 或@机器人。
-        validated: 消息发送者是否已通过 `moderator` 模块验证。默认限定通过验证的。
+        validated: 消息发送者是否已通过验证，默认限定通过验证的。需要通过模块注册回调，若没有模块注册则无效。
         limit: 消息发送者是否遵循全局限速。默认遵循。未限定 `message`、`request_type`、`notice_type` 和 `sub_type` 时务必声明 `PM.limit == False`。
         exp: 该表达式实例将在几秒钟后/何时优先销毁，一般用于一次性表达式。若传入的值小于10^9，将会被 `build_cond` 修正为与当前秒级时间戳累加。
         admin: 消息发送者是否是群管理员。
@@ -720,12 +708,8 @@ class PM(metaclass=ExprMeta):
     super = Field(bool, lambda msg: msg.user_id in cfg.super)
     validated = Field(
         bool,
-        _is_validated,
-        (
-            (lambda v: v == True)
-            if find_spec("modules.moderator") and cfg.get_config("verify", module="modules.moderator")
-            else None
-        ),
+        default=lambda v: v == True,
+        requires_extractor=True,  # Callable[Message, Bool]
         priority=-2,
         cache=CacheConfig(
             cache=validated_cache,
@@ -763,8 +747,9 @@ def build_cond(conditions: tuple[Expr], msg_type: MsgType) -> Expr:
     default_clauses = [
         field.default(FieldClause(name, field))
         for name, field in PM.__fields__.items()
-        if name not in used_field_names
-        and field.default is not None
+        if field.default is not None
+        and (not field.requires_extractor or field.extractor)
+        and name not in used_field_names
         and (name != "group" or "private" not in used_field_names)
         and (name != "private" or "group" not in used_field_names)
     ]
@@ -780,6 +765,44 @@ def build_cond(conditions: tuple[Expr], msg_type: MsgType) -> Expr:
     return cond
 
 
+# region 重定向 extractor
+
+extractor_registrations: dict[FieldClause, set[str]] = defaultdict(set)
+MODULE_PATTERN = re.compile(r"[^.]*modules[^.]*\.([^.]+)")
+
+
+def register_extractor(field: FieldClause):
+    """
+    注册指定字段 `extractor` 的装饰器
+    """
+
+    def decorator(func):
+        if (module := caller_module(pattern=MODULE_PATTERN)) in extractor_registrations.get(field, ()):
+            getLogger(f"Aha Expr({field.name})").warning(f"Module '{module}' attempted to register multiple extractors.")
+            return func
+
+        # config
+        if module not in (config := cfg.get_config(field.name, module="expr_extractors") or {}):
+            config[module] = False
+            cfg.set_config(field.name, config, module="expr_extractors")
+            return func
+
+        if config[module]:
+            if len(enabled_modules := tuple(mod for mod, enabled in config.items() if enabled)) > 1:
+                raise RuntimeError(
+                    f"Multiple enabled modules detected when redirecting `extractor` for '{field.name}'. Conflicting modules: {", ".join(enabled_modules)}."
+                )
+
+            # 注册提取器
+            field.field.extractor = func
+            extractor_registrations[field].add(module)
+
+        return func
+
+    return decorator
+
+
+# endregion
 # @async_cached(expr_cache, key=hash_evaluate)
 async def evaluate(msg, expr: Expr | BoolExpr, token=None, token_pool=None, destroy=None) -> tuple[bool, list]:
     """评估表达式入口"""

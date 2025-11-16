@@ -1,0 +1,26 @@
+aiofiles
+aiologic
+alembic
+anyio
+apscheduler >= 4.0.0a0 --pre
+attrs
+cachetools
+colorama >= 0.4
+cryptography
+FastAPI
+httptools >= 0.6.3
+uvicorn
+httpx[http2,brotli,zstd]
+lxml
+orjson
+playwright
+pydantic > 2
+pympler
+ruamel.yaml
+SQLAlchemy[asyncio, aiosqlite]
+tenacity
+tqdm
+uvloop; sys_platform == 'linux'
+websockets >= 15
+wrapt
+xxhash

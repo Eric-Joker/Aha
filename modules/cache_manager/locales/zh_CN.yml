@@ -1,0 +1,4 @@
+clear_cache: 清理缓存
+clear_cache.success: 已清理
+cache_status: '缓存(?:使用)?状(?:况|态)'
+cache_used: "已使用%s。"

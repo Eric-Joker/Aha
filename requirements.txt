@@ -1,0 +1,21 @@
+aiofiles >= 25
+aiologic >= 0.15
+alembic >= 1
+anyio >= 4
+apscheduler >= 4.0.0a0 --pre
+attrs >= 25
+cachetools >= 7
+colorama >= 0.4
+httpx
+lxml >= 6
+orjson >= 3
+pydantic > 2
+pympler
+ruamel.yaml
+SQLAlchemy[asyncio] >= 2
+tenacity >= 9
+tqdm >= 4
+uvloop; sys_platform == 'linux'
+websockets >= 15
+wrapt >= 2
+xxhash >= 3

@@ -1,0 +1,16 @@
+__pycache__
+.vscode
+*.bak
+test.py
+alembic/versions/*.py
+cache/
+logs/
+config.*.yml
+*.db*
+*.pem
+
+*modules/*
+!*modules/__init__.py
+!modules/cache_manager
+!modules/id_mapper
+!modules/reload

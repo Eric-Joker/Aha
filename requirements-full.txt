@@ -1,0 +1,27 @@
+aiofiles >= 25
+aiologic >= 0.15
+alembic >= 1
+anyio >= 4
+apscheduler >= 4.0.0a0 --pre
+attrs >= 25
+cachetools >= 7
+cachetools-async
+colorama >= 0.4
+cryptography >= 46
+FastAPI
+httptools >= 0.6.3
+uvicorn
+httpx[http2,brotli,zstd]
+lxml >= 6
+orjson >= 3
+playwright >= 1
+pydantic > 2
+pympler
+ruamel.yaml[libyaml]
+SQLAlchemy[asyncio, aiosqlite, postgresql-psycopgbinary, postgresql-asyncpg] >= 2
+tenacity >= 9
+tqdm >= 4
+uvloop; sys_platform == 'linux'
+websockets >= 15
+wrapt >= 2
+xxhash >= 3

@@ -1,0 +1,4 @@
+clear_cache: Clear Cache
+clear_cache.success: Cleared
+cache_status: 'Cache (?:Usage )?(?:Status|State)'
+cache_used: "%s has been used."

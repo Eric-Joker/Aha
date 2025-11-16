@@ -1,0 +1,27 @@
+link: link
+desc: Links for other users, even those on other platforms.
+help: |-
+  [%(prefix)slink user]
+  [%(prefix)slink platform user_id]
+
+  Most of the data associated with the current account belongs to other accounts.
+  Note: Once linked, the account cannot be unlinked or re-linked.
+
+  Currently available platforms:
+    %(platforms)s
+help_admin: |-
+  [%(prefix)slink user]
+  [%(prefix)slink platform user_id]
+  [%(prefix)slink user target_platform target_user_id]
+
+  Most of the data associated with the current account belongs to other accounts.
+
+  Currently available platforms:
+    %(platforms)s
+command: 'link\s*%s(?:\s+%s)?'
+command_admin: 'link\s*%s\s+(\S+)\s+%s'
+unknown_platform: Unknown platform.
+unknown_user: The target user cannot be linked at this time.
+need: 'Please send "!y" from the target account to confirm the link. Note: Once the link is successful, it cannot be unlinked or re-linked.'
+linked: Linked!
+frequently: You have an ongoing link request. Please try again later.

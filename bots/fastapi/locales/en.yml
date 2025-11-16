@@ -1,0 +1,7 @@
+fastapi_module.import.done: "Successfully loaded %s fastapi modules."
+fastapi_module.import.error: "Failed to import '%s':"
+fastapi_module.import.long: "Loading fastapi module '%(mod)s' (%(count)s modules loaded)"
+fastapi_module.import.short: "Loading fastapi modules"
+fastapi.secrets.404: "Public key file not found at %s"
+fastapi.secrets.invalid: "Failed to load public key: %s"
+fastapi.secrets.warn: "Running without signature verification! This poses a security risk!"

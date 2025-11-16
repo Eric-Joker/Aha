@@ -1,0 +1,7 @@
+fastapi_module.import.done: "已加载 %s 个 Aha 的 FastAPI 模块。"
+fastapi_module.import.error: "加载模块 '%s' 时发生错误："
+fastapi_module.import.long: "正在加载 FastAPI 模块 '%(mod)s'（已加载 %(count)s 个)"
+fastapi_module.import.short: "正在加载 Aha 的 Fastapi 模块"
+fastapi.secrets.404: "找不到公钥文件：%s"
+fastapi.secrets.invalid: "无法加载公钥：%s"
+fastapi.secrets.warn: "未携带公钥运行！这可能存在安全风险！"

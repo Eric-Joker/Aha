@@ -1,0 +1,23 @@
+aiofiles
+aiologic
+alembic
+anyio
+apscheduler >= 4.0.0a0 --pre
+attrs
+cachetools
+colorama
+httpx[http2]
+lxml
+orjson
+pydantic > 2
+pympler
+ruamel.yaml
+git+https://github.com/Eric-Joker/greenlet@master#egg=greenlet; sys_platform == 'win32'
+greenlet; sys_platform != 'win32'
+SQLAlchemy[asyncio]
+tenacity
+tqdm
+uvloop; sys_platform == 'linux'
+websockets >= 15
+wrapt
+xxhash

@@ -1,0 +1,27 @@
+link: 链接
+desc: 链接为其他用户，甚至是不同的平台的用户。
+help: |-
+  [%(prefix)s链接 目标用户]
+  [%(prefix)s链接 平台 目标用户ID]
+
+  绑定当前账户的大部分数据为其他账户的。
+  注意：链接成功后不可解绑、换绑。
+
+  当前可选平台：
+    %(platforms)s
+help_admin: |-
+  [%(prefix)s链接 目标用户]
+  [%(prefix)s链接 目标用户平台 目标用户ID]
+  [%(prefix)s链接 用户 目标用户平台 目标用户ID]
+
+  绑定当前账户的大部分数据为其他账户的。
+
+  当前可选平台：
+    %(platforms)s
+command: '链接\s*%s(?:\s+%s)?'
+command_admin: '链接\s*%s\s+(\S+)\s+%s'
+unknown_platform: 未知平台
+unknown_user: 目标用户暂不可被链接。
+need: 请使用目标账户发送“!y”以确认链接。注意：链接成功后不可解绑、换绑。
+linked: 链接完毕!
+frequently: 你有正在进行的链接请求，稍后再试。

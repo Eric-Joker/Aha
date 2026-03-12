@@ -12,10 +12,10 @@ if __name__ == "__main__":
     from logging import getLogger
 
     import core.status
-    from core.arg_parser import parser
+    from core.arg_parser import process_args
     from core.config import cfg, init_base_cfgs
     from core.i18n import _, load_locales
-    from modules import disable_modules, enable_modules, init_load_mod, persist_blacklist, persist_whitelist
+    from modules import init_load_mod
     from utils.aio import run_with_uvloop
 
     setup_logging()
@@ -23,18 +23,7 @@ if __name__ == "__main__":
 
     async def main_workflow():
         await load_locales()
-
-        if parser.disable:
-            await disable_modules(*parser.disable)
-        if parser.enable:
-            await enable_modules(*parser.enable)
-        if parser.disable or parser.enable:
-            sys.exit(0)
-        if parser.load_only:
-            persist_whitelist.update(parser.load_only)
-        if parser.exclude:
-            persist_blacklist.update(parser.exclude)
-
+        await process_args()
         init_base_cfgs()
 
         # isort: skip_file
@@ -53,7 +42,6 @@ if __name__ == "__main__":
         # import core.identity 由 core.expr 引用
 
         await init_load_mod()
-
         redirect_extractors()
         await cfg.finalize_initialization()
         db_init()

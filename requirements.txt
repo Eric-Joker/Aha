@@ -15,6 +15,5 @@ ruamel.yaml
 SQLAlchemy[asyncio] >= 2
 tenacity >= 9
 tqdm >= 4
-uvloop; sys_platform == 'linux'
 wrapt >= 2
 xxhash >= 3

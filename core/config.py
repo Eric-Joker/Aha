@@ -10,13 +10,12 @@ from logging import getLevelNamesMapping, getLogger
 from multiprocessing import current_process
 from pathlib import Path
 from sys import exit
-from typing import Any
+from typing import Any, SupportsIndex
 
 from aiofiles import open as aioopen
 from anyio import Path as aioPath
-from attrs import asdict, define, field
+from attrs import asdict, define, field, has
 from attrs import fields as attrs_fields
-from attrs import has
 from pydantic import BaseModel
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedBase, CommentedMap, CommentedSeq
@@ -39,8 +38,8 @@ logger = getLogger(__name__)
 
 @define(slots=True, frozen=True)
 class IndexedBase:
-    bot_index: int = field(converter=int)
-    
+    bot_index: SupportsIndex
+
     @property
     def platform(self):
         return get_bot_class(next(iter(cfg.bots[self.bot_index]))).platform
@@ -462,6 +461,16 @@ class Config(metaclass=SingletonMeta):
         self._data[module][key] = value
         self._modified.append((module, key))
         self._default_used = True
+        
+        # 清理对应缓存
+        if key in self._USER_LIST_KEYS:
+            self._user_blacklist.pop(module, None)
+            self._user_whitelist.pop(module, None)
+        if key in self._GROUP_LIST_KEYS:
+            self._group_blacklist.pop(module, None)
+            self._group_whitelist.pop(module, None)
+        if key == "msg_prefix":
+            self._msg_prefix.pop(module, None)
 
         return value.value if isinstance(value, Option) else value
 
@@ -690,6 +699,9 @@ class Config(metaclass=SingletonMeta):
     @property
     def _default_user_list(self) -> frozenset[User]:
         return self.get("default_user_list", module="aha")
+
+    _USER_LIST_KEYS = {"user_list_mode", "user_list"}
+    _GROUP_LIST_KEYS = {"group_list_mode", "group_list"}
 
     def get_group_blacklist(self, module=None) -> frozenset[Group]:
         if not module:

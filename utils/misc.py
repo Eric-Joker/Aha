@@ -140,22 +140,27 @@ def uninstall_module(module_name):
 class SetArray[_T](array):
     """基于集合实现的array，支持O(1)存在性检查"""
 
-    @overload
-    def __new__(
-        cls: type[SetArray[int]], typecode: Literal["b", "B", "h", "H", "i", "I", "l", "L", "q", "Q"], initializer: bytes | bytearray | Iterable[int] = b"", /
-    ) -> SetArray[int]: ...
-    @overload
-    def __new__(
-        cls: type[SetArray[float]], typecode: Literal["f", "d"], initializer: bytes | bytearray | Iterable[float] = b"", /
-    ) -> SetArray[float]: ...
-    @overload
-    def __new__(
-        cls: type[SetArray[str]], typecode: Literal["w"], initializer: bytes | bytearray | Iterable[str] = b"", /
-    ) -> SetArray[str]: ...
-    @overload
-    def __new__(cls, typecode: str, initializer: Iterable[_T], /) -> Self: ...
-    @overload
-    def __new__(cls, typecode: str, initializer: bytes | bytearray = b"", /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def __new__(
+            cls: type[SetArray[int]],
+            typecode: Literal["b", "B", "h", "H", "i", "I", "l", "L", "q", "Q"],
+            initializer: bytes | bytearray | Iterable[int] = b"",
+            /,
+        ) -> SetArray[int]: ...
+        @overload
+        def __new__(
+            cls: type[SetArray[float]], typecode: Literal["f", "d"], initializer: bytes | bytearray | Iterable[float] = b"", /
+        ) -> SetArray[float]: ...
+        @overload
+        def __new__(
+            cls: type[SetArray[str]], typecode: Literal["w"], initializer: bytes | bytearray | Iterable[str] = b"", /
+        ) -> SetArray[str]: ...
+        @overload
+        def __new__(cls, typecode: str, initializer: Iterable[_T], /) -> Self: ...
+        @overload
+        def __new__(cls, typecode: str, initializer: bytes | bytearray = b"", /) -> Self: ...
     def __new__(cls, typecode, initializer=b"", /):
         if isinstance(initializer, SetArray):
             raise NotImplementedError
@@ -245,22 +250,24 @@ class SetArray[_T](array):
 
 
 class IndexedDict[_KT, _VT](dict[_KT, _VT]):
-    @overload
-    def __init__(self) -> None: ...
-    @overload
-    def __init__(self: dict[str, _VT], **kwargs: _VT) -> None: ...
-    @overload
-    def __init__(self, map: SupportsKeysAndGetItem[_KT, _VT], /) -> None: ...
-    @overload
-    def __init__(self: dict[str, _VT], map: SupportsKeysAndGetItem[str, _VT], /, **kwargs: _VT) -> None: ...
-    @overload
-    def __init__(self, iterable: Iterable[tuple[_KT, _VT]], /) -> None: ...
-    @overload
-    def __init__(self: dict[str, _VT], iterable: Iterable[tuple[str, _VT]], /, **kwargs: _VT) -> None: ...
-    @overload
-    def __init__(self: dict[str, str], iterable: Iterable[list[str]], /) -> None: ...
-    @overload
-    def __init__(self: dict[bytes, bytes], iterable: Iterable[list[bytes]], /) -> None: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def __init__(self) -> None: ...
+        @overload
+        def __init__(self: dict[str, _VT], **kwargs: _VT) -> None: ...
+        @overload
+        def __init__(self, map: SupportsKeysAndGetItem[_KT, _VT], /) -> None: ...
+        @overload
+        def __init__(self: dict[str, _VT], map: SupportsKeysAndGetItem[str, _VT], /, **kwargs: _VT) -> None: ...
+        @overload
+        def __init__(self, iterable: Iterable[tuple[_KT, _VT]], /) -> None: ...
+        @overload
+        def __init__(self: dict[str, _VT], iterable: Iterable[tuple[str, _VT]], /, **kwargs: _VT) -> None: ...
+        @overload
+        def __init__(self: dict[str, str], iterable: Iterable[list[str]], /) -> None: ...
+        @overload
+        def __init__(self: dict[bytes, bytes], iterable: Iterable[list[bytes]], /) -> None: ...
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._keys = list(iter(self))
@@ -278,12 +285,14 @@ class IndexedDict[_KT, _VT](dict[_KT, _VT]):
         super().clear()
         self._keys.clear()
 
-    @overload
-    def pop(self, key: _KT, /) -> _VT: ...
-    @overload
-    def pop(self, key: _KT, default: _VT, /) -> _VT: ...
-    @overload
-    def pop[_T](self, key: _KT, default: _T, /) -> _VT | _T: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def pop(self, key: _KT, /) -> _VT: ...
+        @overload
+        def pop(self, key: _KT, default: _VT, /) -> _VT: ...
+        @overload
+        def pop[_T](self, key: _KT, default: _T, /) -> _VT | _T: ...
     def pop(self, key, default=None):
         if key in self:
             self._keys.remove(key)
@@ -293,7 +302,7 @@ class IndexedDict[_KT, _VT](dict[_KT, _VT]):
         self._keys.remove((result := super().popitem())[0])
         return result
 
-    update =  fromkeys = __or__ = __ror__ = __ior__ = None
+    update = fromkeys = __or__ = __ror__ = __ior__ = None
 
     def key_at(self, index: SupportsIndex):
         return self._keys[index]

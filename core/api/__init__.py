@@ -5,7 +5,7 @@ from enum import Enum, auto
 from functools import partial
 from random import choice
 from types import FunctionType
-from typing import Literal, _overload_dummy, _overload_registry, overload
+from typing import TYPE_CHECKING, Literal, _overload_dummy, _overload_registry, overload
 
 from models.api import BaseEvent
 from utils.misc import SetArray, get_arg_names, get_kwonlyarg_count
@@ -173,43 +173,45 @@ async def init_conversations():
     return sum(len(i) for i in groups.values()), sum(len(i) for i in users.values())
 
 
-@overload
-def select_bot(strategy: Literal[SS.PREFS, SS.NTH, SS.UNORDERED_NTH], event: BaseEvent = None, *, index: int = 0) -> int: ...
+if TYPE_CHECKING:
 
+    @overload
+    def select_bot(
+        strategy: Literal[SS.PREFS, SS.NTH, SS.UNORDERED_NTH], event: BaseEvent = None, *, index: int = 0
+    ) -> int: ...
 
-@overload
-def select_bot(strategy: Literal[SS.PLATFORM_RANDOM], event: BaseEvent = None, *, platform: str = None) -> int: ...
+    @overload
+    def select_bot(strategy: Literal[SS.PLATFORM_RANDOM], event: BaseEvent = None, *, platform: str = None) -> int: ...
 
+    @overload
+    def select_bot(
+        strategy: Literal[SS.PLATFORM, SS.PLATFORM_NTH], event: BaseEvent = None, *, platform: str = None, index: int = 0
+    ) -> int: ...
 
-@overload
-def select_bot(
-    strategy: Literal[SS.PLATFORM, SS.PLATFORM_NTH], event: BaseEvent = None, *, platform: str = None, index: int = 0
-) -> int: ...
+    @overload
+    def select_bot(
+        strategy: Literal[SS.FRIEND, SS.GROUP, SS.FRIEND_NTH, SS.GROUP_NTH],
+        event: BaseEvent = None,
+        *,
+        platform: str = None,
+        conv_id: str = None,
+        index: int = 0,
+    ) -> int: ...
 
+    @overload
+    def select_bot(
+        strategy: Literal[SS.FRIEND_RANDOM, SS.GROUP_RANDOM],
+        event: BaseEvent = None,
+        *,
+        platform: str = None,
+        conv_id: str = None,
+    ) -> int: ...
 
-@overload
-def select_bot(
-    strategy: Literal[SS.FRIEND, SS.GROUP, SS.FRIEND_NTH, SS.GROUP_NTH],
-    event: BaseEvent = None,
-    *,
-    platform: str = None,
-    conv_id: str = None,
-    index: int = 0,
-) -> int: ...
+    @overload
+    def select_bot(strategy: Literal[SS.NTH_ANY], *, index: int = 0) -> int: ...
 
-
-@overload
-def select_bot(
-    strategy: Literal[SS.FRIEND_RANDOM, SS.GROUP_RANDOM], event: BaseEvent = None, *, platform: str = None, conv_id: str = None
-) -> int: ...
-
-
-@overload
-def select_bot(strategy: Literal[SS.NTH_ANY], *, index: int = 0) -> int: ...
-
-
-@overload
-def select_bot(strategy: Literal[SS.PREFS_ANY, SS.RANDOM, SS.RANDOM_ANY]) -> int: ...
+    @overload
+    def select_bot(strategy: Literal[SS.PREFS_ANY, SS.RANDOM, SS.RANDOM_ANY]) -> int: ...
 
 
 def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id=None):

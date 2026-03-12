@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from logging import getLogger
 from multiprocessing import current_process
 from random import getrandbits
-from typing import Any, LiteralString, Self, SupportsIndex, overload
+from typing import TYPE_CHECKING, Any, LiteralString, Self, SupportsIndex, overload
 
 from core.i18n import _
 from models.msg import Text
@@ -276,24 +276,30 @@ class InlineStr[T](str):
                 result.append(self[last_end:])
         return result
 
-    @overload
-    def capitalize(self: LiteralString) -> LiteralString: ...
-    @overload
-    def capitalize(self) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def capitalize(self: LiteralString) -> LiteralString: ...
+        @overload
+        def capitalize(self) -> Self: ...
     def capitalize(self):
         return self.__class__(super().capitalize())
 
-    @overload
-    def casefold(self: LiteralString) -> LiteralString: ...
-    @overload
-    def casefold(self) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def casefold(self: LiteralString) -> LiteralString: ...
+        @overload
+        def casefold(self) -> Self: ...
     def casefold(self):
         return self.__class__(super().casefold())
 
-    @overload
-    def center(self: LiteralString, width: SupportsIndex, fillchar: LiteralString = " ", /) -> LiteralString: ...
-    @overload
-    def center(self, width: SupportsIndex, fillchar: str = " ", /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def center(self: LiteralString, width: SupportsIndex, fillchar: LiteralString = " ", /) -> LiteralString: ...
+        @overload
+        def center(self, width: SupportsIndex, fillchar: str = " ", /) -> Self: ...
     def center(self, width, fillchar=" ", /):
         # """
         if hasattr(self, "inline_indices"):
@@ -307,86 +313,110 @@ class InlineStr[T](str):
         # """
         return self.__class__(super().center(width, fillchar))
 
-    @overload
-    def expandtabs(self: LiteralString, tabsize: SupportsIndex = 8) -> LiteralString: ...
-    @overload
-    def expandtabs(self, tabsize: SupportsIndex = 8) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def expandtabs(self: LiteralString, tabsize: SupportsIndex = 8) -> LiteralString: ...
+        @overload
+        def expandtabs(self, tabsize: SupportsIndex = 8) -> Self: ...
     def expandtabs(self, tabsize=8):
         return self.__class__(super().expandtabs(tabsize))
 
-    @overload
-    def format(self: LiteralString, *args: LiteralString, **kwargs: LiteralString) -> LiteralString: ...
-    @overload
-    def format(self, *args: object, **kwargs: object) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def format(self: LiteralString, *args: LiteralString, **kwargs: LiteralString) -> LiteralString: ...
+        @overload
+        def format(self, *args: object, **kwargs: object) -> Self: ...
     def format(self, *args, **kwargs):
         return self.__class__(super().format(*args, **kwargs))
 
     def format_map(self, mapping, /) -> Self:
         return self.__class__(super().format_map(mapping))
 
-    @overload
-    def join(self: LiteralString, iterable: Iterable[LiteralString], /) -> LiteralString: ...
-    @overload
-    def join(self, iterable: Iterable[str], /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def join(self: LiteralString, iterable: Iterable[LiteralString], /) -> LiteralString: ...
+        @overload
+        def join(self, iterable: Iterable[str], /) -> Self: ...
     def join(self, iterable):
         return self.__class__(super().join(iterable))
 
-    @overload
-    def ljust(self: LiteralString, width: SupportsIndex, fillchar: LiteralString = " ", /) -> LiteralString: ...
-    @overload
-    def ljust(self, width: SupportsIndex, fillchar: str = " ", /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def ljust(self: LiteralString, width: SupportsIndex, fillchar: LiteralString = " ", /) -> LiteralString: ...
+        @overload
+        def ljust(self, width: SupportsIndex, fillchar: str = " ", /) -> Self: ...
     def ljust(self, width, fillchar=" ", /):
         if hasattr(self, "inline_indices"):
             (result := self.__class__(super().ljust(width.__index__(), fillchar))).inline_indices = self.inline_indices
             return result
         return self.__class__(super().ljust(width, fillchar))
 
-    @overload
-    def lower(self: LiteralString) -> LiteralString: ...
-    @overload
-    def lower(self) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def lower(self: LiteralString) -> LiteralString: ...
+        @overload
+        def lower(self) -> Self: ...
     def lower(self):
         return self.__class__(super().lower())
 
-    @overload
-    def lstrip(self: LiteralString, chars: LiteralString | None = None, /) -> LiteralString: ...
-    @overload
-    def lstrip(self, chars: str | None = None, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def lstrip(self: LiteralString, chars: LiteralString | None = None, /) -> LiteralString: ...
+        @overload
+        def lstrip(self, chars: str | None = None, /) -> Self: ...
     def lstrip(self, chars=None, /):
         return self.__class__(super().lstrip(chars))
 
-    @overload
-    def partition(self: LiteralString, sep: LiteralString, /) -> tuple[LiteralString, LiteralString, LiteralString]: ...
-    @overload
-    def partition(self, sep: str, /) -> tuple[Self, Self, Self]: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def partition(self: LiteralString, sep: LiteralString, /) -> tuple[LiteralString, LiteralString, LiteralString]: ...
+        @overload
+        def partition(self, sep: str, /) -> tuple[Self, Self, Self]: ...
     def partition(self, sep):
         return tuple(self.__class__(s) for s in super().partition(sep))
 
-    @overload
-    def replace(self: LiteralString, old: LiteralString, new: LiteralString, /, count: SupportsIndex = -1) -> LiteralString: ...
-    @overload
-    def replace(self, old: str, new: str, /, count: SupportsIndex = -1) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def replace(
+            self: LiteralString, old: LiteralString, new: LiteralString, /, count: SupportsIndex = -1
+        ) -> LiteralString: ...
+        @overload
+        def replace(self, old: str, new: str, /, count: SupportsIndex = -1) -> Self: ...
     def replace(self, old, new, count=-1):
         return self.__class__(super().replace(old, new, count))
 
-    @overload
-    def removeprefix(self: LiteralString, prefix: LiteralString, /) -> LiteralString: ...
-    @overload
-    def removeprefix(self, prefix: str, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def removeprefix(self: LiteralString, prefix: LiteralString, /) -> LiteralString: ...
+        @overload
+        def removeprefix(self, prefix: str, /) -> Self: ...
     def removeprefix(self, prefix):
         return self.__class__(super().removeprefix(prefix))
 
-    @overload
-    def removesuffix(self: LiteralString, suffix: LiteralString, /) -> LiteralString: ...
-    @overload
-    def removesuffix(self, suffix: str, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def removesuffix(self: LiteralString, suffix: LiteralString, /) -> LiteralString: ...
+        @overload
+        def removesuffix(self, suffix: str, /) -> Self: ...
     def removesuffix(self, suffix):
         return self.__class__(super().removesuffix(suffix))
 
-    @overload
-    def rjust(self: LiteralString, width: SupportsIndex, fillchar: LiteralString = " ", /) -> LiteralString: ...
-    @overload
-    def rjust(self, width: SupportsIndex, fillchar: str = " ", /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def rjust(self: LiteralString, width: SupportsIndex, fillchar: LiteralString = " ", /) -> LiteralString: ...
+        @overload
+        def rjust(self, width: SupportsIndex, fillchar: str = " ", /) -> Self: ...
     def rjust(self, width, fillchar=" "):
         # """
         if hasattr(self, "inline_indices"):
@@ -397,76 +427,100 @@ class InlineStr[T](str):
         # """
         return self.__class__(super().rjust(width, fillchar))
 
-    @overload
-    def rpartition(self: LiteralString, sep: LiteralString, /) -> tuple[LiteralString, LiteralString, LiteralString]: ...
-    @overload
-    def rpartition(self, sep: str, /) -> tuple[Self, Self, Self]: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def rpartition(self: LiteralString, sep: LiteralString, /) -> tuple[LiteralString, LiteralString, LiteralString]: ...
+        @overload
+        def rpartition(self, sep: str, /) -> tuple[Self, Self, Self]: ...
     def rpartition(self, sep):
         return tuple(self.__class__(s) for s in super().rpartition(sep))
 
-    @overload
-    def rsplit(self: LiteralString, sep: LiteralString | None = None, maxsplit: SupportsIndex = -1) -> list[LiteralString]: ...
-    @overload
-    def rsplit(self, sep: str | None = None, maxsplit: SupportsIndex = -1) -> list[Self]: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def rsplit(
+            self: LiteralString, sep: LiteralString | None = None, maxsplit: SupportsIndex = -1
+        ) -> list[LiteralString]: ...
+        @overload
+        def rsplit(self, sep: str | None = None, maxsplit: SupportsIndex = -1) -> list[Self]: ...
     def rsplit(self, sep=None, maxsplit=-1):
         return [self.__class__(s) for s in super().rsplit(sep, maxsplit)]
 
-    @overload
-    def rstrip(self: LiteralString, chars: LiteralString | None = None, /) -> LiteralString: ...
-    @overload
-    def rstrip(self, chars: str | None = None, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def rstrip(self: LiteralString, chars: LiteralString | None = None, /) -> LiteralString: ...
+        @overload
+        def rstrip(self, chars: str | None = None, /) -> Self: ...
     def rstrip(self, chars=None):
         return self.__class__(super().rstrip(chars))
 
-    @overload
-    def split(self: LiteralString, sep: LiteralString | None = None, maxsplit: SupportsIndex = -1) -> list[LiteralString]: ...
-    @overload
-    def split(self, sep: str | None = None, maxsplit: SupportsIndex = -1) -> list[Self]: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def split(
+            self: LiteralString, sep: LiteralString | None = None, maxsplit: SupportsIndex = -1
+        ) -> list[LiteralString]: ...
+        @overload
+        def split(self, sep: str | None = None, maxsplit: SupportsIndex = -1) -> list[Self]: ...
     def split(self, sep=None, maxsplit=-1):
         return [self.__class__(s) for s in super().split(sep, maxsplit)]
 
-    @overload
-    def splitlines(self: LiteralString, keepends: bool = False) -> list[LiteralString]: ...
-    @overload
-    def splitlines(self, keepends: bool = False) -> list[Self]: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def splitlines(self: LiteralString, keepends: bool = False) -> list[LiteralString]: ...
+        @overload
+        def splitlines(self, keepends: bool = False) -> list[Self]: ...
     def splitlines(self, keepends=False):
         return [self.__class__(s) for s in super().splitlines(keepends)]
 
-    @overload
-    def strip(self: LiteralString, chars: LiteralString | None = None, /) -> LiteralString: ...
-    @overload
-    def strip(self, chars: str | None = None, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def strip(self: LiteralString, chars: LiteralString | None = None, /) -> LiteralString: ...
+        @overload
+        def strip(self, chars: str | None = None, /) -> Self: ...
     def strip(self, chars=None):
         return self.__class__(super().strip(chars))
 
-    @overload
-    def swapcase(self: LiteralString) -> LiteralString: ...
-    @overload
-    def swapcase(self) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def swapcase(self: LiteralString) -> LiteralString: ...
+        @overload
+        def swapcase(self) -> Self: ...
     def swapcase(self):
         return self.__class__(super().swapcase())
 
-    @overload
-    def title(self: LiteralString) -> LiteralString: ...
-    @overload
-    def title(self) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def title(self: LiteralString) -> LiteralString: ...
+        @overload
+        def title(self) -> Self: ...
     def title(self):
         return self.__class__(super().title())
 
     def translate(self, table, /) -> Self:
         return self.__class__(super().translate(table))
 
-    @overload
-    def upper(self: LiteralString) -> LiteralString: ...
-    @overload
-    def upper(self) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def upper(self: LiteralString) -> LiteralString: ...
+        @overload
+        def upper(self) -> Self: ...
     def upper(self):
         return self.__class__(super().upper())
 
-    @overload
-    def zfill(self: LiteralString, width: SupportsIndex, /) -> LiteralString: ...
-    @overload
-    def zfill(self, width: SupportsIndex, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def zfill(self: LiteralString, width: SupportsIndex, /) -> LiteralString: ...
+        @overload
+        def zfill(self, width: SupportsIndex, /) -> Self: ...
     def zfill(self, width):
         # """
         if hasattr(self, "inline_indices"):
@@ -477,10 +531,12 @@ class InlineStr[T](str):
         # """
         return self.__class__(super().zfill(width))
 
-    @overload
-    def __add__(self: LiteralString, value: LiteralString, /) -> LiteralString: ...
-    @overload
-    def __add__(self, value: str, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def __add__(self: LiteralString, value: LiteralString, /) -> LiteralString: ...
+        @overload
+        def __add__(self, value: str, /) -> Self: ...
     def __add__(self, value):
         if hasattr(self, "inline_indices"):
             new_indices: dict = self.inline_indices
@@ -493,10 +549,12 @@ class InlineStr[T](str):
         (result := self.__class__(super().__add__(value))).inline_indices = new_indices
         return result
 
-    @overload
-    def __getitem__(self: LiteralString, key: SupportsIndex | slice, /) -> LiteralString: ...
-    @overload
-    def __getitem__(self, key: SupportsIndex | slice, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def __getitem__(self: LiteralString, key: SupportsIndex | slice, /) -> LiteralString: ...
+        @overload
+        def __getitem__(self, key: SupportsIndex | slice, /) -> Self: ...
     def __getitem__(self, key):
         # """
         if indices := getattr(self, "inline_indices", None):
@@ -519,10 +577,12 @@ class InlineStr[T](str):
         # """
         return self.__class__(super().__getitem__(key))
 
-    @overload
-    def __iter__(self: LiteralString) -> Iterator[LiteralString]: ...
-    @overload
-    def __iter__(self) -> Iterator[Self]: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def __iter__(self: LiteralString) -> Iterator[LiteralString]: ...
+        @overload
+        def __iter__(self) -> Iterator[Self]: ...
     def __iter__(self):
         if indices := getattr(self, "inline_indices", None):
             for i, char in enumerate(super().__iter__()):
@@ -534,17 +594,21 @@ class InlineStr[T](str):
             for char in super().__iter__():
                 yield self.__class__(char)
 
-    @overload
-    def __mod__(self: LiteralString, value: LiteralString | tuple[LiteralString, ...], /) -> LiteralString: ...
-    @overload
-    def __mod__(self, value, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def __mod__(self: LiteralString, value: LiteralString | tuple[LiteralString, ...], /) -> LiteralString: ...
+        @overload
+        def __mod__(self, value, /) -> Self: ...
     def __mod__(self, value):
         return self.__class__(super().__mod__(value))
 
-    @overload
-    def __mul__(self: LiteralString, value: SupportsIndex, /) -> LiteralString: ...
-    @overload
-    def __mul__(self, value: SupportsIndex, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def __mul__(self: LiteralString, value: SupportsIndex, /) -> LiteralString: ...
+        @overload
+        def __mul__(self, value: SupportsIndex, /) -> Self: ...
     def __mul__(self, value):
         if hasattr(self, "inline_indices"):
             l = len(self)
@@ -553,10 +617,12 @@ class InlineStr[T](str):
             return result
         return self.__class__(super().__mul__(value))
 
-    @overload
-    def __rmul__(self: LiteralString, value: SupportsIndex, /) -> LiteralString: ...
-    @overload
-    def __rmul__(self, value: SupportsIndex, /) -> Self: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def __rmul__(self: LiteralString, value: SupportsIndex, /) -> LiteralString: ...
+        @overload
+        def __rmul__(self, value: SupportsIndex, /) -> Self: ...
     def __rmul__(self, value):
         if hasattr(self, "inline_indices"):
             l = len(self)

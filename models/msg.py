@@ -107,14 +107,16 @@ class MessageChain[T: MsgSeg](list[T]):
             cls, handler(list[args[0] if (args := getattr(source_type, "__args__", None)) else Any])
         )
 
-    @overload
-    def __init__(self) -> None: ...
+    if TYPE_CHECKING:
 
-    @overload
-    def __init__(self, *elements: str | T) -> None: ...
+        @overload
+        def __init__(self) -> None: ...
 
-    @overload
-    def __init__(self, iterable: Iterable[str | T], /) -> None: ...
+        @overload
+        def __init__(self, *elements: str | T) -> None: ...
+
+        @overload
+        def __init__(self, iterable: Iterable[str | T], /) -> None: ...
 
     def __init__(self, *args, bot_id=None):
         self.bot_id = bot_id
@@ -141,10 +143,12 @@ class MessageChain[T: MsgSeg](list[T]):
     def from_pydantic(cls, value):
         return value if isinstance(value, cls) else cls(value)
 
-    @overload
-    def __setitem__(self, key: SupportsIndex, value: T) -> None: ...
-    @overload
-    def __setitem__(self, key: slice, value: Iterable[T]) -> None: ...
+    if TYPE_CHECKING:
+
+        @overload
+        def __setitem__(self, key: SupportsIndex, value: T) -> None: ...
+        @overload
+        def __setitem__(self, key: slice, value: Iterable[T]) -> None: ...
 
     def __setitem__(self, key, value):
         if isinstance(key, slice):
@@ -313,8 +317,10 @@ class Downloadable(MsgSeg):
                     return "blp"
         return "pcx" if hlen >= 1 and header[0] == 0x0A else None
 
-    @overload
-    async def download(self, dir_: str | Path = None, name: str | None = None, *, bot_id: int = None) -> Path: ...
+    if TYPE_CHECKING:
+
+        @overload
+        async def download(self, dir_: str | Path = None, name: str | None = None, *, bot_id: int = None) -> Path: ...
 
     async def download(self, dir_=None, name=None, fix_ext=True, record_format=AudioFormat.MP3, bot_id=None):
         """下载文件
@@ -410,8 +416,10 @@ class Downloadable(MsgSeg):
             except HTTPStatusError as e:
                 raise DownloadFileMsgError(_("models.msg.downloadable.http_error") % e) from None
 
-    @overload
-    async def stream(self, size=8192, *, bot_id: int = None) -> AsyncGenerator[bytes, Any, None]: ...
+    if TYPE_CHECKING:
+
+        @overload
+        async def stream(self, size=8192, *, bot_id: int = None) -> AsyncGenerator[bytes, Any, None]: ...
 
     async def stream(self, size=8192, record_format=AudioFormat.MP3, bot_id=None):
         """获取文件流，若文件源不存在为空生成器。
@@ -521,11 +529,12 @@ class Image(Downloadable):
     summary: str | None = None
     sub_type: Any = None
 
-    @overload
-    async def download(self, dir_: str | Path = None, name: str = None, *, fix_ext=True, bot_id: int = None) -> Path | None: ...
+    if TYPE_CHECKING:
 
-    async def download(self, dir_=None, name=None, fix_ext=True, bot_id=None):
-        return await super().download(dir_, name, fix_ext=fix_ext, bot_id=bot_id)
+        @overload
+        async def download(
+            self, dir_: str | Path = None, name: str = None, *, fix_ext=True, bot_id: int = None
+        ) -> Path | None: ...
 
     @classmethod
     async def from_pil(
@@ -586,23 +595,22 @@ class File(Downloadable):
 
 
 class Record(Downloadable):
-    @overload
-    async def download(
-        self, dir_: str | Path = None, name: str = None, *, record_format: AudioFormat = AudioFormat.MP3, bot_id: int = None
-    ) -> Path | None: ...
+    if TYPE_CHECKING:
+
+        @overload
+        async def download(
+            self, dir_: str | Path = None, name: str = None, *, record_format: AudioFormat = AudioFormat.MP3, bot_id: int = None
+        ) -> Path | None: ...
+
+        @overload
+        async def stream(
+            self, size=8192, record_format: AudioFormat = AudioFormat.MP3, bot_id: int = None
+        ) -> AsyncGenerator[bytes, Any, None]: ...
 
     async def download(self, dir_=None, name=None, record_format=AudioFormat.MP3, bot_id=None):
         return await super().download(
             dir_, f"{os.path.splitext(name or self.name)[0]}.{record_format.value}", record_format=record_format, bot_id=bot_id
         )
-
-    @overload
-    async def stream(
-        self, size=8192, record_format: AudioFormat = AudioFormat.MP3, bot_id: int = None
-    ) -> AsyncGenerator[bytes, Any, None]: ...
-
-    async def stream(self, size=8192, record_format=AudioFormat.MP3, bot_id=None):
-        return await super().stream(size, record_format, bot_id)
 
 
 class Video(Downloadable):

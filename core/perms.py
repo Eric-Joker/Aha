@@ -1,4 +1,4 @@
-from typing import overload
+from typing import TYPE_CHECKING, overload
 
 from core.config import cfg
 from core.identity import aha_id2user
@@ -6,21 +6,22 @@ from core.dispatcher import current_event
 
 
 # region is_super
-@overload
-async def is_super(platform: str, user_id: str, /) -> bool: ...
+if TYPE_CHECKING:
+    @overload
+    async def is_super(platform: str, user_id: str, /) -> bool: ...
 
 
-@overload
-async def is_super(user_id: int, /) -> bool:
-    """
-    Args:
-        user_id (int): Aha ID.
-    """
+    @overload
+    async def is_super(user_id: int, /) -> bool:
+        """
+        Args:
+            user_id (int): Aha ID.
+        """
 
 
-@overload
-async def is_super() -> bool:
-    """自动从上下文事件获取用户"""
+    @overload
+    async def is_super() -> bool:
+        """自动从上下文事件获取用户"""
 
 
 async def is_super(arg1=None, arg2=None, /):

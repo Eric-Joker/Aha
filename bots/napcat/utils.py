@@ -113,14 +113,15 @@ class AICharacter(FrozenBaseModel):
 
 
 class AICharacterList(list[AICharacter]):
-    @overload
-    def __init__(self) -> None: ...
+    if TYPE_CHECKING:
+        @overload
+        def __init__(self) -> None: ...
 
-    @overload
-    def __init__(self, *elements: dict | AICharacter) -> None: ...
+        @overload
+        def __init__(self, *elements: dict | AICharacter) -> None: ...
 
-    @overload
-    def __init__(self, iterable: Iterable[dict | AICharacter], /) -> None: ...
+        @overload
+        def __init__(self, iterable: Iterable[dict | AICharacter], /) -> None: ...
 
     def __init__(self, *args):
         if not args:

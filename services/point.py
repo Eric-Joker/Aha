@@ -1,6 +1,6 @@
 from decimal import Decimal
 from numbers import Number
-from typing import overload
+from typing import TYPE_CHECKING, overload
 
 from sqlalchemy import BigInteger, Column, Numeric, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,28 +18,29 @@ class Point(dbBase):
     points = Column(Numeric, default=0)
 
 
-@overload
-async def adjust_point(point: Number, /, *, session: AsyncSession = None) -> Decimal:
-    """调整点数，自动从上下文获取事件触发用户"""
+if TYPE_CHECKING:
+    @overload
+    async def adjust_point(point: Number, /, *, session: AsyncSession = None) -> Decimal:
+        """调整点数，自动从上下文获取事件触发用户"""
 
 
-@overload
-async def adjust_point(platform: str, user: str, point: Number, /, session: AsyncSession = None) -> Decimal:
-    """调整点数
+    @overload
+    async def adjust_point(platform: str, user: str, point: Number, /, session: AsyncSession = None) -> Decimal:
+        """调整点数
 
-    Args:
-        platform (str): 平台。
-        user (str): 平台的用户 ID。
-    """
+        Args:
+            platform (str): 平台。
+            user (str): 平台的用户 ID。
+        """
 
 
-@overload
-async def adjust_point(user: int, point: Number, /, *, session: AsyncSession = None) -> Decimal:
-    """调整点数
+    @overload
+    async def adjust_point(user: int, point: Number, /, *, session: AsyncSession = None) -> Decimal:
+        """调整点数
 
-    Args:
-        user (int): User's Aha ID.
-    """
+        Args:
+            user (int): User's Aha ID.
+        """
 
 
 async def adjust_point(arg1, arg2=None, arg3=None, /, session=None):
@@ -71,28 +72,29 @@ async def adjust_point(arg1, arg2=None, arg3=None, /, session=None):
             await session.close()
 
 
-@overload
-async def inquiry_point(*, session: AsyncSession = None) -> Decimal:
-    """查询点数，自动从上下文获取事件触发用户"""
+if TYPE_CHECKING:
+    @overload
+    async def inquiry_point(*, session: AsyncSession = None) -> Decimal:
+        """查询点数，自动从上下文获取事件触发用户"""
 
 
-@overload
-async def inquiry_point(platform: str, user: str, /, session: AsyncSession = None) -> Decimal:
-    """查询点数
+    @overload
+    async def inquiry_point(platform: str, user: str, /, session: AsyncSession = None) -> Decimal:
+        """查询点数
 
-    Args:
-        platform (str): 平台。
-        user (str): 平台的用户 ID。
-    """
+        Args:
+            platform (str): 平台。
+            user (str): 平台的用户 ID。
+        """
 
 
-@overload
-async def inquiry_point(user: int, /, *, session: AsyncSession = None) -> Decimal:
-    """查询点数
+    @overload
+    async def inquiry_point(user: int, /, *, session: AsyncSession = None) -> Decimal:
+        """查询点数
 
-    Args:
-        user (int): User's Aha ID.
-    """
+        Args:
+            user (int): User's Aha ID.
+        """
 
 
 async def inquiry_point(arg1=None, arg2=None, /, session=None):

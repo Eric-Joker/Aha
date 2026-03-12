@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from copy import deepcopy
 from logging import getLogger
 from re import Match, Pattern
-from typing import get_type_hints, overload
+from typing import TYPE_CHECKING, get_type_hints, overload
 
 from attrs import define
 from pydantic import TypeAdapter
@@ -173,25 +173,26 @@ _logger = getLogger("AHA (Dispatcher)")
 _message_args = {"event", "match_", "args", "localizer"}
 
 
-@overload
-def on_message(
-    *conditions: Expr | str | Pattern | Sequence[str | type[MsgSeg]],
-    exp: float = None,
-    debug=False,
-    pre_hook: Callable[[MessageChain], MessageChain] = None,
-    register_help: dict[str, str | None] = None,
-) -> Callable: ...
+if TYPE_CHECKING:
+    @overload
+    def on_message(
+        *conditions: Expr | str | Pattern | Sequence[str | type[MsgSeg]],
+        exp: float = None,
+        debug=False,
+        pre_hook: Callable[[MessageChain], MessageChain] = None,
+        register_help: dict[str, str | None] = None,
+    ) -> Callable: ...
 
 
-@overload
-def on_message(
-    *conditions: Expr | str | Pattern | Sequence[str | type[MsgSeg]],
-    callback: Callable,
-    exp: float = None,
-    debug=False,
-    pre_hook: Callable[[MessageChain], MessageChain] = None,
-    register_help: dict[str, str | None] = None,
-) -> None: ...
+    @overload
+    def on_message(
+        *conditions: Expr | str | Pattern | Sequence[str | type[MsgSeg]],
+        callback: Callable,
+        exp: float = None,
+        debug=False,
+        pre_hook: Callable[[MessageChain], MessageChain] = None,
+        register_help: dict[str, str | None] = None,
+    ) -> None: ...
 
 
 def on_message(*conditions, exp=None, debug=False, pre_hook=None, callback=None, register_help: dict = None):
@@ -265,14 +266,15 @@ def on_message(*conditions, exp=None, debug=False, pre_hook=None, callback=None,
 _other_args = {"event", "localizer"}
 
 
-@overload
-def on_notice[Callback: Callable](
-    *conditions: Expr | str, exp: float = None, debug=False
-) -> Callable[[Callback], Callback]: ...
+if TYPE_CHECKING:
+    @overload
+    def on_notice[Callback: Callable](
+        *conditions: Expr | str, exp: float = None, debug=False
+    ) -> Callable[[Callback], Callback]: ...
 
 
-@overload
-def on_notice(*conditions: Expr | str, callback: Callable, exp: float = None, debug=False) -> None: ...
+    @overload
+    def on_notice(*conditions: Expr | str, callback: Callable, exp: float = None, debug=False) -> None: ...
 
 
 def on_notice(*conditions, exp=None, debug=False, callback=None):
@@ -305,14 +307,15 @@ def on_notice(*conditions, exp=None, debug=False, callback=None):
     return decorator(callback) if callback else decorator
 
 
-@overload
-def on_request[Callback: Callable](
-    *conditions: Expr | str, exp: float = None, debug=False
-) -> Callable[[Callback], Callback]: ...
+if TYPE_CHECKING:
+    @overload
+    def on_request[Callback: Callable](
+        *conditions: Expr | str, exp: float = None, debug=False
+    ) -> Callable[[Callback], Callback]: ...
 
 
-@overload
-def on_request(*conditions: Expr | str, callback: Callable, exp: float = None, debug=False) -> None: ...
+    @overload
+    def on_request(*conditions: Expr | str, callback: Callable, exp: float = None, debug=False) -> None: ...
 
 
 def on_request(*conditions, exp=None, debug=False, callback=None):
@@ -345,12 +348,13 @@ def on_request(*conditions, exp=None, debug=False, callback=None):
     return decorator(callback) if callback else decorator
 
 
-@overload
-def on_meta[Callback: Callable](*conditions: Expr | str, exp: float = None, debug=False) -> Callable[[Callback], Callback]: ...
+if TYPE_CHECKING:
+    @overload
+    def on_meta[Callback: Callable](*conditions: Expr | str, exp: float = None, debug=False) -> Callable[[Callback], Callback]: ...
 
 
-@overload
-def on_meta(*conditions: Expr | str, callback: Callable, exp: float = None, debug=False) -> None: ...
+    @overload
+    def on_meta(*conditions: Expr | str, callback: Callable, exp: float = None, debug=False) -> None: ...
 
 
 def on_meta(*conditions, exp=None, debug=False, callback=None):

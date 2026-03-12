@@ -1,7 +1,7 @@
 from collections.abc import Container, Iterable
 from datetime import datetime
 from time import time
-from typing import Annotated, Self, overload
+from typing import TYPE_CHECKING, Annotated, Self, overload
 
 from pydantic import AliasChoices, BeforeValidator, Field, field_validator
 
@@ -74,14 +74,15 @@ class GroupMemberInfo(FrozenBaseModel):
 
 
 class GroupMembers[T: GroupMemberInfo, _T_co, _S](frozenset[T]):
-    @overload
-    def __new__(cls) -> Self: ...
+    if TYPE_CHECKING:
+        @overload
+        def __new__(cls) -> Self: ...
 
-    @overload
-    def __new__(cls, *elements: dict | T, element_cls: type[T] = GroupMemberInfo) -> Self: ...
+        @overload
+        def __new__(cls, *elements: dict | T, element_cls: type[T] = GroupMemberInfo) -> Self: ...
 
-    @overload
-    def __new__(cls, iterable: Iterable[dict | T], /, *, element_cls: type[T] = GroupMemberInfo) -> Self: ...
+        @overload
+        def __new__(cls, iterable: Iterable[dict | T], /, *, element_cls: type[T] = GroupMemberInfo) -> Self: ...
 
     def __new__(cls, *args, element_cls=GroupMemberInfo):
         if not args:

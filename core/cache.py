@@ -145,16 +145,17 @@ class CronCacheMixin:
 
 
 # endregion
-@overload
-def async_cached(
-    cache: Cache, key: Callable = None, ignore: Callable[..., bool] = None
-) -> Callable[[Callable[..., CoroutineType[Any, Any, Any]]], Callable[..., CoroutineType[Any, Any, Any]]]: ...
+if TYPE_CHECKING:
+    @overload
+    def async_cached(
+        cache: Cache, key: Callable = None, ignore: Callable[..., bool] = None
+    ) -> Callable[[Callable[..., CoroutineType[Any, Any, Any]]], Callable[..., CoroutineType[Any, Any, Any]]]: ...
 
 
-@overload
-def async_cached(
-    cache: Cache, key: Callable = None, ignore: Callable[..., bool] = None, func: Callable = None
-) -> CoroutineType[Any, Any, Any]: ...
+    @overload
+    def async_cached(
+        cache: Cache, key: Callable = None, ignore: Callable[..., bool] = None, func: Callable = None
+    ) -> CoroutineType[Any, Any, Any]: ...
 
 
 def async_cached(

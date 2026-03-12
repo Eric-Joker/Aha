@@ -1,6 +1,6 @@
 from datetime import timedelta
 from logging import getLogger
-from typing import Literal, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 from anyio import Path
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -12,26 +12,27 @@ from services.file_cache import cache_file_sessionmaker
 logger = getLogger(__name__)
 
 
-@overload
-async def capture_element(
-    url: str,
-    selector: str,
-    return_bytes: Literal[True],
-    save=None,
-    wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
-    **kwargs,
-) -> bytes | None: ...
+if TYPE_CHECKING:
+    @overload
+    async def capture_element(
+        url: str,
+        selector: str,
+        return_bytes: Literal[True],
+        save=None,
+        wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
+        **kwargs,
+    ) -> bytes | None: ...
 
 
-@overload
-async def capture_element(
-    url: str,
-    selector: str,
-    return_bytes: Literal[False] = False,
-    save=None,
-    wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
-    **kwargs,
-) -> Path | None: ...
+    @overload
+    async def capture_element(
+        url: str,
+        selector: str,
+        return_bytes: Literal[False] = False,
+        save=None,
+        wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
+        **kwargs,
+    ) -> Path | None: ...
 
 
 @retry(

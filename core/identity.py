@@ -1,4 +1,4 @@
-from typing import overload
+from typing import TYPE_CHECKING, overload
 
 from sqlalchemy import BigInteger, Column, String, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,16 +38,17 @@ def _generate_aha_id(platform, entity_id):
 
 
 # region 用户
-@overload
-async def user2aha_id(platform: str, user_id: str, *, session: AsyncSession = None) -> int: ...
+if TYPE_CHECKING:
+    @overload
+    async def user2aha_id(platform: str, user_id: str, *, session: AsyncSession = None) -> int: ...
 
 
-@overload
-async def user2aha_id(user_id: str, *, session: AsyncSession = None) -> int: ...
+    @overload
+    async def user2aha_id(user_id: str, *, session: AsyncSession = None) -> int: ...
 
 
-@overload
-async def user2aha_id(*, session: AsyncSession = None) -> int: ...
+    @overload
+    async def user2aha_id(*, session: AsyncSession = None) -> int: ...
 
 
 @async_cached(USER_CACHE)
@@ -121,12 +122,13 @@ async def map_user(source_platform: str, source_user_id: str, target_platform: s
 
 # endregion
 # region 群组
-@overload
-async def group2aha_id(platform: str, user_id: str) -> int: ...
+if TYPE_CHECKING:
+    @overload
+    async def group2aha_id(platform: str, user_id: str) -> int: ...
 
 
-@overload
-async def group2aha_id(user_id: str) -> int: ...
+    @overload
+    async def group2aha_id(user_id: str) -> int: ...
 
 
 @async_cached(GROUP_CACHE)

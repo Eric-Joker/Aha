@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 from core.log import setup_logging, shutdown_logging  # isort: skip
 import os
 

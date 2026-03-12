@@ -2,7 +2,7 @@ import signal
 import sys
 from asyncio import CancelledError, create_task, sleep
 from contextlib import suppress
-from typing import Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from tenacity.stop import stop_base
 from tenacity.wait import wait_base
@@ -197,11 +197,12 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
         """返回用于传递给 `transport.connect` 的 kwargs"""
         raise NotImplementedError
 
-    @overload
-    async def _listen_callback(self, data): ...
+    if TYPE_CHECKING:
+        @overload
+        async def _listen_callback(self, data): ...
 
-    @overload
-    def _listen_callback(self, data): ...
+        @overload
+        def _listen_callback(self, data): ...
 
     def _listen_callback(self, data):
         """处理上报事件与API返回值"""

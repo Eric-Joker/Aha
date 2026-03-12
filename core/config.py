@@ -38,44 +38,45 @@ logger = getLogger(__name__)
 
 
 @define(slots=True, frozen=True)
-class IndexedBotUser:
+class IndexedBase:
     bot_index: int = field(converter=int)
-    user_id: str = field(converter=str)
-
-    def __eq__(self, other):
-        return (
-            (self.user_id == other.user_id and self.platform == other.platform) if isinstance(other, User) else NotImplemented
-        )
-
-    def __hash__(self):
-        return hash(User(self.platform, self.user_id))
-
+    
     @property
     def platform(self):
         return get_bot_class(next(iter(cfg.bots[self.bot_index]))).platform
+
+
+@define(slots=True, frozen=True)
+class IndexedBotUser(IndexedBase):
+    user_id: str = field(converter=str)
+
+    def __eq__(self, other):
+        if isinstance(other, User):
+            return self.user_id == other.user_id and self.platform == other.platform
+        if isinstance(other, IndexedBotUser):
+            return super().__eq__(other)
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(User(self.platform, self.user_id))
 
     def __repr__(self):
         return f"{self.platform}(user={self.user_id})"
 
 
 @define(slots=True, frozen=True)
-class IndexedBotGroup:
-    bot_index: int = field(converter=int)
+class IndexedBotGroup(IndexedBase):
     group_id: str = field(converter=str)
 
     def __eq__(self, other):
-        return (
-            (self.group_id == other.group_id and self.platform == other.platform)
-            if isinstance(other, Group)
-            else NotImplemented
-        )
+        if isinstance(other, Group):
+            return self.group_id == other.group_id and self.platform == other.platform
+        if isinstance(other, IndexedBotGroup):
+            return super().__eq__(other)
+        return NotImplemented
 
     def __hash__(self):
         return hash(Group(self.platform, self.group_id))
-
-    @property
-    def platform(self):
-        return get_bot_class(next(iter(cfg.bots[self.bot_index]))).platform
 
     def __repr__(self):
         return f"{self.platform}(group={self.group_id})"

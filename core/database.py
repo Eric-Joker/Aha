@@ -25,7 +25,7 @@ from .i18n import _
 __all__ = ("db_engine", "dbBase", "metadata", "db_sessionmaker")
 
 MODULE_AUTHOR_PATTERN = compile(r"^modules\.([^.]+)")
-DATABASEPATHS = frozenset(("database", "database.py"))
+DATABASEPATHS = {"database", "database.py"}
 
 database_initialized = False
 

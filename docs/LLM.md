@@ -745,20 +745,65 @@ modules.a:
 modules.b: ...
 ```
 
-### 注册配置项
+### 注册配置项并获取值
 
 ```python
 from core.config import Option, cfg
 
-KEY1: str = cfg.register("key1", Option("选项1", "选项2"), "key1 的注释")
+KEY1: str = cfg.register("key1", Option(("选项1", "选项2")), "key1 的注释")
 KEY2: tuple = cfg.register("key2", (1,), "key2 的注释")
 ```
 
-如上，通过 `cfg.register` 方法注册配置项，第一个参数是配置项的键名，第二个参数是配置项的默认值，第三个参数是配置项的注释。
+如上，通过 `cfg.register` 方法在本次 Aha 生命周期注册配置项。
 
-`Option` 对象会自动将第一个值作为默认值，且将所有选项通过行尾注释提示用户。
+第一个参数是配置项的键名，第二个参数是配置项的默认值，第三个参数是配置项的注释。
 
-该配置系统具备类型验证能力，会自动将配置文件中的值转换为与第二个参数默认值相同的类型。如果默认值是 Sequence 或 Mapping，会递归验证。
+若配置项已存在于配置文件该方法返回其值，否则返回默认值。
+
+该系统具备类型验证与转换能力，会自动将配置文件中的值转换为与默认值相同的类型。如果默认值是 Sequence 或 Mapping，会递归验证并转换。
+
+后续也可通过类似 `cfg.key1` 获取配置值。
+
+### 特殊的值类型
+
+#### `core.config.Option`
+
+用于表示一个选项，会将所有选项通过行尾注释提示用户。
+
+第一个参数为选项列表；第二个参数为默认值，默认为第一个选项。
+
+选项的类型只可为 `str`、`bytes`、`int`、`float`、`bool`。
+
+#### `core.config.IndexedBotUser` / `core.config.IndexedBotGroup`
+
+用于表示 `bots` 配置项中第几个适配器实例的平台 ID。
+
+第一个参数为适配器数字索引，第二个参数为平台 ID。
+
+实例可以与 [User](../数据结构/平台个体.md#modelscoreuser) 或 [Group](../数据结构/平台个体.md#modelcoregroup) 进行相等比较。
+
+如：
+```python
+from core.config import IndexedBotUser
+
+USER: IndexedBotUser = cfg.register("user", IndexedBotUser(0, "114514"))
+```
+
+```yaml
+bots:
+- NapCat:
+    uri: ...
+    token: ...
+
+modules.example:
+  user:
+    bot_index: 0
+    user_id: '114514'
+```
+
+此时 `user` 代表着第一个 NapCat 适配器实例的 ID 为 `114514` 的用户。
+
+> 该类型可被作为容器的元素。
 
 ### 一些限制
 
@@ -766,15 +811,11 @@ KEY2: tuple = cfg.register("key2", (1,), "key2 的注释")
 
 值存在类型限制，必须为 `Option`、`int`、`float`、`Sequence`、`Mapping`、dataclass、[attrs](https://github.com/python-attrs/attrs)、[Pydantic](https://github.com/pydantic/pydantic) Model 或 `None`。
 
-键也存在一些限制。因为读取配置项时**会先从 `aha` 读取**，其次是[表达式字段提取器](./事件匹配表达式.md#可注册提取器)的字段，最后才轮到模块自己的配置项。
+键也存在一些限制。因为读取配置项时**会先从 `aha` 读取**，其次是[表达式字段提取器](./事件匹配表达式.md#注册-pmvalidated-的提取器)的字段，最后才轮到模块自己的配置项。
 
 #### 目前一定冲突的键名有：
 
-`base64_buffer`、`bot_prefs`、`bot_selector_strategy`、`cache_conv`、`database`、`debug`、`default_group_list`、`default_group_list_mode`、`default_user_list`、`default_user_list_mode`、`execution_mode`、`global_msg_prefix`、`lang`、`limit`、`memory_level`、`playwright`、`point_feat`、`private`、`super`
-
-#### 可能冲突的键名有（即可注册提取器的表达式字段名）：
-
-`validated`
+`base64_buffer`、`bot_prefs`、`bot_selector_strategy`、`cache_conv`、`database`、`debug`、`default_group_list`、`default_group_list_mode`、`default_user_list`、`default_user_list_mode`、`execution_mode`、`global_msg_prefix`、`lang`、`limit`、`memory_level`、`playwright`、`point_feat`、`private`、`super` 、`validated`
 
 #### 具有特殊用途的键名有：
 

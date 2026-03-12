@@ -23,19 +23,19 @@ if TYPE_CHECKING:
     from starlette.types import Scope
     from uvicorn import Server
 
-__all__ = ("app", "FastAPI", "skip_verify")
+__all__ = ("app", "FastAPI", "verify")
 
 app: fastapi_FastAPI = None
 
 
-def skip_verify(wrapped: Callable = None):
+def verify(wrapped: Callable = None):
     if wrapped is None:
-        return skip_verify
+        return verify
     from fastapi.routing import APIRoute, APIWebSocketRoute
 
     for r in app.routes:
         if (r.__class__ is APIRoute or r.__class__ is APIWebSocketRoute) and r.endpoint is wrapped:
-            VerificationMiddleware.pass_paths.add(r.path)
+            VerificationMiddleware.paths.add(r.path)
             return wrapped
 
     assert False
@@ -43,7 +43,6 @@ def skip_verify(wrapped: Callable = None):
 
 async def load_public_key(public_key_path: Path) -> Ed25519PublicKey | None:
     if not await public_key_path.exists():
-        getLogger("AHA (FastAPI)").warning(_("fastapi.secrets.404") % str(public_key_path))
         return None
 
     try:
@@ -65,7 +64,7 @@ class VerificationMiddleware:
     __slots__ = ("app", "_nonce_cache", "_cache_lock")
 
     public_key: Ed25519PublicKey = None
-    pass_paths = set()
+    paths = set()
 
     DELTA = 300
 
@@ -87,7 +86,7 @@ class VerificationMiddleware:
                 await send({"type": "websocket.close", "code": 1008})
 
         # 跳过验证
-        if scope.get("path") in self.pass_paths or scope.get("type") == "lifespan":
+        if scope.get("path") not in self.paths or scope.get("type") == "lifespan":
             await self.app(scope, receive, send)
             return
 
@@ -160,9 +159,6 @@ class FastAPIConnection(ServerTransport):
 
         app = fastapi_FastAPI()
         VerificationMiddleware.public_key = await load_public_key(config.pop("public_key", await Path.cwd() / "ed25519.pem"))
-        if VerificationMiddleware.public_key is None:
-            self.logger.warning(_("fastapi.secrets.warn"))
-
         app.add_middleware(VerificationMiddleware)
         from fastapi_modules import init_load_mod
 

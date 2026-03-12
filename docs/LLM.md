@@ -1923,7 +1923,7 @@ async def _(body: Annotated[str, Body(..., media_type="text/plain")]):
 
 内置建立连接时防重放和 **ed25519** 签名验证的中间件。该中间件不会验证请求体，建议使用 HTTPS 或 WSS。
 
-端点可通过 `bots.fastapi.skip_verify` 装饰器使对应的 `path` 跳过内置验证。
+端点通过 `bots.fastapi.verify` 装饰器使对应的 `path` 执行该验证逻辑。
 
 未找到公钥文件时不进行验证；若存在 `signature` 请求头但未提供公钥文件则返回 503。
 

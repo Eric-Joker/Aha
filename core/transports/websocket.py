@@ -8,25 +8,17 @@ from tenacity import before_sleep_log, retry, retry_if_exception_type, wait_expo
 from utils.network import local_srv
 
 from ..i18n import _
-from .base import ClientTransport, Transport
+from .base import ClientTransport, FastAPITransport
 
 
 class WebSocketClient(ClientTransport):
-    __slots__ = (
-        "websocket",
-        "uri",
-        "_logger",
-        "_closed_event",
-        "_connect_args",
-        "_retry_args",
-        "_local_srv",
-        "_connect_args",
-        "_disconnect_cb",
-    )
+    __slots__ = ("websocket", "uri", "_closed_event", "_connect_args", "_retry_args", "_local_srv")
 
-    async def open(
-        self, uri: str, extra_headers=None, close_timeout=2, max_size=2**30, open_timeout=8, retry_config=None, **kwargs
-    ):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._local_srv = None
+
+    async def open(self, uri: str, extra_headers=None, retry_config=None, **kwargs):
         from websockets.exceptions import WebSocketException
 
         self._retry_args = {
@@ -37,13 +29,7 @@ class WebSocketClient(ClientTransport):
         }
         if retry_config:
             self._retry_args |= retry_config
-        self._connect_args = {
-            "additional_headers": extra_headers or {},
-            "close_timeout": close_timeout,
-            "max_size": max_size,
-            "open_timeout": open_timeout,
-            **kwargs,
-        }
+        self._connect_args = {"additional_headers": extra_headers or {}} | kwargs
         self.uri = uri
         self._closed_event = Event()
 
@@ -102,7 +88,7 @@ class WebSocketClient(ClientTransport):
         return self._local_srv
 
 
-class WebSocketServer(Transport):
+class WebSocketServer(FastAPITransport):
     """由FastAPI实现，由core.api_service劫持请求（暂未实现）。仅做标记"""
 
 

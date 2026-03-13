@@ -187,7 +187,7 @@
 
 ### bots.napcat.GroupHonor
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 描述 |
 | --- | --- | --- |
@@ -200,7 +200,7 @@
 
 ### bots.napcat.GroupHonorUser
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 描述 |
 | --- | --- | --- |
@@ -221,7 +221,7 @@
 
 ### bots.napcat.AICharacter
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 描述 |
 | --- | --- | --- |

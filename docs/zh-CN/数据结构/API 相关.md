@@ -4,7 +4,7 @@
 
 ## models.api.ReactionUser
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -34,7 +34,7 @@
 
 ## models.api.EssenceMessage
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -53,7 +53,7 @@
 
 ## models.api.GroupFile
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -71,7 +71,7 @@
 
 ## models.api.GroupFolder
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -86,7 +86,7 @@
 
 ## models.api.GroupFiles
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -95,7 +95,7 @@
 
 ## models.api.GroupInfo
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -107,7 +107,7 @@
 
 ## models.api.GroupMemberInfo
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -191,7 +191,7 @@
 
 ## models.api.LoginInfo
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -200,7 +200,7 @@
 
 ## models.api.Friend
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -217,7 +217,7 @@
 
 ## models.api.FriendCategory
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -228,7 +228,7 @@
 
 ## models.api.LastestMsgs
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
@@ -243,7 +243,7 @@
 
 ## models.api.Stranger
 
-[Pydantic](https://github.com/pydantic/pydantic) Model。
+[Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/)。
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |

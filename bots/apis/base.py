@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 
 class BaseAPI:
-    def __init__(self):
-        self.logger: AhaLogger = getLogger(self.__class__.__name__)
+    if TYPE_CHECKING:
+        logger: AhaLogger
 
     @staticmethod
     def gen_id():

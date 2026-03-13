@@ -1,14 +1,24 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from logging import Logger, getLogger
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from utils.aio import async_run_func
 
 
 class Transport(ABC):
-    def __init__(self, logger=None):
+    __slots__ = ("_logger", "_disconnect_cb", "_reconnect_cb")
+    
+    def __init__(
+        self,
+        logger=None,
+        disconnect_cb: Callable[[], Coroutine[Any, Any, Any]] = None,
+        reconnect_cb: Callable[[], Coroutine[Any, Any, Any]] = None,
+    ):
+        """参数中两个回调不必须使用"""
         self._logger: Logger = logger or getLogger(self.__class__.__name__)
+        self._disconnect_cb = disconnect_cb
+        self._reconnect_cb = reconnect_cb
 
     @abstractmethod
     async def open(self, *args, **kwargs):
@@ -19,36 +29,11 @@ class Transport(ABC):
         """正常情况下应一直阻塞，返回代表不再连接"""
 
     @abstractmethod
-    async def invoke(self, *args, **kwargs) -> Any | None:
-        pass
-
-    @abstractmethod
     async def close(self):
-        pass
-
-    @property
-    def local_srv(self) -> bool:
-        raise NotImplementedError
+        """关闭连接"""
 
 
 class ClientTransport(Transport):
-    def __init__(
-        self,
-        logger=None,
-        disconnect_cb: Callable[[], Coroutine[Any, Any, Any]] = None,
-        reconnect_cb: Callable[[], Coroutine[Any, Any, Any]] = None,
-    ):
-        """实际实现不必须利用两个回调"""
-        super().__init__(logger)
-        self._local_srv: bool = None
-        self._disconnect_cb = disconnect_cb
-        self._reconnect_cb = reconnect_cb
-
-    @abstractmethod
-    async def open(self, *args, **kwargs):
-        """建立连接，其中不得阻塞线程。需要允许冗余关键字参数"""
-        pass
-
     async def listen(self, callback: Callable[[Any], Any]):
         async for data in self._listen_impl():
             try:
@@ -62,37 +47,19 @@ class ClientTransport(Transport):
 
     @abstractmethod
     async def invoke(self, *args, **kwargs) -> Any | None:
-        """向 API 发送请求，可能直接返回值也可能只能通过listen返回"""
-        pass
-
-    @abstractmethod
-    async def close(self):
-        """关闭连接"""
-        pass
+        """向 API 发送请求，可直接返回值也可通过 listen 方法返回"""
 
     @property
+    @abstractmethod
     def local_srv(self) -> bool:
-        raise NotImplementedError
-
-
-class ServerTransport(Transport):
-    @abstractmethod
-    async def open(self, *args, **kwargs):
-        """初始化服务，其中不得阻塞线程。需要允许冗余关键字参数"""
         pass
 
-    @abstractmethod
-    async def listen(self, _):
-        """启动服务"""
+    if TYPE_CHECKING:
 
-    async def invoke(self):
-        pass
+        @abstractmethod
+        async def open(self, *args, **kwargs):
+            """建立连接，其中不得阻塞。需允许冗余关键字参数"""
 
-    @abstractmethod
-    async def close(self):
-        """关闭连接"""
-        pass
 
-    @property
-    def local_srv(self) -> bool:
-        raise NotImplementedError
+class FastAPITransport(Transport):
+    """TODO"""

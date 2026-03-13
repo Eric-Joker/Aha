@@ -37,7 +37,7 @@
 - [事件匹配表达式](./事件匹配表达式.md)
 - [Aha 码](./Aha%20码.md)
 - [本地化](./本地化.md)
-- [Aha 生命周期](./Aha%20生命周期.md)
+- [Aha 生命周期](../Aha%20生命周期.md)
 - 日志：Aha 猴补了 python 标准库的 logging 模块，并添加了 `AHA_DEBUG` 日志等级。通过 `logging.getLogger` 获取 logger 实例即可。
 
 ### 实际模块参考

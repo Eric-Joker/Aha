@@ -49,16 +49,16 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
         else:
             self._gi_deque = None
 
-    @property
-    def _transport_kwargs(self) -> dict:
-        existing_params = dict(parse_qsl((parsed := urlparse(self.config["uri"])).query))
-        existing_params["access_token"] = self.config.pop("token")
-        self.config["uri"] = urlunparse(
+    @classmethod
+    def _get_transport_kwargs(cls, config: dict):
+        existing_params = dict(parse_qsl((parsed := urlparse(config["uri"])).query))
+        existing_params["access_token"] = config.pop("token")
+        config["uri"] = urlunparse(
             (parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(existing_params), parsed.fragment)
         )
-        if d := self.config.get("retry_config"):
-            self.config["retry_config"] = self.parse_retry_config(d)
-        return self.config
+        if d := config.get("retry_config"):
+            config["retry_config"] = cls.parse_retry_config(d)
+        return config
 
     async def _listen_callback(self, data):
         self.logger.debug(f"Raw received: {data}")

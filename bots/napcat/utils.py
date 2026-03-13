@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Annotated, Any, overload
 
 from anyio import Path
 from pydantic import BeforeValidator, Field
-from websockets import State
+# from websockets import State
 
 import core.status
 from bots.apis import BaseAPI
@@ -159,7 +159,7 @@ class Utils(BaseAPI):
                 return data.get("data")
             raise APIException(data["message"], retcode)
         except TimeoutError:
-            if self.transport.websocket.state is not State.CLOSING and self.transport.websocket.state is not State.CLOSED:
+            # if self.transport.websocket.state is not State.CLOSING and self.transport.websocket.state is not State.CLOSED:
                 raise APITimeoutError()
         finally:
             del self._call_handlers[echo]

@@ -1,3 +1,3 @@
-from .base import ClientTransport, ServerTransport, Transport
+from .base import ClientTransport, FastAPITransport, Transport
 from .http import HttpFastAPI, HttpSse
-from .websockets import WebSocketClient, WebSocketServer
+from .websocket import WebSocketClient, WebSocketServer

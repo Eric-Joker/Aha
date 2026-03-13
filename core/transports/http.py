@@ -9,7 +9,7 @@ from tenacity import before_sleep_log, retry, retry_if_exception_type, wait_expo
 from utils.network import local_srv
 
 from ..i18n import _
-from .base import ClientTransport
+from .base import ClientTransport, FastAPITransport
 
 
 class _HttpMixin(ClientTransport):
@@ -18,6 +18,7 @@ class _HttpMixin(ClientTransport):
     def __init__(self, logger=None):
         super().__init__(logger)
         self._logger = logger or logging.getLogger("API Connection (HTTP)")
+        self._local_srv = None
 
     async def open(self, *, api_connect_config: dict, api_client_config: dict, **kwargs):
         await super().open(**kwargs)
@@ -47,9 +48,11 @@ class _HttpMixin(ClientTransport):
 
 class _SseMixin(ClientTransport):
     """瞎写的且未经测试，估计用不了。"""
+
     def __init__(self, logger=None):
         super().__init__(logger)
         self._logger = logger or logging.getLogger("API Connection (HTTP SSE)")
+        self._local_srv = None
 
     async def open(self, *, sse_connect_config: dict, sse_client_config: dict = {}, retry_config: dict = None, **kwargs):
         await super().open(**kwargs)
@@ -116,6 +119,7 @@ class _SseMixin(ClientTransport):
 
 class HttpSse(_HttpMixin, _SseMixin):
     __slots__ = (
+        "_local_srv",
         # _HttpMixin的slots
         "_http_client",
         "_http_config",
@@ -125,11 +129,6 @@ class HttpSse(_HttpMixin, _SseMixin):
         "sse_connect",
         "_closed_event",
         "_retry_args",
-        # abc
-        "_logger",
-        "_local_srv",
-        "_connect_args",
-        "_disconnect_cb",
     )
 
     async def open(
@@ -152,6 +151,6 @@ class HttpSse(_HttpMixin, _SseMixin):
         )
 
 
-class HttpFastAPI(_HttpMixin):
+class HttpFastAPI(FastAPITransport):
     async def open(self, api_config: dict):
         await super().open(api_config=api_config)

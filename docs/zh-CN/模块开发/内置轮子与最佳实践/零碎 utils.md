@@ -180,3 +180,11 @@ gen1, gen2 = AsyncTee.gen(AsyncIterator())
 ### `insert_ignore`
 
 返回 Insert 对象，使用方法同上。
+
+## 中止 Aha 进程
+
+```python
+import core.status
+
+core.status.main_task.cancel()
+```

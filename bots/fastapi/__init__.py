@@ -11,7 +11,7 @@ from aiofiles import open
 from anyio import Path
 
 from core.i18n import _
-from core.transports import ServerTransport
+from core.transports import Transport
 from models.api import External, LifecycleSubType, MetaEvent, MetaEventType
 from models.core import EventCategory
 
@@ -145,7 +145,7 @@ class VerificationMiddleware:
         await self.app(scope, receive, send)
 
 
-class FastAPIConnection(ServerTransport):
+class FastAPIConnection(Transport):
     __slots__ = ("logger", "server")
 
     def __init__(self, _=None):
@@ -209,9 +209,9 @@ class FastAPI(BaseBot):
     transport_class = FastAPIConnection
     _calls: dict[str, Future] = None
 
-    @property
-    def _transport_kwargs(self):
-        return {"config": self.config}
+    @staticmethod
+    def _get_transport_kwargs(config):
+        return {"config": config}
 
     def __init__(self, *args, **kwargs):
         FastAPI._calls = {}

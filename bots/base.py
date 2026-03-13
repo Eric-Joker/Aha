@@ -1,3 +1,5 @@
+from abc import abstractmethod
+from logging import getLogger
 import signal
 import sys
 from asyncio import CancelledError, create_task, sleep
@@ -9,7 +11,7 @@ from tenacity.wait import wait_base
 
 import core.status
 from core.i18n import _, load_locales
-from core.log import setup_logging
+from core.log import AhaLogger, setup_logging
 from core.transports import ClientTransport, Transport
 from models.api import BaseEvent, LifecycleSubType, MetaEvent, MetaEventType
 from models.core import EventCategory
@@ -58,16 +60,19 @@ async def _run(coroutine):
 class BaseBotMeta(PerProcessSingletonMeta):
     """注册所有API子类"""
 
-    def __init__(cls, name, bases, attrs):
+    def __new__(cls, name, *args):
         from core.bot_register import register
 
-        super().__init__(name, bases, attrs)
         register(cls)
+        (new_class := super().__new__(cls, name, *args)).logger = getLogger(name)
+        return new_class
 
 
 class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, BaseSupportAPI, metaclass=BaseBotMeta):
-    platform: str
-    transport_class: type[Transport]
+    if TYPE_CHECKING:
+        platform: str
+        transport_class: type[Transport]
+        logger: AhaLogger
 
     def __init__(self, bot_id, config: dict, pipe: AsyncConnection = None):
         super().__init__()
@@ -89,7 +94,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
 
         await load_locales(self.__class__.__module__)
         try:
-            await self.transport.open(**self._transport_kwargs)
+            await self.transport.open(**self._get_transport_kwargs(self.config))
         except Exception as e:
             self.logger.error(_("api.service.conn.failed") % e)
             await self.close()
@@ -138,11 +143,12 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
 
             clean_bot(self.bot_id)
 
-    def parse_retry_config(self, config: dict[RetryConfigKey, int | float | list[dict[RetryConfigKey, Any] | Any]]):
+    @classmethod
+    def parse_retry_config(cls, config: dict[RetryConfigKey, int | float | list[dict[RetryConfigKey, Any] | Any]]):
         """解析重试策略配置，返回包含wait和stop实例的字典"""
 
-        stop_types = {cls.__name__: cls for cls in stop_base.__subclasses__()}
-        wait_types = {cls.__name__: cls for cls in wait_base.__subclasses__()}
+        stop_types = {c.__name__: c for c in stop_base.__subclasses__()}
+        wait_types = {c.__name__: c for c in wait_base.__subclasses__()}
 
         # 分离stop和wait配置
         stop_configs = {}
@@ -153,7 +159,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
             elif k.startswith("wait_"):
                 wait_configs[k] = v
             else:
-                self.logger.warning(_("api.service.retry_config_422") % k)
+                cls.logger.warning(_("api.service.retry_config_422") % k)
 
         # 配置冲突
         if len(stop_configs) > 1:
@@ -168,7 +174,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
 
             if stop_key in ("stop_any", "stop_all"):
                 # 递归
-                result["stop"] = stop_cls(*[self.parse_retry_config(sub_config)["stop"] for sub_config in stop_value])
+                result["stop"] = stop_cls(*[cls.parse_retry_config(sub_config)["stop"] for sub_config in stop_value])
             else:
                 result["stop"] = stop_cls(**stop_value)
 
@@ -178,7 +184,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
 
             if wait_key in ("wait_chain", "wait_combine"):
                 # 递归
-                result["wait"] = wait_cls(*[self.parse_retry_config(sub_config)["wait"] for sub_config in wait_value])
+                result["wait"] = wait_cls(*[cls.parse_retry_config(sub_config)["wait"] for sub_config in wait_value])
             else:
                 result["wait"] = wait_cls(**wait_value)
 
@@ -192,18 +198,21 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
     async def _reconnect_cb(self):
         pass
 
-    @property
-    def _transport_kwargs(self) -> dict:
-        """返回用于传递给 `transport.connect` 的 kwargs"""
+    @classmethod
+    @abstractmethod
+    def _get_transport_kwargs(cls, config) -> dict:
+        """返回用于传递给 `transport.open` 的 kwargs"""
         raise NotImplementedError
 
     if TYPE_CHECKING:
+
         @overload
         async def _listen_callback(self, data): ...
 
         @overload
         def _listen_callback(self, data): ...
 
+    @abstractmethod
     def _listen_callback(self, data):
         """处理上报事件与API返回值"""
         raise NotImplementedError

@@ -77,10 +77,10 @@ __all__ = (
     "NotIn",
     "Contains",
     "NotContains",
-    "Prefix",
-    "NotPrefix",
-    "Suffix",
-    "NotSuffix",
+    "StartsWith",
+    "NotStartsWith",
+    "EndsWith",
+    "NotEndsWith",
     # "SubClassOf",
     # "NotSubClassOf",
     # "SuperClassOf",
@@ -89,8 +89,8 @@ __all__ = (
     # "NotInstanceOf",
     # "HasInstance",
     # "NotHasInstance",
-    # "Singleton",
-    # "NotSingleton",
+    "IsOnly",
+    "IsNotOnly",
     "Match",
     "FullMatch",
     "Search",
@@ -188,27 +188,27 @@ class Expr[Result]:
     def notcontains(self, other):
         return NotContains(self, other)
 
-    def prefix(self, seq):
+    def startswith(self, seq):
         # if isinstance(seq, Sequence):
-        return Prefix(self, seq)
+        return StartsWith(self, seq)
 
         # raise AhaExprTypeError("prefix() requires a sequence argument.")
 
-    def notprefix(self, seq):
+    def notstartwith(self, seq):
         # if isinstance(seq, Sequence):
-        return NotPrefix(self, seq)
+        return NotStartsWith(self, seq)
 
         # raise AhaExprTypeError("notprefix() requires a sequence argument.")
 
-    def suffix(self, seq):
+    def endswith(self, seq):
         # if isinstance(seq, Sequence):
-        return Suffix(self, seq)
+        return EndsWith(self, seq)
 
         # raise AhaExprTypeError("suffix() requires a sequence argument.")
 
-    def notsuffix(self, seq):
+    def notendswith(self, seq):
         # if isinstance(seq, Sequence):
-        return NotSuffix(self, seq)
+        return NotEndsWith(self, seq)
 
         # raise AhaExprTypeError("notsuffix() requires a sequence argument.")
 
@@ -250,13 +250,13 @@ class Expr[Result]:
         return NotHasInstance(self, obj)
     """
 
-    def singleton(self, obj):
+    def isonly(self, obj):
         """序列是否仅有一个元素且该元素与 `obj` 相等"""
-        return Singleton(self, obj)
+        return IsOnly(self, obj)
 
-    def notsingleton(self, obj):
+    def isnotonly(self, obj):
         """序列不只有一个元素或唯一的元素不与 `obj` 相等"""
-        return NotSingleton(self, obj)
+        return IsNotOnly(self, obj)
 
     def match(self, obj):
         """只有 `self` 为 `PM.message` 时，`obj` 才支持为 `Strable`，届时会通过 `re.I` 编译"""
@@ -698,7 +698,7 @@ class NotContains(Contains):
         super().__init__(left, right, True)
 
 
-class Prefix(BinaryExpr[Sequence | str, Sequence | str, bool]):
+class StartsWith(BinaryExpr[Sequence | str, Sequence | str, bool]):
     async def _evaluate_logic(self):
         if self.left is PM.command:
             if len(self._left_val) >= (rl := len(self._right_val)) and _command_evaluate(self._left_val, self._right_val):
@@ -712,19 +712,19 @@ class Prefix(BinaryExpr[Sequence | str, Sequence | str, bool]):
         return is_prefix(self._left_val, self._right_val)
 
 
-class NotPrefix(Prefix):
+class NotStartsWith(StartsWith):
     def __init__(self, left: Sequence | str, right: Sequence | str):
         super().__init__(left, right, True)
 
 
-class Suffix(BinaryExpr[Sequence | str, Sequence | str, bool]):
+class EndsWith(BinaryExpr[Sequence | str, Sequence | str, bool]):
     async def _evaluate_logic(self):
         if isinstance(self._left_val, str):
             return self._left_val.endswith(self._right_val)
         return is_suffix(self._left_val, self._right_val)
 
 
-class NotSuffix(Suffix):
+class NotEndsWith(EndsWith):
     def __init__(self, left: Sequence | str, right: Sequence | str):
         super().__init__(left, right, True)
 
@@ -771,7 +771,7 @@ class NotHasInstance(HasInstance):
 """
 
 
-class Singleton(BinaryExpr[Sequence, Any, bool]):
+class IsOnly(BinaryExpr[Sequence, TypeAdapter, bool]):
     async def _evaluate_logic(self):
         if len(self._left_val) != 1:
             return False
@@ -788,7 +788,7 @@ class Singleton(BinaryExpr[Sequence, Any, bool]):
         return self._left_val[0] == self._right_val
 
 
-class NotSingleton(Singleton):
+class IsNotOnly(IsOnly):
     async def _evaluate_logic(self):
         if len(self._left_val) != 1:
             return True
@@ -1007,7 +1007,7 @@ def _convert_sub_type_rhs(value, __, category):
 def _convert_command_rhs(value, operand, category):
     assert category is EventCategory.CHAT
 
-    if issubclass(operand, (Equal, Prefix)):
+    if issubclass(operand, (Equal, StartsWith)):
         if isinstance(value, Expr):
             return value
         if isinstance(value, Iterable) and not isinstance(value, MutableSequence):
@@ -1017,7 +1017,7 @@ def _convert_command_rhs(value, operand, category):
                 if args := getattr(v, "__args__", None):
                     v.__args__ = tuple(str if a is Text else a for a in args)
                 value[i] = TypeAdapter(v)
-    elif issubclass(operand, Singleton) and not isinstance(value, str):
+    elif issubclass(operand, IsOnly) and not isinstance(value, str):
         if args := getattr(value, "__args__", None):
             value.__args__ = tuple(str if a is Text else a for a in args)
         value = TypeAdapter(value)
@@ -1026,12 +1026,12 @@ def _convert_command_rhs(value, operand, category):
 
 # endregion
 # region 字段二元运算符转换器
-def _convert_to_singleton(operator, right):
+def _convert_to_isonly(operator, right):
     if isinstance(right, str) or not isinstance(right, Sequence):
         if operator is Equal:
-            return Singleton
+            return IsOnly
         elif operator is NotEqual:
-            return NotSingleton
+            return IsNotOnly
     return operator
 
 
@@ -1403,7 +1403,7 @@ class PM(metaclass=PatternMatcherMeta):
     msg_chain: FieldClause[MessageChain] = Field(_redirect="message_chain")
     command: FieldClause[list[str | MsgSeg]] = Field(
         _msg2command,
-        binary_semantics=_convert_to_singleton,
+        binary_semantics=_convert_to_isonly,
         rhs_converter=_convert_command_rhs,
         operand_types={(list, tuple): Equal},
     )

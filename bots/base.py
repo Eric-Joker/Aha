@@ -1,9 +1,9 @@
-from abc import abstractmethod
-from logging import getLogger
 import signal
 import sys
+from abc import abstractmethod
 from asyncio import CancelledError, create_task, sleep
 from contextlib import suppress
+from logging import getLogger
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from tenacity.stop import stop_base

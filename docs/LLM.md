@@ -695,16 +695,16 @@ Aha 原生字段：
     若为[Text 消息段](../数据结构/消息序列与消息段.md#text)则将内容按空格分割为多个字符串参数。若含换行，换行后的内容与最后一个参数合并（保留换行）。
 
     非 Text 消息段作为独立参数保留。
-  - 基本用法：进行 `==`、`Prefix` 和 `Singleton` 相关的运算时，第二操作数可指定为期望的参数列表，列表元素可以是：
+  - 基本用法：进行 `==`、`StartsWith` 和 `IsOnly` 相关的运算时，第二操作数可指定为期望的参数列表，列表元素可以是：
     - str：要求对应位置的参数严格相等。
     - 类型注解：比如 `Image`。要求对应位置的参数验证通过，且会将这些参数组成列表通过 `args` 关键字参数**传递给回调函数**。
 
-    `Prefix` 匹配后剩余位置的参数也会依次存入 `args` 列表。
+    `StartsWith` 匹配后剩余位置的参数也会依次存入 `args` 列表。
   - 示例，假设去除前缀后的消息内容为 `"echo hello world"`：
     ```python
     PM.command == ["echo", str, Text]  # args = ["hello", "world"]
     PM.command == ["echo", "hello", "world"]  # args = []
-    PM.command.prefix(["echo"])  # args = ("hello", "world")
+    PM.command.startswith(["echo"])  # args = ("hello", "world")
     ```
 
 ### 运算符
@@ -724,19 +724,19 @@ Aha 原生字段：
 | `.notin()` | `NotIn` | 左侧值是否不包含在容器中。 | `Puid.notin({4,5,6})` |
 | `.contains()` | `Contains` | 左侧容器是否包含指定元素。 | `Pmsg_chain.contains("123")` |
 | `.notcontains()` | `NotContains` | 左侧容器是否不包含指定元素。 | `Pmsg_chain.notcontains("123")` |
-| `.prefix()` | `Prefix` | 左侧序列的前缀是否是为指定序列。 | `Pcommand.prefix(["help", "status"])` |
-| `.notprefix()` | `NotPrefix` | 左侧序列的前缀是否不为指定序列。 | `Pcommand.notprefix(["admin"])` |
-| `.suffix()` | `Suffix` | 左侧序列的后缀是否为指定序列。 | `Pmsg.suffix(".txt")` |
-| `.notsuffix()` | `NotSuffix` | 左侧序列的后缀是否不为指定序列。 | `Pmsg.notsuffix(".jpg")` |
+| `.startswith()` | `StartsWith` | 左侧序列的前缀是否是为指定序列。 | `Pcommand.startswith(["help", "status"])` |
+| `.notstartswith()` | `NotStartsWith` | 左侧序列的前缀是否不为指定序列。 | `Pcommand.notstartswith(["admin"])` |
+| `.endswith()` | `EndsWith` | 左侧序列的后缀是否为指定序列。 | `Pmsg.endswith(".txt")` |
+| `.notendswith()` | `NotEndsWith` | 左侧序列的后缀是否不为指定序列。 | `Pmsg.notendswith(".jpg")` |
 | `.match()` | `Match` | 字符串是否从开头匹配正则表达式。 | `Pmsg.match(r"hello\s+world")` |
 | `.fullmatch()` | `FullMatch` | 字符串是否完全匹配正则表达式。 | `Pmsg.fullmatch(r"\d+")` |
 | `.search()` | `Search` | 字符串是否包含正则表达式的匹配。 | `Pmsg.search(r"http://")` |
 | `.validateby()` | `ValidateBy` | 左侧对象是否符合指定类型注解。 | `Pmsg_chain.validateby(list[At])` |
 | `.apply()` | `Apply` | 对左侧对象应用 Callable，返回结果。 | `Pmsg.apply(str.upper)` |
-| `.filter()` | `Apply`(配合 `partial(filter, 参数)`) | 对 Sequence 应用 `filter`，返回迭代器。 | `Pmsg_chain.filter(lambda seg: isinstance(seg, Text))` |
-| `.to_msg_seq()` | `Apply`(配合 `MessageChain`) | 将左侧对象转换为 [`MessageChain`](../数据结构/消息序列与消息段.md#messagechain)。 | `Pmsg.to_msg_seq()` |
-| `.singleton()` | `Singleton` | 序列是否只有一个元素且等于指定对象。 | `Pcommand.singleton(0)` |
-| `.notsingleton()` | `NotSingleton` | 序列不满足 `singleton`。 | `Pcommand.notsingleton(0)` |
+| `.filter()` | `Apply` | 对 Sequence 应用 `filter`，返回迭代器。 | `Pmsg_chain.filter(lambda seg: isinstance(seg, Text))` |
+| `.to_msg_seq()` | `Apply` | 将左侧对象转换为 [`MessageChain`](../数据结构/消息序列与消息段.md#messagechain)。 | `Pmsg.to_msg_seq()` |
+| `.isonly()` | `IsOnly` | 序列是否只有一个元素且等于指定对象。 | `Pcommand.isonly(0)` |
+| `.isnotonly()` | `IsNotOnly` | 序列不止一个元素或唯一元素不等于指定对象。 | `Pcommand.isnotonly(0)` |
 
 > 运算符的优先级遵循 Python 运算符优先级规则。
 
@@ -812,7 +812,7 @@ Aha 原生字段：
 某些字段与特定运算符组合时，系统会调整运算符以符合语义：
 
 - **对 `PM.message_chain` 使用 `==`**：若右侧是类型注解，则自动转换为 `validateby` 运算符。
-- **对 `PM.command` 使用 `==` / `!=`**：若右侧是字符串，则自动转换为 `Singleton` / `NotSingleton` 运算符。
+- **对 `PM.command` 使用 `==` / `!=`**：若右侧是字符串，则自动转换为 `IsOnly` / `IsNotOnly` 运算符。
 
 #### 操作数自动转换
 

@@ -110,7 +110,7 @@ re.Pattern 实例，可匹配 Aha 码。
 用于分叉异步迭代器。
 
 ```python
-gen1, gen2 = AsyncTee.gen(AsyncIterator())
+gen1, gen2 = AsyncTee.gen(AsyncIterator())  # 第二个参数为返回的迭代器数量，默认为 2；第三个参数为缓冲区最大长度，为 0 时不限制，默认为 2。
 ```
 
 ### `run_with_uvloop`
@@ -133,13 +133,13 @@ gen1, gen2 = AsyncTee.gen(AsyncIterator())
 
 ### `InlineStr`
 
-通过类方法 `from_iterable` 将迭代器的所有元素拼接成一个字符串，并将其中非字符串且非 [`Text`](../../数据结构/消息序列与消息段.md#text) 实例的对象分别替换为一个 [PUA](https://zh.wikipedia.org/wiki/%E7%A7%81%E4%BA%BA%E4%BD%BF%E7%94%A8%E5%8C%BA) 字符。
+通过类方法 `from_iterable` 将可迭代对象的所有元素拼接成一个字符串，并将其中非字符串且非 [`Text`](../../数据结构/消息序列与消息段.md#text) 实例的对象分别替换为一个 [PUA](https://zh.wikipedia.org/wiki/%E7%A7%81%E4%BA%BA%E4%BD%BF%E7%94%A8%E5%8C%BA) 字符。
 
 实例方法 `to_list` 还原上述过程并返回列表。**仅在同一 [Aha 事件](../订阅与发布事件.md)上下文中才可还原！**
 
 该类继承自 `str`，且覆写了绝大多数方法使其返回为 `InlineStr` 实例。若经过操作后变成了普通 `str` 实例，可以通过 `InlineStr(str)` 获取实例。
 
-会伪随机且均匀分配至 131072 个 PUA 码点。U+E000~U+E0FF、U+E104~U+F8FF 这两个区间的码点不会被使用。
+会伪随机且均匀分配至 131072 个 PUA 码点。U+E000\~U+E0FF、U+E104\~U+F8FF 这两个区间的码点不会被使用。
 
 ### `charclass_escape`
 

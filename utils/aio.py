@@ -71,31 +71,50 @@ class AsyncCounter:
 
 
 class AsyncTee[T]:
-    __slots__ = ("ait", "buffer", "cond", "eof", "consumer_indices", "next_cid", "producer_task", "exc")
+    __slots__ = (
+        "ait",
+        "buffer",
+        "not_empty",
+        "not_full",
+        "eof",
+        "consumer_indices",
+        "next_cid",
+        "producer_task",
+        "exc",
+        "maxsize",
+    )
 
-    def __init__(self, ait: AsyncIterator[T]):
+    def __init__(self, ait: AsyncIterator[T], maxsize=2):
         self.ait = ait
         self.buffer = []  # 已生成但尚未被所有消费者消费的数据
-        self.cond = asyncio.Condition()
+        self.not_empty = asyncio.Condition()
         self.eof = False
-        self.consumer_indices = {}  # 消费者ID -> 下一个要读取的buffer索引
-        self.next_cid = 0  # 下一个消费者ID
+        self.consumer_indices = {}  # cid -> 下一个要读的buffer索引
+        self.next_cid = 0
         self.producer_task = None
         self.exc = None
+        self.maxsize = maxsize
+        if maxsize:
+            self.not_full = asyncio.Condition()
 
     async def _producer(self):
         try:
             async for item in self.ait:
-                async with self.cond:
-                    self.buffer.append(item)
-                    self.cond.notify_all()
-            async with self.cond:
-                self.eof = True
-                self.cond.notify_all()
+                if self.maxsize:
+                    async with self.not_full:
+                        while len(self.buffer) >= self.maxsize:
+                            await self.not_full.wait()
+                self.buffer.append(item)
+                async with self.not_empty:
+                    self.not_empty.notify_all()
+
+            self.eof = True
+            async with self.not_empty:
+                self.not_empty.notify_all()
         except Exception as e:
-            async with self.cond:
-                self.exc = e
-                self.cond.notify_all()
+            self.exc = e
+            async with self.not_empty:
+                self.not_empty.notify_all()
 
     def new_consumer(self) -> AsyncIterator[T]:
         cid = self.next_cid
@@ -128,22 +147,24 @@ class AsyncTee[T]:
         async def __anext__(self):
             tee = self.tee
             cid = self.cid
-            async with tee.cond:
+            async with tee.not_empty:
                 while True:
                     # 消费者已结束
                     if (idx := tee.consumer_indices.get(cid)) is None:
                         raise StopAsyncIteration
 
+                    # 有数据可读
                     if idx < len(tee.buffer):
-                        # 有数据可读
                         item = tee.buffer[idx]
                         tee.consumer_indices[cid] = idx + 1
-                        # 清理无用头部
+                        # 清理所有消费者都读过的头部
                         if tee.consumer_indices:
                             if (min_idx := min(tee.consumer_indices.values())) > 0:
                                 del tee.buffer[:min_idx]
                                 for k in tee.consumer_indices:
                                     tee.consumer_indices[k] -= min_idx
+                                if tee.maxsize:
+                                    tee.not_full.notify()
                         return item
 
                     # 数据源已结束且读完
@@ -154,14 +175,13 @@ class AsyncTee[T]:
                             tee.producer_task.cancel()
                         if tee.exc:
                             raise tee.exc
-                        else:
-                            raise StopAsyncIteration
+                        raise StopAsyncIteration
 
-                    await tee.cond.wait()
+                    await tee.not_empty.wait()
 
     @classmethod
-    def gen[T](cls, agen: AsyncIterator[T], n: int = 2) -> tuple[AsyncIterator[T], ...]:
-        tee = cls(agen)
+    def gen[T](cls, agen: AsyncIterator[T], n=2, maxsize=2) -> tuple[AsyncIterator[T], ...]:
+        tee = cls(agen, maxsize)
         return tuple(tee.new_consumer() for _ in range(n))
 
 

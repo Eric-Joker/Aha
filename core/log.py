@@ -168,14 +168,17 @@ class TimeRangeRotatingFileHandler(AhaHandlerMixin, BaseRotatingHandler):
 
     def doRollover(self):
         """轮转文件"""
-        self.end_time = time()
-        if self.stream:
-            self.stream.close()
-            new_path = Path(self.baseFilename).rename(self.rotation_filename(self.start_time, self.end_time))
-            if self.backupCount > 0:
-                self.backupFiles.append(new_path)
-                while len(self.backupFiles) > self.backupCount:
-                    self.backupFiles.pop(0).unlink(True)
+        try:
+            self.end_time = time()
+            if self.stream:
+                self.stream.close()
+                new_path = Path(self.baseFilename).rename(self.rotation_filename(self.start_time, self.end_time))
+                if self.backupCount > 0:
+                    self.backupFiles.append(new_path)
+                    while len(self.backupFiles) > self.backupCount:
+                        self.backupFiles.pop(0).unlink(True)
+        except Exception:
+            self.handleError(f"Cannot rotate log file {self.baseFilename}")
 
         # 轮转至新文件
         self.start_time = time()

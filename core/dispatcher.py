@@ -441,13 +441,13 @@ def get_adapter_lang(platform):
 async def process_message(event: Message, ignore_prefix=False):
     current_lang.set(get_adapter_lang(event.adapter))
     current_event.set(event)
-    kwargs = {}
 
     # 删除过时缓存
     cprmc.set(None)
     cprms.set(None)
 
     async def evaluate_(event: Message):
+        nonlocal kwargs
         copied = False
         if attach.need_isolation:
             cprms.set(None)
@@ -460,6 +460,8 @@ async def process_message(event: Message, ignore_prefix=False):
             cugp.set(True)
 
         if await evaluate(event, expr, token, pool):
+            if kwargs is None:
+                kwargs = {}
             if e:
                 if not copied:
                     event = event.model_copy(deep=True)
@@ -469,7 +471,7 @@ async def process_message(event: Message, ignore_prefix=False):
                 kwargs["match_"] = current_match.get()
             if a:
                 kwargs["args"] = current_args.get()
-            if l and "localizer" not in kwargs:
+            if l:
                 kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
             try:
                 create_task(func(**kwargs))
@@ -477,6 +479,7 @@ async def process_message(event: Message, ignore_prefix=False):
                 _logger.error(ex)
 
     for k in tuple(_message_handlers):
+        kwargs = None
         e, m, a, l = "event" in k, "match_" in k, "args" in k, "localizer" in k
         for expr, func, token, attach in (pool := _message_handlers[k]):
             current_module.set(attach.aha_module)
@@ -488,18 +491,20 @@ async def process_message(event: Message, ignore_prefix=False):
 async def process_notice(event: Notice):
     current_lang.set(get_adapter_lang(event.adapter))
     current_event.set(event)
-    kwargs = {}
 
     for k in tuple(_notice_handlers):
+        kwargs = None
         e, l = "event" in k, "localizer" in k
         for expr, func, token, attach in (pool := _notice_handlers[k]):
             current_module.set(attach.aha_module)
             if attach.need_isolation:
                 event = event.model_copy(deep=True)
             if await evaluate(event, expr, token, pool):
+                if kwargs is None:
+                    kwargs = {}
                 if e:
                     kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
-                if l and "localizer" not in kwargs:
+                if l:
                     kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
                 try:
                     create_task(func(**kwargs))
@@ -510,18 +515,20 @@ async def process_notice(event: Notice):
 async def process_request(event: Request):
     current_lang.set(get_adapter_lang(event.adapter))
     current_event.set(event)
-    kwargs = {}
 
     for k in tuple(_request_handlers):
+        kwargs = None
         e, l = "event" in k, "localizer" in k
         for expr, func, token, attach in (pool := _request_handlers[k]):
             current_module.set(attach.aha_module)
             if attach.need_isolation:
                 event = event.model_copy(deep=True)
             if await evaluate(event, expr, token, pool):
+                if kwargs is None:
+                    kwargs = {}
                 if e:
                     kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
-                if l and "localizer" not in kwargs:
+                if l:
                     kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
                 try:
                     create_task(func(**kwargs))
@@ -532,18 +539,20 @@ async def process_request(event: Request):
 async def process_meta(event: MetaEvent):
     current_lang.set(get_adapter_lang(event.adapter))
     current_event.set(event)
-    kwargs = {}
 
     for k in tuple(_meta_handlers):
+        kwargs = None
         e, l = "event" in k, "localizer" in k
         for expr, func, token, attach in (pool := _request_handlers[k]):
             current_module.set(attach.aha_module)
             if attach.need_isolation:
                 event = event.model_copy(deep=True)
             if await evaluate(event, expr, token, pool):
+                if kwargs is None:
+                    kwargs = {}
                 if e:
                     kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
-                if l and "localizer" not in kwargs:
+                if l:
                     kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
                 try:
                     create_task(func(**kwargs))
@@ -552,12 +561,14 @@ async def process_meta(event: MetaEvent):
 
 
 async def process_external(event: External):
-    kwargs = {}
     for k in tuple(_external_handlers):
+        kwargs = None
         e, d, l = "event" in k, "data" in k, "localizer" in k
         for k, func, _, attach in _external_handlers[k]:
             # current_module.set(attach.aha_module)
             if k == event.key:
+                if kwargs is None:
+                    kwargs = {}
                 if e:
                     kwargs["event"] = copied_event = event.model_copy(deep=True)
                     if d:

@@ -5,7 +5,7 @@ if hasattr(apscheduler, "__version__"):
 
 import logging
 from collections.abc import Callable, Iterable, Mapping
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID
@@ -705,8 +705,17 @@ logging.getLogger().addFilter(
     or record.getMessage()
     != "The scheduler has not been initialized yet. Use the scheduler as an async context manager (async with ...) in order to call methods other than run_until_stopped()."
 )
-logging.getLogger("apscheduler._schedulers.async_").addFilter(
+(_logger := logging.getLogger("apscheduler._schedulers.async_")).addFilter(
     lambda record: record.levelno != logging.INFO
     or (msg := record.getMessage()) != "Scheduler started"
     and msg != "Scheduler stopped"
 )
+
+
+@contextmanager
+def aps_log_warn():
+    _logger.setLevel(logging.WARNING)
+    try:
+        yield
+    finally:
+        _logger.setLevel(logging.INFO)

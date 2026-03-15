@@ -13,10 +13,10 @@ cd Aha
 ```
 然后，安装依赖（择一）：
 ```sh
-pip install -r requirements-full.txt -U # 全部依赖项，包括 性能优化所需库、asyncpg、psycopg[binary]、Playwright、FastAPI 等。
+pip install -r requirements-full.txt -U # 全部依赖项，包括性能优化所需库、aiosqlite、psycopg[binary]、Playwright、FastAPI 等。
 ```
 ```sh
-pip install -r requirements.txt -U # 基础依赖项，需额外安装传输层库、aiosqlite 或 psycopg，且不包括性能优化。
+pip install -r requirements.txt -U # 基础依赖项，需额外安装传输层依赖、数据库引擎，且不包括性能优化。
 ```
 若存在依赖冲突请使用环境隔离，或卸载其他依赖着古老依赖的库。
 
@@ -2425,7 +2425,7 @@ curl -X POST "http://127.0.0.1:6550/test" \
 ## 已有适配器
 
 - <span style="font-size: 1.5em;">[**NapCat**](./NapCat.md)：与 [NapCat](https://github.com/NapNeko/NapCatQQ) 对接的适配器。</spam>
-- <span style="font-size: 1.5em;">[**FastAPI**](./FastAPI.md)：建立 [FastAPI](https://github.com/fastapi/fastapi) 服务器，将请求通过 [External 事件](../模块开发/订阅与发布事件.md) 上报。</spam>
+- <span style="font-size: 1.5em;">[**FastAPI**](./FastAPI.md)：建立基于 [FastAPI](https://github.com/fastapi/fastapi) 的 Uvicorn 服务，将请求通过 [External 事件](../模块开发/订阅与发布事件.md)上报。</spam>
 - <span style="font-size: 1.5em;">未完待续。</spam>
 
 ### 配置示例

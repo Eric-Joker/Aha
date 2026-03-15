@@ -84,7 +84,7 @@ class AsyncTee[T]:
         "maxsize",
     )
 
-    def __init__(self, ait: AsyncIterator[T], maxsize=2):
+    def __init__(self, ait: AsyncIterator[T], maxsize):
         self.ait = ait
         self.buffer = []  # 已生成但尚未被所有消费者消费的数据
         self.not_empty = asyncio.Condition()

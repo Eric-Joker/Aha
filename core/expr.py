@@ -192,25 +192,25 @@ class Expr[Result]:
         # if isinstance(seq, Sequence):
         return Prefix(self, seq)
 
-    # raise AhaExprTypeError("prefix() requires a sequence argument.")
+        # raise AhaExprTypeError("prefix() requires a sequence argument.")
 
     def notprefix(self, seq):
         # if isinstance(seq, Sequence):
         return NotPrefix(self, seq)
 
-    # raise AhaExprTypeError("notprefix() requires a sequence argument.")
+        # raise AhaExprTypeError("notprefix() requires a sequence argument.")
 
     def suffix(self, seq):
         # if isinstance(seq, Sequence):
         return Suffix(self, seq)
 
-    # raise AhaExprTypeError("suffix() requires a sequence argument.")
+        # raise AhaExprTypeError("suffix() requires a sequence argument.")
 
     def notsuffix(self, seq):
         # if isinstance(seq, Sequence):
         return NotSuffix(self, seq)
 
-    # raise AhaExprTypeError("notsuffix() requires a sequence argument.")
+        # raise AhaExprTypeError("notsuffix() requires a sequence argument.")
 
     """
     def subclassof(self: Expr[type], cls: type | tuple[type, ...]):
@@ -291,7 +291,7 @@ class Expr[Result]:
         # if callable(function):
         return Apply(self, partial(filter, function))
 
-    # raise AhaExprTypeError("filter() requires a callable argument.")
+        # raise AhaExprTypeError("filter() requires a callable argument.")
 
     def to_msg_seq(self):
         return Apply(self, MessageChain)

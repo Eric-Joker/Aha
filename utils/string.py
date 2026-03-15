@@ -264,9 +264,8 @@ class InlineStr[T](str):
                 result.append(self[start:])
         else:
             # 长的用正则
-            pattern = re.compile(f"([{"".join(mapping)}])")
             last_end = 0
-            for match in pattern.finditer(self):
+            for match in re.finditer(f"([{"".join(mapping)}])", self):
                 if match.start() > last_end:
                     result.append(self[last_end : match.start()])
                 result.append(mapping[match[0]])

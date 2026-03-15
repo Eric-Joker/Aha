@@ -30,7 +30,7 @@ if __name__ == "__main__":
         import core.status
         from core.database import db_engine, db_init
         from core.api import init_conversations
-        from services.apscheduler import sched
+        from services.apscheduler import aps_log_warn, sched
         from services.playwright import browser
         from services.file_cache import start_file_cache_service
         from services.data_store import clean_data_store, initialize_all_stores
@@ -47,18 +47,18 @@ if __name__ == "__main__":
         db_init()
 
         try:
-            logger.info(_("main.load_simple_data_store"))
-            await initialize_all_stores()
             logger.info(_("main.start_api_services"))
             await start_bots()
             logger.info(_("main.start_extra_services"))
-            await sched.start()
+            await initialize_all_stores()
             if cfg.cache_conv:
-                logger.info(_("main.start_get_conv"))
-                conv_counts = (await gather(browser.start(), start_file_cache_service(), init_conversations()))[2]
+                conv_counts = (await gather(browser.start(), init_conversations()))[1]
                 logger.info(_("main.got_conv") % {"group": conv_counts[0], "user": conv_counts[1]})
             else:
-                await gather(browser.start(), start_file_cache_service())
+                await browser.start()
+            await sched.start()
+            with aps_log_warn():
+                await start_file_cache_service()
             logger.info(_("main.run_start_callback"))
             await process_start()
             logger.info(_("main.started"))

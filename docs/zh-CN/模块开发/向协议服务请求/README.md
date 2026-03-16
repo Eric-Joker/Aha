@@ -40,7 +40,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>PREFS</td>
-    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择接收到相同事件的实例；若指向的实例接收到该事件则采用，否则采用 <code>NTH</code>。</td>
+    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择接收到相同事件的实例。若指向的实例接收到该事件则采用，否则采用 <code>NTH</code>。</td>
     <td>
       <table>
         <tr>
@@ -85,7 +85,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>PLATFORM</td>
-    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择相同平台的可用实例；若指向实例为相同平台且仍可用则采用，否则采用 <code>PLATFORM_NTH</code>。</td>
+    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择相同平台的可用实例。若指向实例为相同平台且仍可用则采用，否则采用 <code>PLATFORM_NTH</code>。</td>
     <td>
       <table>
         <tr>
@@ -152,7 +152,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>FRIEND</td>
-    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定好友的可用实例；若指向的实例有指定好友且仍可用则采用，否则采用 <code>FRIEND_NTH</code>。</td>
+    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定好友的可用实例。若指向的实例有指定好友且仍可用则采用，否则采用 <code>FRIEND_NTH</code>。</td>
     <td>
       <table>
         <tr>
@@ -208,7 +208,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>GROUP</td>
-    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定群组的可用实例；若指向的实例有指定群组且仍可用则采用，否则采用 <code>GROUP_NTH</code>。</td>
+    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定群组的可用实例。若指向的实例有指定群组且仍可用则采用，否则采用 <code>GROUP_NTH</code>。</td>
     <td>
       <table>
         <tr>

@@ -15,28 +15,62 @@ from ruamel.yaml import YAML
 import core.status
 from utils.misc import caller_aha_module
 
-__all__ = ("create_translator", "_")
+__all__ = ("create_translator", "gettext", "_")
 
+# fmt: off
 LANGUAGE_FALLBACKS = {
     "zh": ("zh_CN", "zh_TW", "zh_HK", "zh_SG", "zh_MO"),
-    "en": ("en_US", "en_GB", "en_CA", "en_AU", "en_NZ", "en_IN"),
-    "es": ("es_ES", "es_MX", "es_AR", "es_CO", "es_CL"),
-    "fr": ("fr_FR", "fr_CA", "fr_BE", "fr_CH"),
-    "de": ("de_DE", "de_AT", "de_CH"),
-    "pt": ("pt_BR", "pt_PT"),
-    "ru": ("ru_RU", "ru_UA", "ru_KZ"),
-    "ja": ("ja_JP",),
-    "ko": ("ko_KR",),
-    "ar": ("ar_SA", "ar_EG", "ar_AE", "ar_MA"),
-    "hi": ("hi_IN",),
-    "it": ("it_IT", "it_CH"),
-    "nl": ("nl_NL", "nl_BE"),
-    "sv": ("sv_SE",),
-    "pl": ("pl_PL",),
-    "tr": ("tr_TR",),
-    "vi": ("vi_VN",),
-    "th": ("th_TH",),
+    "en": ("en_US", "en_GB", "en_CA", "en_AU", "en_NZ", "en_IN", "en_IE", "en_ZA", "en_PH", "en_SG"),
+    "es": ("es_ES", "es_MX", "es_AR", "es_CO", "es_CL", "es_PE", "es_VE", "es_EC", "es_GT", "es_CU", "es_DO",
+           "es_BO", "es_PY", "es_UY", "es_CR", "es_SV", "es_HN", "es_NI", "es_PA", "es_PR"),
+    "fr": ("fr_FR", "fr_CA", "fr_BE", "fr_CH", "fr_LU", "fr_MC", "fr_SN", "fr_CI",
+           "fr_CD", "fr_CM", "fr_ML", "fr_BF", "fr_NE", "fr_TD", "fr_GA", "fr_BJ", "fr_TG", "fr_MG"),
+    "de": ("de_DE", "de_AT", "de_CH", "de_LI", "de_LU"),
+    "pt": ("pt_BR", "pt_PT", "pt_AO", "pt_MZ", "pt_GW", "pt_CV"),
+    "ru": ("ru_RU", "ru_UA", "ru_KZ", "ru_BY", "ru_KG", "ru_MD"),
+    "ar": ("ar_SA", "ar_EG", "ar_AE", "ar_MA", "ar_DZ", "ar_IQ", "ar_SD", "ar_JO", "ar_LB", "ar_PS",
+           "ar_TN", "ar_LY", "ar_YE", "ar_KW", "ar_QA", "ar_BH", "ar_OM"),
+    "it": ("it_IT", "it_CH", "it_SM"),
+    "nl": ("nl_NL", "nl_BE", "nl_SR", "nl_AW", "nl_CW"),
+    "sv": ("sv_SE", "sv_FI"),
+    "no": ("nb_NO", "nn_NO"),
+    "ms": ("ms_MY", "ms_BN", "ms_SG"),
+    "bn": ("bn_BD", "bn_IN"),
+    "ta": ("ta_IN", "ta_LK", "ta_SG", "ta_MY"),
+    "ur": ("ur_PK", "ur_IN"),
+    "fa": ("fa_IR", "fa_AF"),
+    "sw": ("sw_TZ", "sw_KE", "sw_UG", "sw_RW", "sw_BI"),
+    "el": ("el_GR", "el_CY"),
+    "tr": ("tr_TR", "tr_CY"),
+    "ro": ("ro_RO", "ro_MD"),
+    "sr": ("sr_RS", "sr_ME", "sr_BA"),
+    "hr": ("hr_HR", "hr_BA"),
+    "sq": ("sq_AL", "sq_XK", "sq_MK"),
+    "az": ("az_AZ", "az_IR"),
+    "kk": ("kk_KZ", "kk_CN"),
+    "uz": ("uz_UZ", "uz_AF"),
+    "eu": ("eu_ES", "eu_FR"),
+    "ca": ("ca_ES", "ca_AD", "ca_FR", "ca_IT"),
+    "ti": ("ti_ER", "ti_ET"),
+    "so": ("so_SO", "so_ET", "so_KE"),
+    "yo": ("yo_NG", "yo_BJ"),
+    "ha": ("ha_NG", "ha_NE", "ha_GH"),
+    "af": ("af_ZA", "af_NA"),
+    "ne": ("ne_NP", "ne_IN"),
+    "mn": ("mn_MN", "mn_CN"),
+    "bo": ("bo_CN", "bo_IN"),
+    "ky": ("ky_KG", "ky_CN"),
+    "tg": ("tg_TJ", "tg_AF"),
+    "ps": ("ps_AF", "ps_PK"),
+    "ku": ("ku_TR", "ku_IQ", "ku_IR", "ku_SY"),
+    "hy": ("hy_AM", "hy_LB"),
+    "pa": ("pa_IN", "pa_PK"),
+    "sd": ("sd_IN", "sd_PK"),
+    "oc": ("oc_FR", "oc_ES", "oc_IT"),
+    "fy": ("fy_NL", "fy_DE"),
+    "ff": ("ff_NG", "ff_SN", "ff_CM", "ff_GN"),
 }
+# fmt: on
 DEFAULT_LANGUAGE = None
 loaded_i10n: defaultdict[str, dict[str, dict[str, str]]] = defaultdict(dict)  # dict[module, dict[lang, dict[key, value]]]
 _created_translator = defaultdict(dict)  # dict[module, dict[lang, Callable]]
@@ -83,8 +117,11 @@ def get_all_translations(key: str, module: str | None):
 L18NABLE_MODULE_PATTERN = compile(r"^((?:[^.]*modules|bots)\.[^.]+)")
 
 
-def _(key: str, module: str = None):
+def gettext(key: str, module: str = None):
     return LocalizedString(key, module or caller_aha_module(pattern=L18NABLE_MODULE_PATTERN))
+
+
+_ = gettext
 
 
 def create_translator(module: str = None, lang_code: str = None) -> Callable[[str], str]:
@@ -112,7 +149,9 @@ def _get_fallback_chain(lang_code: str | None):
             DEFAULT_LANGUAGE = cfg.lang
         else:
             if (DEFAULT_LANGUAGE := core.status.def_lang) is None:
-                raise RuntimeError("Unable to retrieve the default language configuration item. Please do not use localization features in child processes.")
+                raise RuntimeError(
+                    "Unable to retrieve the default language configuration item. Please do not use localization features in child processes."
+                )
 
     for lang in (lang_code, DEFAULT_LANGUAGE):
         if (

@@ -42,7 +42,7 @@ async def _(body: Annotated[str, Body(..., media_type="text/plain")]):
 
 ### send_msg
 
-重定向至 [set_result](#set_result)，其中 `user_id` 参数被重定向至 `key`；`msg` 参数被重定向至 `data`。
+重定向至 [set_result](#set_result)，其中 `user_id` 参数被重定向至 `key`，`msg` 参数被重定向至 `data`。
 
 ## 请求验证
 

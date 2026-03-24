@@ -243,9 +243,7 @@ class MessageAPI:
         pass
 
     @staticmethod
-    async def get_file_src(
-        msg_seg: Downloadable, record_format: AudioFormat = AudioFormat.MP3, *, bot: int = None
-    ) -> str | bytes:
+    async def get_file_src(msg_seg: Downloadable, record_format=AudioFormat.MP3, *, bot: int = None) -> str | bytes:
         """通过消息段获取文件的 URL，若无法获取 URL 则获取内容。
 
         Args:
@@ -263,7 +261,7 @@ class MessageAPI:
         """获取指定回应的详情"""
 
     @staticmethod
-    async def set_reaction(message_id: str | int, emoji_id: str | int, set: bool = True, *, bot: int = None):
+    async def set_reaction(message_id: str | int, emoji_id: str | int, set=True, *, bot: int = None):
         """回应"""
 
     @staticmethod

@@ -152,7 +152,7 @@ class BaseMessageAPI(BaseAPI):
     async def get_forward_msg(self, call_id, message_id: str | int) -> Forward:
         raise NotImplementedError
 
-    async def get_file_src(self, call_id, msg_seg: Downloadable, record_format: AudioFormat = AudioFormat.MP3) -> str | bytes:
+    async def get_file_src(self, call_id, msg_seg: Downloadable, record_format=AudioFormat.MP3) -> str | bytes:
         """通过消息段获取文件的 URL，若无法获取 URL 则获取内容。
 
         Args:
@@ -169,7 +169,7 @@ class BaseMessageAPI(BaseAPI):
         """获取指定回应的详情"""
         raise NotImplementedError
 
-    async def set_reaction(self, call_id, message_id: str | int, emoji_id: str | int, set: bool = True) -> None:
+    async def set_reaction(self, call_id, message_id: str | int, emoji_id: str | int, set=True) -> None:
         """回应"""
         raise NotImplementedError
 

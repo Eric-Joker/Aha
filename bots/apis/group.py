@@ -71,7 +71,14 @@ class BaseGroupAPI(BaseAPI):
         raise NotImplementedError
 
     async def send_group_music(
-        self, call_id, group_id: str | int, url: str, audio: str = None, title: str = None, content: str = None, image: str | Path = None
+        self,
+        call_id,
+        group_id: str | int,
+        url: str,
+        audio: str = None,
+        title: str = None,
+        content: str = None,
+        image: str | Path = None,
     ) -> str:
         """发送群聊音乐分享消息。
 
@@ -100,16 +107,16 @@ class BaseGroupAPI(BaseAPI):
 
     # region 群成员管理
     async def group_kick_members(
-        self, call_id, group_id: str | int, user_ids: Sequence[str | int], reject_add_request: bool = False
+        self, call_id, group_id: str | int, user_ids: Sequence[str | int], reject_add_request=False
     ) -> None:
         """批量踢群成员"""
         raise NotImplementedError
 
-    async def group_kick(self, call_id, group_id: str | int, user_id: str | int, reject_add_request: bool = False) -> None:
+    async def group_kick(self, call_id, group_id: str | int, user_id: str | int, reject_add_request=False) -> None:
         """群踢人"""
         raise NotImplementedError
 
-    async def group_ban(self, call_id, group_id: str | int, user_id: str | int, duration: int = 0) -> bool:
+    async def group_ban(self, call_id, group_id: str | int, user_id: str | int, duration=0) -> bool:
         """群禁言
 
         Args:
@@ -125,7 +132,7 @@ class BaseGroupAPI(BaseAPI):
         """设置群管理员"""
         raise NotImplementedError
 
-    async def group_leave(self, call_id, group_id: str | int, is_dismiss: bool = False) -> None:
+    async def group_leave(self, call_id, group_id: str | int, is_dismiss=False) -> None:
         """退出群聊"""
         raise NotImplementedError
 
@@ -133,7 +140,7 @@ class BaseGroupAPI(BaseAPI):
         """设置群专属头衔"""
         raise NotImplementedError
 
-    async def process_group_join_request(self, call_id, flag: str, approve: bool, reason: str | None = None) -> None:
+    async def process_group_join_request(self, call_id, flag: str, approve: bool, reason: str = None) -> None:
         """处理加群请求"""
         raise NotImplementedError
 
@@ -152,7 +159,7 @@ class BaseGroupAPI(BaseAPI):
 
     # region 群消息管理
     async def get_group_msg_history(
-        self, call_id, group_id: str | int, message_seq: str | int, number: int = 20, reverseOrder: bool = False
+        self, call_id, group_id: str | int, message_seq: str | int, number=20, reverseOrder=False
     ) -> list[Message]:
         raise NotImplementedError
 
@@ -206,11 +213,11 @@ class BaseGroupAPI(BaseAPI):
         """删除群文件夹"""
         raise NotImplementedError
 
-    async def get_group_root_files(self, call_id, group_id: str | int, file_count: int = 50) -> GroupFiles:
+    async def get_group_root_files(self, call_id, group_id: str | int, file_count=50) -> GroupFiles:
         """获取群根目录文件列表"""
         raise NotImplementedError
 
-    async def get_group_files_by_folder(self, call_id, group_id: str | int, folder_id: str, file_count: int = 50) -> GroupFiles:
+    async def get_group_files_by_folder(self, call_id, group_id: str | int, folder_id: str, file_count=50) -> GroupFiles:
         """获取文件夹内文件列表"""
         raise NotImplementedError
 

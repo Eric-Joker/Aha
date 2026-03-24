@@ -2,15 +2,19 @@ import re
 from collections.abc import Callable, Coroutine, Iterable, Iterator
 from contextlib import suppress
 from contextvars import ContextVar
-from logging import getLogger
 from multiprocessing import current_process
-from random import getrandbits
 from typing import TYPE_CHECKING, Any, LiteralString, Self, SupportsIndex, overload
 
 from core.i18n import _
+from models.exc import NotModified, PUAConflictError
 from models.msg import Text
 
-# import numpy as np
+# from random import getrandbits
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 
 if IS_MAINPROC := current_process().name == "MainProcess":
@@ -29,26 +33,6 @@ def halfwidth(char):
     return chr(code - 0xFEE0) if 0xFF01 <= code <= 0xFF5E else char
 
 
-"""
-def contains_pua(s: str):
-    if not s:
-        return False
-    if len(s) <= 100:
-        for ch in s:
-            if 0xE000 <= (cp := ord(ch)) <= 0xF8FF or 0xF0000 <= cp <= 0xFFFFD or 0x100000 <= cp <= 0x10FFFD:
-                return True
-    else:
-        arr = np.frombuffer(s.encode("utf-32-le"), dtype=np.uint32)
-        return bool(
-            np.any(
-                ((arr >= 0xE000) & (arr <= 0xF8FF))
-                | ((arr >= 0xF0000) & (arr <= 0xFFFFD))
-                | ((arr >= 0x100000) & (arr <= 0x10FFFD))
-            )
-        )
-"""
-
-
 # region re
 def charclass_escape(s):
     """只转义正则字符集中有特殊含义的字符，需要传入方括号（不包括）之间的整个字符串"""
@@ -61,13 +45,6 @@ def charclass_escape(s):
 
 
 # region re.asub by WFLing-seaer
-class NotModified(ValueError):
-    pass
-
-
-_re_logger = getLogger("REutil SASUB")
-
-
 async def asub(
     pattern: re.Pattern,
     repl: Callable[[re.Match], Coroutine[None, None, str]],
@@ -118,55 +95,120 @@ async def series_asub(
     modified = False
     for pattern, replacing in zip(patterns, repl):
         with suppress(NotModified):
-            text0 = text
             text = await asub(pattern, replacing, text, count, True)
             modified = True
-            _re_logger.info(f"应用:\n{text0}\n↓ {replacing.__name__}\n{text}")
     if not modified and raise_on_not_modified:
-        _re_logger.info(f"未修改:\n{text}")
         raise NotModified
     return text
 
 
 # endregion
 # endregion
-class InlineStr[T](str):
-    csim: ContextVar[dict] = ContextVar("aha_str_inline_map", default=None)
-    csiK: ContextVar[list] = ContextVar("aha_str_inline_Ks", default=None)
+# region PUA
+_PUA_PATTERN = re.compile(r"[\uE000-\uF8FF]" r"|[\U000F0000-\U000FFFFD]" r"|[\U00100000-\U0010FFFD]")
+current_PUAs: ContextVar[set] = ContextVar("current_PUAs", default=None)
 
-    if IS_MAINPROC and cfg.memory_level == "high":
-        _PUA_CHARS = [None] * 137468
 
+def extract_pua_ord(s: str) -> set[int]:
+    if len(s) < 5:
+        return {cp for ch in s if 0xE000 <= (cp := ord(ch)) <= 0xF8FF or 0xF0000 <= cp <= 0xFFFFD or 0x100000 <= cp <= 0x10FFFD}
+    elif len(s) < 300 or not np:
+        return set(map(ord, _PUA_PATTERN.findall(s)))
+    arr = np.frombuffer(s.encode("utf-32-le"), dtype=np.uint32)
+    return set(
+        arr[
+            ((arr >= 0xE000) & (arr <= 0xF8FF))
+            | ((arr >= 0xF0000) & (arr <= 0xFFFFD))
+            | ((arr >= 0x100000) & (arr <= 0x10FFFD))
+        ]
+    )
+
+
+if TYPE_CHECKING:
+
+    def gen_pua_char() -> str | None:
+        """返回一个 PUA 字符。同一个上下文中不会返回相同的 PUA。"""
+
+elif IS_MAINPROC and cfg.memory_level == "high":
+    _PUAs: list[tuple[int, str]] = []
+
+    def _init_pua_map():
+        for i in range(6400):
+            _PUAs.append((cp := 0xE000 + i, chr(cp)))
         for i in range(65534):
-            _PUA_CHARS[i] = chr(0xF0000 + i)
-        for i in range(65534, 131068):
-            _PUA_CHARS[i] = chr(0x100000 + (i - 65534))
-        for i in range(131068, 131072):
-            _PUA_CHARS[i] = chr(0xE100 + (i - 131068))
+            _PUAs.append((cp := 0xF0000 + i, chr(cp)))
+        for i in range(65534):
+            _PUAs.append((cp := 0x100000 + i, chr(cp)))
 
-        @classmethod
-        def get_pua_char(cls):
-            return cls._PUA_CHARS[cls.permute() % 137468]
+    _init_pua_map()
 
+    def gen_pua_char():
+        if (PUAs := current_PUAs.get()) is None:
+            current_PUAs.set({_PUAs[0][0]})
+            return _PUAs[0][1]
+        for cp, char in _PUAs:
+            if cp not in PUAs:
+                PUAs.add(cp)
+                return char
+        return None
+
+else:
+
+    def gen_pua_char():
+        if (PUAs := current_PUAs.get()) is None:
+            current_PUAs.set({0xE000})
+            return chr(0xE000)
+
+        # 遍历
+        for i in range(6400):
+            if (cp := 0xE000 + i) not in PUAs:
+                PUAs.add(cp)
+                return chr(cp)
+        for i in range(65534):
+            if (cp := 0xF0000 + i) not in PUAs:
+                PUAs.add(cp)
+                return chr(cp)
+        for i in range(65534):
+            if (cp := 0x100000 + i) not in PUAs:
+                PUAs.add(cp)
+                return chr(cp)
+        return None
+
+
+"""
+def contains_pua(s: str):
+    if not s:
+        return False
+    if len(s) <= 100:
+        for ch in s:
+            if 0xE000 <= (cp := ord(ch)) <= 0xF8FF or 0xF0000 <= cp <= 0xFFFFD or 0x100000 <= cp <= 0x10FFFD:
+                return True
     else:
+        arr = np.frombuffer(s.encode("utf-32-le"), dtype=np.uint32)
+        return bool(
+            np.any(
+                ((arr >= 0xE000) & (arr <= 0xF8FF))
+                | ((arr >= 0xF0000) & (arr <= 0xFFFFD))
+                | ((arr >= 0x100000) & (arr <= 0x10FFFD))
+            )
+        )
+"""
 
-        @classmethod
-        def get_pua_char(cls):
-            if (num := cls.permute()) < 65534:
-                return chr(0xF0000 + num)
-            elif num < 131068:
-                return chr(0x100000 + (num - 65534))
-            else:
-                return chr(0xE100 + (num - 131068))
 
+# endregion
+class InlineStr[T](str):
+    cism: ContextVar[dict] = ContextVar("aha_inline_str_map", default=None)
+
+    """
+    cisK: ContextVar[list] = ContextVar("aha_inline_str_Ks", default=None)
     @classmethod
     def permute(cls) -> int:
-        if Ks := cls.csiK.get():
+        if Ks := cls.cisK.get():
             K0, K1 = Ks
         else:
             seed = getrandbits(30)
-            cls.csiK.set((K0 := seed ^ 461845907, K1 := seed ^ 433494437))
-        mixed = (len(cls.csim.get()) + 1) * 403  # 403: 16777619 & ((2^30-1) // 131072)
+            cls.cisK.set((K0 := seed ^ 461845907, K1 := seed ^ 433494437))
+        mixed = (len(cls.cism.get()) + 1) * 403  # 403: 16777619 & ((2^30-1) // 131072)
 
         L = mixed >> 9  # high 8 bits
         R = mixed & 0x1FF  # low 9 bits
@@ -179,6 +221,7 @@ class InlineStr[T](str):
         L, R = R, L ^ (((R ^ K0) * 1073741783) & 0xFF)
         L, R = R, L ^ (((R ^ K1) * 1073741371) & 0x1FF)
         return (L << 9) | R
+    """
 
     @classmethod
     def from_iterable[T](cls, obj: Iterable[T], mapping: dict = None) -> Self[T]:
@@ -189,8 +232,23 @@ class InlineStr[T](str):
         result = []
         result_len = 0
         inline_indices = {}
-        if (current_map := cls.csim.get()) is None:
-            cls.csim.set(current_map := {})
+        if (current_map := cls.cism.get()) is None:
+            cls.cism.set(current_map := {})
+        if (current_set := current_PUAs.get()) is None:
+            current_PUAs.set(current_set := set())
+
+        for seg in obj:
+            if isinstance(seg, Text):
+                if current_set.isdisjoint(extracted := extract_pua_ord(seg.text)):
+                    current_set |= extracted
+                else:
+                    raise PUAConflictError
+            elif isinstance(seg, str):
+                if current_set.isdisjoint(extracted := extract_pua_ord(seg)):
+                    current_set |= extracted
+                else:
+                    raise PUAConflictError
+
         if mapping is None:
             for seg in obj:
                 if isinstance(seg, Text):
@@ -200,7 +258,7 @@ class InlineStr[T](str):
                     result.append(seg)
                     result_len += len(seg)
                 else:
-                    current_map.setdefault(char := cls.get_pua_char(), seg)
+                    current_map.setdefault(char := gen_pua_char(), seg)
                     inline_indices[result_len] = seg
                     result.append(char)
                     result_len += 1
@@ -213,8 +271,8 @@ class InlineStr[T](str):
                     result.append(seg)
                     result_len += len(seg)
                 else:
-                    current_map.setdefault(char := cls.get_pua_char(), seg)
-                    mapping.setdefault(char, seg)
+                    current_map.setdefault(char := gen_pua_char(), seg)
+                    mapping[char] = seg
                     inline_indices[result_len] = seg
                     result.append(char)
                     result_len += 1
@@ -242,24 +300,21 @@ class InlineStr[T](str):
                 result.append(self[last_end:])
             return result
 
-        if not mapping and not (mapping := self.csim.get()):
+        if not mapping and not (mapping := self.cism.get()):
             return [str(self)]
 
         if len(self) < 128:
             # 短的用传统逻辑
             start = 0  # 当前字符段的起始位置
-            i = 0  # 当前扫描位置
             n = len(self)
             separator_chars = set(mapping)
 
-            while i < n:
+            for i in range(n):
                 if (char := self[i]) in separator_chars:
                     if i > start:
                         result.append(self[start:i])
                     result.append(mapping[char])
                     start = i + 1
-                i += 1
-
             if start < n:
                 result.append(self[start:])
         else:
@@ -274,6 +329,20 @@ class InlineStr[T](str):
             if last_end < len(self):
                 result.append(self[last_end:])
         return result
+
+    if TYPE_CHECKING:
+        from _typeshed import ReadableBuffer
+
+        @overload
+        def __new__(cls, object: object = "") -> Self: ...
+        @overload
+        def __new__(cls, object: ReadableBuffer, encoding: str = "utf-8", errors: str = "strict") -> Self: ...
+    def __new__(cls, *args, **kwargs):
+        if (current_set := current_PUAs.get()) is None:
+            current_PUAs.set(extract_pua_ord(str(obj := super().__new__(cls, *args, **kwargs))))
+        else:
+            current_set |= extract_pua_ord(str(obj := super().__new__(cls, *args, **kwargs)))
+        return obj
 
     if TYPE_CHECKING:
 
@@ -556,9 +625,11 @@ class InlineStr[T](str):
         def __getitem__(self, key: SupportsIndex | slice, /) -> Self: ...
     def __getitem__(self, key):
         # """
-        if indices := getattr(self, "inline_indices", None):
-            new_indices = {}
-            """
+        if not (indices := getattr(self, "inline_indices", None)):
+            # """
+            return self.__class__(super().__getitem__(key))
+        new_indices = {}
+        """
             if isinstance(key, slice):
                 count = 0
                 for k in range(*key.indices(len(self))):
@@ -567,14 +638,12 @@ class InlineStr[T](str):
                     count += 1
             elif (index := getattr(key, "__index__", None)) is not None and (seg := indices.get(index())):
             """
-            if (index := getattr(key, "__index__", None)) is not None and (seg := indices.get(index())):
-                new_indices[0] = seg
-            result = self.__class__(super().__getitem__(key))
-            if new_indices:
-                result.inline_indices = new_indices
-            return result
-        # """
-        return self.__class__(super().__getitem__(key))
+        if (index := getattr(key, "__index__", None)) is not None and (seg := indices.get(index())):
+            new_indices[0] = seg
+        result = self.__class__(super().__getitem__(key))
+        if new_indices:
+            result.inline_indices = new_indices
+        return result
 
     if TYPE_CHECKING:
 

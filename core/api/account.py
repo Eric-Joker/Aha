@@ -32,7 +32,7 @@ class AccountAPI:
         pass
 
     @staticmethod
-    async def process_friend_add_request(flag: str, approve: bool, remark: str | None = None, *, bot: int = None):
+    async def process_friend_add_request(flag: str, approve: bool, remark: str = None, *, bot: int = None):
         """处理加好友请求
 
         Args:
@@ -50,7 +50,7 @@ class AccountAPI:
         """通过好友列表获取用户信息"""
 
     @staticmethod
-    async def delete_friend(user_id: str | int, block: bool = True, both: bool = False, *, bot: int = None):
+    async def delete_friend(user_id: str | int, block=True, both=False, *, bot: int = None):
         """删除好友
         Args:
             user_id (Union[str, int]): 目标用户 QQ 号
@@ -109,7 +109,7 @@ class AccountAPI:
         """获取陌生人昵称，不存在时返回 uid"""
 
     @staticmethod
-    async def fetch_collected_stickers(count: int = 48, *, bot: int = None) -> list[Sticker]:
+    async def fetch_collected_stickers(count=48, *, bot: int = None) -> list[Sticker]:
         pass
 
     @staticmethod

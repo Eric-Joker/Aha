@@ -97,7 +97,7 @@ class BasePrivateAPI(BaseAPI):
     # endregion
 
     async def get_private_msg_history(
-        self, call_id, user_id: str | int, message_seq: str | int, number: int = 20, reverseOrder: bool = False
+        self, call_id, user_id: str | int, message_seq: str | int, number=20, reverseOrder=False
     ) -> list[Message]:
         raise NotImplementedError
 

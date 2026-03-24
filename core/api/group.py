@@ -72,7 +72,9 @@ class GroupAPI:
         """
 
     @staticmethod
-    async def send_group_platform_music(group_id: str | int, platform: Literal["qq", "163"], id: str | int, *, bot: int = None) -> str:
+    async def send_group_platform_music(
+        group_id: str | int, platform: Literal["qq", "163"], id: str | int, *, bot: int = None
+    ) -> str:
         """发送群聊平台音乐分享消息。
 
         Returns:
@@ -117,16 +119,16 @@ class GroupAPI:
     # region 群成员管理
     @staticmethod
     async def group_kick_members(
-        group_id: str | int, user_ids: Sequence[str | int], reject_add_request: bool = False, *, bot: int = None
+        group_id: str | int, user_ids: Sequence[str | int], reject_add_request=False, *, bot: int = None
     ):
         """批量踢群成员"""
 
     @staticmethod
-    async def group_kick(group_id: str | int, user_id: str | int, reject_add_request: bool = False, *, bot: int = None):
+    async def group_kick(group_id: str | int, user_id: str | int, reject_add_request=False, *, bot: int = None):
         """群踢人"""
 
     @staticmethod
-    async def group_ban(group_id: str | int, user_id: str | int, duration: int = 0, *, bot: int = None) -> bool:
+    async def group_ban(group_id: str | int, user_id: str | int, duration=0, *, bot: int = None) -> bool:
         """群禁言
 
         Args:
@@ -142,7 +144,7 @@ class GroupAPI:
         """设置群管理员"""
 
     @staticmethod
-    async def group_leave(group_id: str | int, is_dismiss: bool = False, *, bot: int = None):
+    async def group_leave(group_id: str | int, is_dismiss=False, *, bot: int = None):
         """退群"""
 
     @staticmethod
@@ -150,7 +152,7 @@ class GroupAPI:
         """设置群专属头衔"""
 
     @staticmethod
-    async def process_group_join_request(flag: str, approve: bool, reason: str | None = None, *, bot: int = None):
+    async def process_group_join_request(flag: str, approve: bool, reason: str = None, *, bot: int = None):
         """处理加群请求"""
 
     @staticmethod
@@ -170,7 +172,7 @@ class GroupAPI:
     # region 群消息管理
     @staticmethod
     async def get_group_msg_history(
-        group_id: str | int, message_seq: str | int, number: int = 20, reverseOrder: bool = False, *, bot: int = None
+        group_id: str | int, message_seq: str | int, number=20, reverseOrder=False, *, bot: int = None
     ) -> list[Message]:
         pass
 
@@ -226,13 +228,11 @@ class GroupAPI:
         """删除群文件夹"""
 
     @staticmethod
-    async def get_group_root_files(group_id: str | int, file_count: int = 50, *, bot: int = None) -> GroupFiles:
+    async def get_group_root_files(group_id: str | int, file_count=50, *, bot: int = None) -> GroupFiles:
         """获取群根目录文件列表"""
 
     @staticmethod
-    async def get_group_files_by_folder(
-        group_id: str | int, folder_id: str, file_count: int = 50, *, bot: int = None
-    ) -> GroupFiles:
+    async def get_group_files_by_folder(group_id: str | int, folder_id: str, file_count=50, *, bot: int = None) -> GroupFiles:
         """获取文件夹内文件列表"""
 
     @staticmethod

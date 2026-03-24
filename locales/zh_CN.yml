@@ -58,6 +58,7 @@ identity.gid404: "未提供 group_id 参数且当前上下文的事件不存在 
 identity.group.cache.cfg_comment: "平台群组→ Aha ID 映射缓存大小。"
 identity.uid404: "未提供 user_id 参数且当前上下文的事件不存在 user_id 属性。"
 identity.user.cache.cfg_comment: "平台用户→ Aha ID 映射缓存大小。"
+inlinestr.409: "字符串中的 PUA 字符与上下文中已使用的 PUA 编码冲突。"
 main.got_conv: "已启用 cache_conv，共获取到%(group)s个群聊，%(user)s个联系人。"
 main.release_res: "保存并释放资源..."
 main.run_cleanup_callback: "执行清理回调..."

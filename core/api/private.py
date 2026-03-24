@@ -69,7 +69,9 @@ class PrivateAPI:
         """
 
     @staticmethod
-    async def send_private_platform_music(user_id: str | int, platform: Literal["qq", "163"], id: str | int, *, bot: int = None) -> str:
+    async def send_private_platform_music(
+        user_id: str | int, platform: Literal["qq", "163"], id: str | int, *, bot: int = None
+    ) -> str:
         """发送私聊平台音乐分享消息。
 
         Returns:
@@ -114,7 +116,7 @@ class PrivateAPI:
 
     @staticmethod
     async def get_private_msg_history(
-        user_id: str | int, message_seq: str | int, number: int = 20, reverseOrder: bool = False, *, bot: int = None
+        user_id: str | int, message_seq: str | int, number=20, reverseOrder=False, *, bot: int = None
     ) -> list[Message]:
         pass
 

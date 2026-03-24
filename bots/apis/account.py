@@ -33,10 +33,10 @@ class BaseAccountAPI(BaseAPI):
     async def get_friends_with_category(self, call_id) -> list[FriendCategory]:
         raise NotImplementedError
 
-    async def send_like(self, call_id, user_id: str | int, times: int = 1) -> dict[str, Any]:
+    async def send_like(self, call_id, user_id: str | int, times=1) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def process_friend_add_request(self, call_id, flag: str, approve: bool, remark: str | None = None) -> None:
+    async def process_friend_add_request(self, call_id, flag: str, approve: bool, remark: str = None) -> None:
         """处理加好友请求
 
         Args:
@@ -53,7 +53,7 @@ class BaseAccountAPI(BaseAPI):
         """通过好友列表获取用户信息"""
         raise NotImplementedError
 
-    async def delete_friend(self, call_id, user_id: str | int, block: bool = False, both: bool = True) -> None:
+    async def delete_friend(self, call_id, user_id: str | int, block=False, both=True) -> None:
         """删除好友
         Args:
             user_id (Union[str, int]): 目标用户 QQ 号
@@ -115,7 +115,7 @@ class BaseAccountAPI(BaseAPI):
         """获取陌生人昵称，不存在时返回 uid"""
         raise NotImplementedError
 
-    async def fetch_collected_stickers(self, call_id, count: int = 48) -> list[Sticker]:
+    async def fetch_collected_stickers(self, call_id, count=48) -> list[Sticker]:
         raise NotImplementedError
 
     async def get_user_status(self, call_id, user_id: str | int) -> UserStatus:

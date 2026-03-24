@@ -8,10 +8,10 @@ class APIException(Exception):
         self.err_msg = err_msg
         self.code = code
         super().__init__(err_msg, code)
-        
+
     def __str__(self):
         from core.i18n import _
-        
+
         return _("api.service.call.error") % {"code": self.code, "msg": self.err_msg}
 
 
@@ -42,6 +42,19 @@ class DatabaseBackupError(Exception):
 
 class ExactlyOneTruthyValueError(ValueError):
     """恰好有一个真值的情况被违反"""
+
+
+class NotModified(ValueError):
+    """用于 utils.string.asub"""
+
+
+class PUAConflictError(ValueError):
+    """用于 utils.string.InlineStr"""
+
+    def __init__(self):
+        from core.i18n import _
+
+        super().__init__(_("inlinestr.409"))
 
 
 class DownloadFileMsgError(HTTPStatusError):

@@ -181,6 +181,7 @@ await listener  # 等待监听任务结束
 - [与协议服务建立连接并监听协议事件](#建立连接并接收数据)
 - 解析协议事件，依据协议所述语义挑选事件属性用以重新构成 [Aha 事件对象](./数据结构/事件对象.md)并[发布](#发布事件)
   - 对于消息事件，将消息内容解析为[消息序列](./数据结构/消息序列与消息段.md)结构。
+  - 补充[元事件](./数据结构/事件对象.md#metaevent)。比如若服务连接状态与账号登录状态直相关，且协议不存在心跳事件，则在建立或断开连接时还应发布[类型](./数据结构/事件对象.md#metaeventtype)为 `HEARTBEAT` 的元事件。
 - [将 API 调用转化为协议所需格式以调用聊天平台接口并返回值](#声明和调用-api)
   - 若参数涉及消息内容，将[消息序列](./数据结构/消息序列与消息段.md)结构转化为协议所需格式。
   - 涉及文件时处理文件传输。
@@ -1477,7 +1478,7 @@ async def _(event: Message[At]):
 | --- | --- | --- | --- |
 | event_type | [MetaEventType(enum)](#metaeventtype) | | 主类型。 |
 | sub_type | [LifecycleSubType(enum)](#lifecyclesubtype) | LIFECYCLE | 协议适配器生命周期子类型。 |
-| interval | int | HEARTBEAT | 心跳间隔。 |
+| interval | int \| None | HEARTBEAT | 心跳间隔。 |
 | status | [HeartbeatStatus](#heartbeatstatus) | HEARTBEAT | 心跳状态。 |
 
 #### MetaEventType
@@ -1498,7 +1499,7 @@ async def _(event: Message[At]):
 
 | 属性 | 类型 | 说明 |
 | --- | --- | --- |
-| online | bool | 协议服务是否在线。 |
+| online | bool | 协议服务账号登录状态。 |
 | stat | HeartbeatStatusStatistics |
 
 ### MessageSent
@@ -3087,7 +3088,7 @@ async def _(event: Message):
 
 ### 规则
 
-前缀内容由配置中的 `aha.global_msg_prefix` 设置，可以通过 `msg_prefix` 键为每个模块单独设置，允许值为**任意字符串**。
+前缀内容由配置中的 `aha.global_msg_prefix` 设置，可以通过 `msg_prefix` 键为每个模块单独设置，允许值为**任意字符串**或 null。
 
 默认将 [`@event.self_id`](../../数据结构/事件对象.md#baseevent)（也就是@机器人）也视为前缀。
 

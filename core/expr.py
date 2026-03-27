@@ -426,8 +426,8 @@ class Field:
     extractor: Callable[[BaseEvent], Any] = None
     default: Callable[[FieldClause], Expr | Any] = None
     priority: int = 0
-    binary_semantics: Callable[[type["BinaryExpr"], Any], type["BinaryExpr"]] = None
-    rhs_converter: Callable[[Any, type["BinaryExpr"], EventCategory], Any] = None
+    binary_semantics: Callable[[type[BinaryExpr], Any], type[BinaryExpr]] = None
+    rhs_converter: Callable[[Any, type[BinaryExpr], EventCategory], Any] = None
     operand_types: dict[type | Iterable[type], BinaryExpr] = None
     overrides: dict = None
     cache: CacheConfig = None

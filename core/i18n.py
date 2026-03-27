@@ -11,6 +11,7 @@ from re import Pattern, compile
 from aiofiles import open
 from anyio import Path
 from ruamel.yaml import YAML
+from tenacity import _unset
 
 import core.status
 from utils.misc import caller_aha_module
@@ -117,8 +118,8 @@ def get_all_translations(key: str, module: str | None):
 L18NABLE_MODULE_PATTERN = compile(r"^((?:[^.]*modules|bots)\.[^.]+)")
 
 
-def gettext(key: str, module: str = None):
-    return LocalizedString(key, module or caller_aha_module(pattern=L18NABLE_MODULE_PATTERN))
+def gettext(key: str, module: str = _unset):
+    return LocalizedString(key, caller_aha_module(pattern=L18NABLE_MODULE_PATTERN) if module is _unset else module)
 
 
 _ = gettext

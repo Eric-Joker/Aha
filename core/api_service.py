@@ -170,8 +170,6 @@ def spawn_bot_instance(bot_class: str, config: Mapping):
     if cls.platform not in deduplicators:
         deduplicators[cls.platform] = Deduplicator()
 
-    return bot_id
-
 
 async def start_bots():
     try:
@@ -181,9 +179,8 @@ async def start_bots():
         raise ValueError(_("api.service.config_error")) from e
 
     if IS_PROCESS_MODE:
-        for v in bots.values():
-            v.instance.start()
         for k, v in bots.items():
+            v.instance.start()
             create_task(monitor_processing_events(v.pipe, k))
     elif IS_THREAD_MODE:
         for v in bots.values():
@@ -345,11 +342,11 @@ api_result_caches: dict[str, Cache | WeakValueDictionary] = {
 }
 
 
-async def call_api(method: str, *args, bot: int = None, **kwargs):
+async def call_api(method: str, *args, bot: int, **kwargs):
     return await create_task(_call_api(method, *args, bot=bot, **kwargs))
 
 
-async def _call_api(method, *args, bot=None, **kwargs):
+async def _call_api(method, *args, bot, **kwargs):
     # 缓存
     cache_key = None
     if (cacher := api_result_caches.get(method)) and (result := cacher.get(cache_key := hash(hashkey(bot, *args, **kwargs)))):
@@ -358,6 +355,8 @@ async def _call_api(method, *args, bot=None, **kwargs):
     # 服务存活检查
     try:
         if not (meta := bots[bot]):
+            if method == "close":
+                return
             raise RuntimeError(_("router.api_closed"))
     except KeyError:
         _logger.warning(_("router.bot404"))
@@ -371,7 +370,7 @@ async def _call_api(method, *args, bot=None, **kwargs):
         calls.add(current_task())
     try:
         # 等待服务状态
-        if not meta.server_ok.is_set():
+        if not meta.server_ok.is_set() and method != "close":
             if len(calls) >= MAX_WAITING_TASKS:
                 raise MemoryError(_("router.many_wating"))
             await meta.server_ok.wait()

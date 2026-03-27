@@ -319,8 +319,8 @@ class IndexedDict[_KT, _VT](dict[_KT, _VT]):
     def pop_at(self, index: SupportsIndex):
         return (key := self._keys.pop(index)), super().pop(key)
 
-    def index(self, value: _KT, start: SupportsIndex = 0, stop: SupportsIndex = sys.maxsize, /):
-        return self._keys.index(value, start, stop)
+    def index(self, key: _KT, start: SupportsIndex = 0, stop: SupportsIndex = sys.maxsize, /):
+        return self._keys.index(key, start, stop)
 
     def copy(self):
         return IndexedDict(self)

@@ -166,6 +166,11 @@ _notice_handlers = defaultdict(ExprPool[Expr, None])
 _request_handlers = defaultdict(ExprPool[Expr, None])
 _meta_handlers = defaultdict(ExprPool[Expr, None])
 _external_handlers = defaultdict(ExprPool[Expr, None])
+_message_handler_key_combs = []
+_notice_handler_key_combs = []
+_request_handler_key_combs = []
+_meta_handler_key_combs = []
+_external_handler_key_combs = []
 
 _logger = getLogger("AHA (Dispatcher)")
 
@@ -251,13 +256,14 @@ def on_message(*conditions, exp=None, debug=False, pre_hook=None, callback=None,
                 help_items.append((k, help_expr, v))
 
         (args := [s for s in get_arg_names(func) if s in _message_args]).sort()
-        _message_handlers[frozenset(args)].add(
+        _message_handlers[key := frozenset(args)].add(
             conditions,
             func,
             ExprPoolAttach(
                 module, pre_hook, binary_expr_exists(conditions, (Apply, GetAttr, Call)), register_help is not None
             ),
         )
+        _message_handler_key_combs.append(key)
         return func
 
     return decorator(callback) if callback else decorator
@@ -297,11 +303,12 @@ def on_notice(*conditions, exp=None, debug=False, callback=None):
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
-        _notice_handlers[frozenset(args)].add(
+        _notice_handlers[key := frozenset(args)].add(
             build_cond(conditions, EventCategory.NOTICE, exp, debug),
             func,
             ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call))),
         )
+        _notice_handler_key_combs.append(key)
         return func
 
     return decorator(callback) if callback else decorator
@@ -338,11 +345,12 @@ def on_request(*conditions, exp=None, debug=False, callback=None):
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
-        _request_handlers[frozenset(args)].add(
+        _request_handlers[key := frozenset(args)].add(
             build_cond(conditions, EventCategory.REQUEST, exp, debug),
             func,
             ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call))),
         )
+        _request_handler_key_combs.append(key)
         return func
 
     return decorator(callback) if callback else decorator
@@ -378,11 +386,12 @@ def on_meta(*conditions, exp=None, debug=False, callback=None):
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
-        _meta_handlers[frozenset(args)].add(
+        _meta_handlers[key := frozenset(args)].add(
             build_cond(conditions, EventCategory.META, exp, debug),
             func,
             ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call))),
         )
+        _meta_handler_key_combs.append(key)
         return func
 
     return decorator(callback) if callback else decorator
@@ -410,7 +419,8 @@ def on_external(key):
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _external_args]).sort()
-        _external_handlers[frozenset(args)].add(key, func, ExprPoolAttach(module))
+        _external_handlers[key := frozenset(args)].add(key, func, ExprPoolAttach(module))
+        _external_handler_key_combs.append(key)
         return func
 
     return decorator
@@ -478,7 +488,7 @@ async def process_message(event: Message, ignore_prefix=False):
             except Exception as ex:
                 _logger.error(ex)
 
-    for k in tuple(_message_handlers):
+    for k in _message_handler_key_combs:
         kwargs = None
         e, m, a, l = "event" in k, "match_" in k, "args" in k, "localizer" in k
         for expr, func, token, attach in (pool := _message_handlers[k]):
@@ -492,7 +502,7 @@ async def process_notice(event: Notice):
     current_lang.set(get_adapter_lang(event.adapter))
     current_event.set(event)
 
-    for k in tuple(_notice_handlers):
+    for k in _notice_handler_key_combs:
         kwargs = None
         e, l = "event" in k, "localizer" in k
         for expr, func, token, attach in (pool := _notice_handlers[k]):
@@ -516,7 +526,7 @@ async def process_request(event: Request):
     current_lang.set(get_adapter_lang(event.adapter))
     current_event.set(event)
 
-    for k in tuple(_request_handlers):
+    for k in _request_handler_key_combs:
         kwargs = None
         e, l = "event" in k, "localizer" in k
         for expr, func, token, attach in (pool := _request_handlers[k]):
@@ -540,10 +550,10 @@ async def process_meta(event: MetaEvent):
     current_lang.set(get_adapter_lang(event.adapter))
     current_event.set(event)
 
-    for k in tuple(_meta_handlers):
+    for k in _meta_handler_key_combs:
         kwargs = None
         e, l = "event" in k, "localizer" in k
-        for expr, func, token, attach in (pool := _request_handlers[k]):
+        for expr, func, token, attach in (pool := _meta_handlers[k]):
             current_module.set(attach.aha_module)
             if attach.need_isolation:
                 event = event.model_copy(deep=True)
@@ -561,7 +571,7 @@ async def process_meta(event: MetaEvent):
 
 
 async def process_external(event: External):
-    for k in tuple(_external_handlers):
+    for k in _external_handler_key_combs:
         kwargs = None
         e, d, l = "event" in k, "data" in k, "localizer" in k
         for k, func, _, attach in _external_handlers[k]:

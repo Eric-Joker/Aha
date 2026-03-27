@@ -89,7 +89,7 @@ class HandlerConfig:
 
 
 class AhaHandlerMixin:
-    def emit(self, msg):
+    def emit(self: logging.StreamHandler, msg):
         try:
             self.stream.write(msg + self.terminator)
             self.flush()
@@ -98,8 +98,8 @@ class AhaHandlerMixin:
         except Exception:
             self.handleError(msg)
 
-    def emits(self, msgs: list[str]):
-        self.emit("\n".join(msgs) + "\n")
+    def emits(self: logging.StreamHandler, msgs: list[str]):
+        self.emit(self.terminator.join(msgs))
 
     @staticmethod
     def handleError(msg: str):

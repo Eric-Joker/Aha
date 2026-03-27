@@ -269,21 +269,19 @@ class Notice(BaseEvent):
     @field_validator("event_type", mode="plain")
     @classmethod
     def event_type_or_str(cls, v):
-        if isinstance(v, str):
-            try:
-                return NoticeEventType(v)
-            except ValueError:
-                return v
+        if enum := NoticeEventType._value2member_map_.get(v):
+            return enum
+        elif isinstance(v, str):
+            return v
         raise ValueError("Input should be a string or valid enum value.")
 
     @field_validator("sub_type", mode="plain")
     @classmethod
     def sub_type_or_str(cls, v):
-        if isinstance(v, str):
-            try:
-                return NoticeSubType(v)
-            except ValueError:
-                return v
+        if enum := NoticeSubType._value2member_map_.get(v):
+            return enum
+        elif isinstance(v, str):
+            return v
         raise ValueError("Input should be a string or valid enum value.")
 
     def __hash__(self):
@@ -362,7 +360,7 @@ class HeartbeatStatusStatistics(BaseModel):
 
 
 class HeartbeatStatus(BaseModel):
-    online: bool | None = None
+    online: bool
     stat: HeartbeatStatusStatistics | None = None
 
 

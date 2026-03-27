@@ -179,21 +179,21 @@ class Config(metaclass=SingletonMeta):
         self.bots  # 先把这个写了
 
     def __getitem__(self, key):
-        return self.register(key, module=caller_aha_module())
+        return self.register(key, noneable=True, module=caller_aha_module())
 
     def __setitem__(self, key: str, value):
         self.set(key, value, module=caller_aha_module())
 
     def get(self, key, default=None, module=None):
         try:
-            return self.register(key, module=module or caller_aha_module())
+            return self.register(key, noneable=True, module=module or caller_aha_module())
         except KeyError:
             return default
 
     def __getattr__(self, key: str):
         if key.startswith("_"):
             raise AttributeError(key)
-        return self.register(key, module=caller_aha_module())
+        return self.register(key, noneable=True, module=caller_aha_module())
 
     def __setattr__(self, key: str, value):
         if key.startswith("_"):
@@ -461,7 +461,7 @@ class Config(metaclass=SingletonMeta):
         self._data[module][key] = value
         self._modified.append((module, key))
         self._default_used = True
-        
+
         # 清理对应缓存
         if key in self._USER_LIST_KEYS:
             self._user_blacklist.pop(module, None)
@@ -782,7 +782,7 @@ class Config(metaclass=SingletonMeta):
     @property
     def bots(self) -> Sequence[Mapping[str, Mapping]]:
         if "bots" not in self._data:
-            self._data["bots"] = self._old_data["bots"] = [
+            self._data["bots"] = [
                 {
                     "NapCat": {
                         "uri": "ws://127.0.0.1:3000",

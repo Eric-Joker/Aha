@@ -25,7 +25,7 @@ from models.metas import SingletonMeta
 # from wrapt import when_imported
 
 
-__all__ = "sched"
+__all__ = ("sched", "Scheduler")
 
 
 # region monkey patch

@@ -1,10 +1,13 @@
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from models.api import APIVersion
 from models.api.events import HeartbeatStatus
 
 from ...apis import BaseSupportAPI
 from ..utils import AICharacterList, Utils
+
+if TYPE_CHECKING:
+    from bots.napcat import NapCat
 
 
 class SupportAPI(Utils, BaseSupportAPI):
@@ -43,10 +46,12 @@ class SupportAPI(Utils, BaseSupportAPI):
     async def get_version_info(self, call_id):
         return APIVersion.model_validate(await self._call_api(call_id, "get_version_info"))
 
-    async def stop_server(self, call_id):
+    async def stop_server(self: NapCat, call_id):
         # TODO: 测试
-        return await self._call_api(call_id, "bot_exit")
+        await self._call_api(call_id, "bot_exit")
+        await self.close()
 
     async def get_status(self, call_id):
         return HeartbeatStatus.model_validate(await self._call_api(call_id, "get_status"))
+
     # endregion

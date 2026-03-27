@@ -1,5 +1,4 @@
-from asyncio import TimeoutError, create_subprocess_shell, subprocess, wait_for
-from contextlib import suppress
+from asyncio import create_subprocess_shell, subprocess
 from typing import TYPE_CHECKING
 
 from models.api import APIVersion
@@ -17,22 +16,20 @@ class BaseSupportAPI(BaseAPI):
 
     async def start_server(self: BaseBot, _):
         if self._start_server_comm:
-            proc = await create_subprocess_shell(self._start_server_comm, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            try:
-                await wait_for(proc.communicate(), timeout=300)
-                return proc.returncode
-            except TimeoutError:
-                with suppress(Exception):
-                    proc.kill()
-                return -1
+            await create_subprocess_shell(self._start_server_comm, subprocess.PIPE, subprocess.PIPE, subprocess.PIPE)
+            return
         raise NotImplementedError
 
     async def stop_server(self, call_id) -> None:
         raise NotImplementedError
+        await self.close()
 
     async def restart_server(self: BaseBot, call_id) -> None:
         if self._start_server_comm:
-            return await self.stop_server(call_id), await self.start_server(call_id), 
+            return (
+                await self.stop_server(call_id),
+                await self.start_server(call_id),
+            )
         raise NotImplementedError
 
     async def get_status(self, call_id) -> HeartbeatStatus:

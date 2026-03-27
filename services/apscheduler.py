@@ -10,14 +10,19 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID
 
-from apscheduler import AsyncScheduler, JobReleased, JobResult, CoalescePolicy, ConflictPolicy, JobOutcome
+from apscheduler import AsyncScheduler, CoalescePolicy, ConflictPolicy, JobOutcome, JobReleased, JobResult
 from apscheduler._exceptions import DeserializationError
-from apscheduler._schedulers.async_ import TaskType
-from apscheduler._structures import MetadataType, Job, Task, Schedule
 from apscheduler._marshalling import callable_from_ref
+from apscheduler._schedulers.async_ import TaskType
+from apscheduler._structures import Job, MetadataType, Schedule, Task
 from apscheduler._utils import UnsetValue, unset
 from apscheduler.abc import Serializer, Trigger
 from apscheduler.datastores.sqlalchemy import SQLAlchemyDataStore
+from apscheduler.triggers.calendarinterval import CalendarIntervalTrigger
+from apscheduler.triggers.combining import AndTrigger, OrTrigger
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from core.database import db_engine
 from models.metas import SingletonMeta
@@ -25,7 +30,16 @@ from models.metas import SingletonMeta
 # from wrapt import when_imported
 
 
-__all__ = ("sched", "Scheduler")
+__all__ = (
+    "sched",
+    "Scheduler",
+    "CalendarIntervalTrigger",
+    "CronTrigger",
+    "IntervalTrigger",
+    "DateTrigger",
+    "OrTrigger",
+    "AndTrigger",
+)
 
 
 # region monkey patch
@@ -104,8 +118,8 @@ class Scheduler(metaclass=SingletonMeta):
         await self.persistent_scheduler.start_in_background()
         await self.transient_scheduler.start_in_background()
 
-        self.persistent_scheduler.subscribe(self._persist_sched_cleanup, {JobReleased}, one_shot=False)
-        self.transient_scheduler.subscribe(self._cleanup, {JobReleased}, one_shot=False)
+        # self.persistent_scheduler.subscribe(self._persist_sched_cleanup, {JobReleased}, one_shot=False)
+        # self.transient_scheduler.subscribe(self._cleanup, {JobReleased}, one_shot=False)
 
     async def stop(self):
         await self._exit_stack.aclose()

@@ -66,6 +66,7 @@ class BotInstance:
     else:
         calls: set[Task] = field(factory=set)
     server_ok: Event = field(factory=Event)
+    block_event: bool
 
 
 class Deduplicator:
@@ -136,8 +137,9 @@ async def _start_async_bot(bot: BaseBot, server_ok: Event):
         server_ok.set()  # 让启动流程通过
 
 
-def spawn_bot_instance(bot_class: str, config: Mapping):
-    bot_id = _get_bot_id(bot_class, config)
+def spawn_bot_instance(bot_class: str, config: Mapping, bot_id: int = None, block_event=False):
+    if bot_id is None:
+        bot_id = _get_bot_id(bot_class, config)
     if IS_PROCESS_MODE:
         from bots import api_process
 
@@ -159,39 +161,45 @@ def spawn_bot_instance(bot_class: str, config: Mapping):
             ),
             cls.platform,
             pipe=AsyncConnection(event_parent),
+            block_event=block_event,
         )
     elif IS_THREAD_MODE:
-        bots[bot_id] = meta = BotInstance(obj := (cls := get_bot_class(bot_class))(bot_id, config), cls.platform)
+        obj = (cls := get_bot_class(bot_class))(bot_id, config)
+        bots[bot_id] = meta = BotInstance(obj, cls.platform, block_event=block_event)
         meta.threading = Thread(target=run_with_uvloop, args=(_start_async_bot(obj, meta.server_ok),), daemon=True)
     else:
-        bots[bot_id] = BotInstance((cls := get_bot_class(bot_class))(bot_id, config), cls.platform)
+        bots[bot_id] = BotInstance((cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event=block_event)
 
     platform_bot_map[cls.platform].append(bot_id)
     if cls.platform not in deduplicators:
         deduplicators[cls.platform] = Deduplicator()
 
+    return bot_id, bots[bot_id]
+
 
 async def start_bots():
+    await gather(*[start_bot(i) for i in cfg.bots])
+    if not any(bots.values()):
+        status.main_task.cancel()
+
+
+async def start_bot(cfg: dict, bot_id: int = None, block_event=False):
     try:
-        for i in cfg.bots:
-            spawn_bot_instance(*next(iter(i.items())))
+        bot_id, bot = spawn_bot_instance(*next(iter(cfg.items())), bot_id=bot_id, block_event=block_event)
     except TypeError as e:
         raise ValueError(_("api.service.config_error")) from e
 
     if IS_PROCESS_MODE:
-        for k, v in bots.items():
-            v.instance.start()
-            create_task(monitor_processing_events(v.pipe, k))
+        bot.instance.start()
+        if not block_event:
+            create_task(monitor_processing_events(bot.pipe, bot_id))
     elif IS_THREAD_MODE:
-        for v in bots.values():
-            v.threading.start()
+        bot.threading.start()
     else:
-        for i in bots.values():
-            create_task(_start_async_bot(i.instance, i.server_ok))
+        create_task(_start_async_bot(bot.instance, bot.server_ok))
 
-    await gather(*[v.server_ok.wait() for v in bots.values()])
-    if not any(bots.values()):
-        status.main_task.cancel()
+    await bot.server_ok.wait()
+    return bot_id, bot
 
 
 def _del_bot(bot_id):
@@ -274,15 +282,17 @@ def process_service_request(service: ServiceType, args, bot_id=None):
 
 
 def event_route(bot_id, event_type, payload):
+    if (bot := bots[bot_id]).block_event:
+        return
     match event_type:
         case EventCategory.META:
             if payload.event_type is MetaEventType.LIFECYCLE:
                 if payload.sub_type is LifecycleSubType.CONNECT:
-                    bots[payload.bot_id].server_ok.set()
+                    bot.server_ok.set()
                 else:
-                    bots[payload.bot_id].server_ok.clear()
+                    bot.server_ok.clear()
             elif payload.status and not payload.status.online:
-                bots[payload.bot_id].server_ok.clear()
+                bot.server_ok.clear()
             create_task(process_meta(payload))
         case EventCategory.CHAT:
             if deduplicators[payload.platform].is_duplicate(payload):
@@ -310,7 +320,7 @@ def event_route(bot_id, event_type, payload):
             create_task(process_external(payload))
         case EventCategory.RESPONSE:
             call_id, result = payload
-            if future := bots[bot_id].calls[call_id]:
+            if future := bot.calls[call_id]:
                 if isinstance(result, BaseException):
                     future.set_exception(result)
                 else:
@@ -378,27 +388,29 @@ async def _call_api(method, *args, bot, **kwargs):
         # 请求
         if IS_PROCESS_MODE:
             await meta.pipe.send((call_id, method, args, kwargs))
-            result = await future
+            if not meta.block_event:
+                result = await future
         else:
             result = await getattr(meta.instance, method)(call_id, *args, **kwargs)
 
-        # 维护联系人列表
-        if (
-            cfg.cache_conv
-            and method == "process_group_join_request"
-            and args[1] is True
-            and (gid := _flag_mapping.get(args[0]))
-        ):
-            from .api import groups
+        if not meta.block_event:
+            # 维护联系人列表
+            if (
+                cfg.cache_conv
+                and method == "process_group_join_request"
+                and args[1] is True
+                and (gid := _flag_mapping.get(args[0]))
+            ):
+                from .api import groups
 
-            groups[meta.platform][gid].append(bot)
+                groups[meta.platform][gid].append(bot)
 
-        # 缓存
-        if (cacher := api_result_caches.get(method)) is not None and isinstance(cacher, Cache):
-            cacher[cache_key or hash(hashkey(bot, *args, **kwargs))] = (
-                result.model_copy(deep=True) if isinstance(result, BaseModel) else deepcopy(result)
-            )
-        return result
+            # 缓存
+            if (cacher := api_result_caches.get(method)) is not None and isinstance(cacher, Cache):
+                cacher[cache_key or hash(hashkey(bot, *args, **kwargs))] = (
+                    result.model_copy(deep=True) if isinstance(result, BaseModel) else deepcopy(result)
+                )
+            return result
     except (BrokenPipeError, EOFError):
         raise RuntimeError(_("router.api_closed"))
     except Exception:

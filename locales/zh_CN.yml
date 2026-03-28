@@ -1,5 +1,5 @@
 api.service.config_error: "配置中的 \"bot\" 键是预期之外的结构，请检查缩进和嵌套是否正确。"
-api.service.conn.failed: "API 连接失败：%s"
+api.service.conn.failed: "API 连接失败 %s"
 api.service.call.error: "API 返回异常 %(code)s：\n%(msg)s"
 api.service.call.timeout: "API 调用超时。"
 api.service.init.success: "API 实例初始化成功，等待连接..."

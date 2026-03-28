@@ -6,6 +6,7 @@ from httpx import AsyncClient, RequestError, StreamClosed, TimeoutException
 from orjson import loads
 from tenacity import before_sleep_log, retry, retry_if_exception_type, wait_exponential
 
+from utils.misc import get_arg_names
 from utils.network import local_srv
 
 from ..i18n import _
@@ -22,8 +23,8 @@ class _HttpMixin(ClientTransport):
 
     async def open(self, *, api_connect_config: dict, api_client_config: dict, **kwargs):
         await super().open(**kwargs)
-        self._http_config = api_connect_config
-        self._http_client = AsyncClient(**api_client_config)
+        self._http_config = {k: v for k, v in api_connect_config.items() if k in get_arg_names(AsyncClient.request)}
+        self._http_client = AsyncClient(**{k: v for k, v in api_client_config.items() if k in get_arg_names(AsyncClient.__init__)})
 
     async def invoke(self, **kwargs):
         response = await self._http_client.request(**kwargs)
@@ -55,8 +56,10 @@ class _SseMixin(ClientTransport):
         self._local_srv = None
 
     async def open(self, *, sse_connect_config: dict, sse_client_config: dict = {}, retry_config: dict = None, **kwargs):
+        from httpx_sse import aconnect_sse
+
         await super().open(**kwargs)
-        self._sse_config = sse_connect_config
+        self._sse_config = {k: v for k, v in sse_connect_config.items() if k in get_arg_names(aconnect_sse)}
         self._retry_args = {
             "wait": wait_exponential(multiplier=1, max=30),
             "retry": retry_if_exception_type((RequestError, TimeoutException, ConnectionError)),
@@ -65,7 +68,7 @@ class _SseMixin(ClientTransport):
         }
         if retry_config:
             self._retry_args |= retry_config
-        self._sse_client = AsyncClient(**sse_client_config)
+        self._sse_client = AsyncClient(**{k: v for k, v in sse_client_config.items() if k in get_arg_names(AsyncClient.__init__)})
         self._closed_event = Event()
 
         await self._connect()

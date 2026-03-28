@@ -3,6 +3,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from contextlib import suppress
 from copy import deepcopy
+from dataclasses import dataclass, field
 from functools import partial
 from logging import getLogger
 from multiprocessing import Pipe, Process
@@ -15,7 +16,6 @@ from apscheduler.triggers.calendarinterval import CalendarIntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from attrs import define, field
 from orjson import dumps
 from pydantic import BaseModel
 from xxhash import xxh3_64
@@ -54,19 +54,19 @@ IS_PROCESS_MODE = cfg.execution_mode == "process"
 IS_THREAD_MODE = cfg.execution_mode == "thread"
 
 
-@define(slots=True)
+@dataclass(slots=True)
 class BotInstance:
     instance: Process | BaseBot
     platform: str
+    block_event: bool
     if IS_THREAD_MODE:
         threading: Thread
     if IS_PROCESS_MODE:
         pipe: AsyncConnection | None = None
-        calls: dict[str, Future] = field(factory=dict)
+        calls: dict[str, Future] = field(default_factory=dict)
     else:
-        calls: set[Task] = field(factory=set)
-    server_ok: Event = field(factory=Event)
-    block_event: bool
+        calls: set[Task] = field(default_factory=set)
+    server_ok: Event = field(default_factory=Event)
 
 
 class Deduplicator:
@@ -160,15 +160,14 @@ def spawn_bot_instance(bot_class: str, config: Mapping, bot_id: int = None, bloc
                 daemon=True,
             ),
             cls.platform,
+            block_event,
             pipe=AsyncConnection(event_parent),
-            block_event=block_event,
         )
     elif IS_THREAD_MODE:
-        obj = (cls := get_bot_class(bot_class))(bot_id, config)
-        bots[bot_id] = meta = BotInstance(obj, cls.platform, block_event=block_event)
+        bots[bot_id] = meta = BotInstance(obj := (cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event)
         meta.threading = Thread(target=run_with_uvloop, args=(_start_async_bot(obj, meta.server_ok),), daemon=True)
     else:
-        bots[bot_id] = BotInstance((cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event=block_event)
+        bots[bot_id] = BotInstance((cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event)
 
     platform_bot_map[cls.platform].append(bot_id)
     if cls.platform not in deduplicators:
@@ -220,9 +219,11 @@ def clean_bot(bot_id):
         from .api import groups, users
 
         for l in groups[bots[bot_id].platform].values():
-            l.remove(bot_id)
+            with suppress(ValueError):
+                l.remove(bot_id)
         for l in users[bots[bot_id].platform].values():
-            l.remove(bot_id)
+            with suppress(ValueError):
+                l.remove(bot_id)
     _del_bot(bot_id)
     for c in meta.calls.values() if IS_PROCESS_MODE else meta.calls:
         c.cancel()
@@ -282,7 +283,7 @@ def process_service_request(service: ServiceType, args, bot_id=None):
 
 
 def event_route(bot_id, event_type, payload):
-    if (bot := bots[bot_id]).block_event:
+    if not (bot := bots[bot_id]) or bot.block_event:
         return
     match event_type:
         case EventCategory.META:

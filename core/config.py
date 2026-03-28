@@ -1,10 +1,11 @@
 # from asyncio import Lock, get_running_loop
 import os
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence, Set
+from collections.abc import Hashable, Iterable, Mapping, Sequence, Set
 from copy import deepcopy
 from dataclasses import fields as dc_fields
 from dataclasses import is_dataclass
+from datetime import date
 from io import StringIO
 from logging import getLevelNamesMapping, getLogger
 from multiprocessing import current_process
@@ -14,11 +15,12 @@ from typing import Any, SupportsIndex
 
 from aiofiles import open as aioopen
 from anyio import Path as aioPath
-from attrs import asdict, define, field, has
+from attrs import asdict, define, field
 from attrs import fields as attrs_fields
+from attrs import has
 from pydantic import BaseModel
 from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedBase, CommentedMap, CommentedSeq
+from ruamel.yaml.comments import CommentedBase, CommentedMap, CommentedSeq, CommentedSet, comment_attrib
 from ruamel.yaml.representer import RoundTripRepresenter
 from tenacity import _unset
 
@@ -85,16 +87,14 @@ class IndexedBotGroup(IndexedBase):
 class Option:
     """选项对象，用于处理带有选项注释的配置值"""
 
-    options: tuple = field(
-        factory=tuple,
-        converter=lambda x: (
-            tuple(x) if isinstance(x, Iterable) and not isinstance(x, (str, bytes)) else (x,) if x is not None else ()
-        ),
+    options: list = field(
+        factory=list,
+        converter=lambda x: list(dict.fromkeys(x)) if isinstance(x, Iterable) and not isinstance(x, str) else (x,),
     )
     value: str | int = None
 
     def __attrs_post_init__(self):
-        if any(not isinstance(o, (str, bytes, int, float, bool)) for o in self.options):
+        if any(not isinstance(o, Config.BASE_TYPES) for o in self.options):
             raise ValueError("Options must be base types.")
 
         if self.value is None and self.options:
@@ -120,22 +120,34 @@ class OptionCommentedMap(CommentedMap):
 
 
 class OptionCommentedSeq(CommentedSeq):
-    """支持Option对象的CommentedSeq子类"""
+    def _setitem_single(self, idx, val):
+        if isinstance(self[idx := idx.__index__()], Option) and not isinstance(val, Option):
+            if val not in (opt_obj := self[idx]).options:
+                raise ValueError(_("config.option.invalid") % (val, opt_obj.options))
+            val = Option(opt_obj.options, val)
+        super().__setitem__(idx, val)
 
     def __setitem__(self, index, value):
         # 如果原值是Option但新值不是，验证新值是否在选项内
-        if isinstance(index, int) and index < len(self) and isinstance(self[index], Option) and not isinstance(value, Option):
-            if value not in (option_obj := self[index]).options:
-                raise ValueError(_("config.option.invalid") % (value, option_obj.options))
-            value = Option(option_obj.options, value)
-        super().__setitem__(index, value)
+        if isinstance(index, slice):
+            indices = range(len(self))[index]
+            for idx, val in zip(indices, value := tuple(value) if isinstance(value, Iterable) else [value] * len(indices)):
+                self._setitem_single(idx, val)
+        else:
+            self._setitem_single(index, value)
 
     def __getitem__(self, index):
         return value.value if isinstance(value := super().__getitem__(index), Option) else value
 
 
-class Config(metaclass=SingletonMeta):
-    BASE_TYPES = {str, bytes, int, float, bool}
+class Config[
+    TypeObj: type
+    | type[Option]
+    | tuple[type, type | tuple]
+    | tuple[type, dict[int, type | tuple]]
+    | tuple[type, dict[Hashable, tuple[type | tuple, type | tuple]]]
+](metaclass=SingletonMeta):
+    BASE_TYPES = (str, int, float, type(None), date)
 
     __slots__ = (
         "_yaml",
@@ -168,7 +180,7 @@ class Config(metaclass=SingletonMeta):
         self._default_types = defaultdict(dict)
         self._default_used = False  # 初始化过值
         self._modified = []
-        self._load()
+        self._first_load()
 
         self._msg_prefix = {}
         self._group_blacklist = {}
@@ -294,19 +306,16 @@ class Config(metaclass=SingletonMeta):
     """
 
     @classmethod
-    def _transfer_comments(cls, source: Sequence | Mapping, target: Sequence | Mapping):
-        is_commented = isinstance(source, CommentedBase)
-        if is_commented or isinstance(source, (Mapping, Sequence)) and not isinstance(source, (str, bytes)):
-            if ca := getattr(source, "_yaml_comment", None):
-                target._yaml_comment = ca
-            for key, value in source.items():
-                if isinstance(value, Mapping):
-                    cls._transfer_comments(value, target[key])
-                elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-                    for i, item in enumerate(value):
-                        cls._transfer_comments(item, target[key][i])
+    def _transfer_comments(cls, source: Sequence | Mapping, target: CommentedBase):
+        if ca := getattr(source, comment_attrib, None):
+            setattr(target, comment_attrib, deepcopy(ca))
+        for index, value in source.items() if isinstance(source, Mapping) else enumerate(source):
+            if isinstance(value, Mapping):
+                cls._transfer_comments(value, target[index])
+            elif isinstance(value, Sequence) and not isinstance(value, str):
+                cls._transfer_comments(value, target[index])
 
-    def _load(self):
+    def _first_load(self):
         if (path := Path(self._config_file)).exists():
             with open(path, "r", encoding="utf-8") as f:
                 self._old_data = self._safe_yaml.load(f)
@@ -314,58 +323,37 @@ class Config(metaclass=SingletonMeta):
                 self._old_data = OptionCommentedMap()
                 self._default_used = True
             # self.adjust_comments(self._old_data)
-
-        if self._loaded:
-            # 将程序修改的项合并到当前配置
-            for module, key in self._modified:
-                if (module_data := self._data.get(module)) and key in module_data:
-                    if module in self._old_data:
-                        self._old_data[module][key] = module_data[key]
-                    else:
-                        self._old_data[module] = module_data
-            self._old_data = self._convert_to_commented_containers(self._old_data)
-            self._transfer_comments(self._data, self._old_data)
-            self._data = deepcopy(self._old_data)
-            self._modified.clear()
-
-            self._msg_prefix.clear()
-            self._group_blacklist.clear()
-            self._user_blacklist.clear()
-            self._group_whitelist.clear()
-            self._user_whitelist.clear()
-        else:
             self._data = self._convert_to_commented_containers(deepcopy(self._old_data))
-            self._loaded = True
 
     async def load(self):
-        if await self._config_file.exists():
+        if not await self._config_file.exists():
+            return
+        try:
             async with aioopen(self._config_file, "r", encoding="utf-8") as f:
                 self._old_data = self._safe_yaml.load(await f.read())
-            if self._old_data is None:
-                self._old_data = {}
-            # self.adjust_comments(self._old_data)
+                if self._old_data is None:
+                    self._old_data = OptionCommentedMap()
+        except IOError:
+            self._old_data = OptionCommentedMap()
+        # self.adjust_comments(self._old_data)
 
-        if self._loaded:
-            # 将程序修改的项合并到当前配置
-            for module, key in self._modified:
-                if (module_data := self._data.get(module)) and (key in module_data or module == "bots"):
-                    if module in self._old_data:
-                        self._old_data[module][key] = module_data[key]
-                    else:
-                        self._old_data[module] = module_data
-            self._old_data = self._convert_to_commented_containers(self._old_data)
-            self._transfer_comments(self._data, self._old_data)
-            self._data = deepcopy(self._old_data)
-            self._modified.clear()
+        # 将程序修改的项合并到当前配置
+        for module, key in self._modified:
+            if (module_data := self._data.get(module)) and (key in module_data or module == "bots"):
+                if module in self._old_data:
+                    self._old_data[module][key] = module_data[key]
+                else:
+                    self._old_data[module] = module_data
+        self._old_data = self._convert_to_commented_containers(self._old_data)
+        self._transfer_comments(self._data, self._old_data)
+        self._data = deepcopy(self._old_data)
+        self._modified.clear()
 
-            self._msg_prefix.clear()
-            self._group_blacklist.clear()
-            self._user_blacklist.clear()
-            self._group_whitelist.clear()
-            self._user_whitelist.clear()
-        else:
-            self._data = self._convert_to_commented_containers(deepcopy(self._old_data))
-            self._loaded = True
+        self._msg_prefix.clear()
+        self._group_blacklist.clear()
+        self._user_blacklist.clear()
+        self._group_whitelist.clear()
+        self._user_whitelist.clear()
 
     # endregion
 
@@ -378,80 +366,143 @@ class Config(metaclass=SingletonMeta):
 
     # region 数据类型处理
     @classmethod
-    def _loads(cls, obj, key, type_map: dict[str, type | tuple], ca_obj, noneable=True):
-        """类型转换"""
+    def _type2registed(cls, obj, ca_obj: CommentedBase | Any, type_obj: TypeObj, index, noneable=True):
+        """
+        Args:
+            ca_obj: 内容与 `obj` 相等，但若为可注释类型则比 `obj` 多注释信息。用于恢复注释。
+            index: `obj` 在父级容器中的索引。
+        """
+        if obj is None:
+            if noneable:
+                return
+            raise ValueError(f"Config value for index '{index}' cannot be null.")
+        if type_obj is Option:
+            return obj
         try:
-            target_type = get_item_by_index(type_map, 0)[1] if len(type_map) == 1 else type_map.get(key)
-            if obj is None:
-                if noneable:
-                    return None
-                raise ValueError(f"Config value for key '{key}' cannot be null.")
-            if target_type and obj.__class__ in cls.BASE_TYPES:
-                return target_type(obj)
-            if obj.__class__ is OptionCommentedMap:
-                if isinstance(ca_obj, CommentedMap):
-                    cls._transfer_comments(ca_obj, obj)
-                if target_type.__class__ is dict:
-                    return {
-                        k: cls._loads(v, k, target_type, ca_obj.get(k) if isinstance(ca_obj, Mapping) else None)
-                        for k, v in obj.items()
-                    }
-                if has(target_type):
-                    f = {f.name for f in attrs_fields(target_type)}
-                    return target_type(**{k: v for k, v in obj.items() if k in f})
-                if issubclass(target_type, BaseModel):
-                    return target_type.model_validate(obj)
-                if is_dataclass(target_type):
-                    f = {f.name for f in dc_fields(target_type)}
-                    return target_type(**{k: v for k, v in obj.items() if k in f})
-            if obj.__class__ is OptionCommentedSeq and (target_type := type_map[key]).__class__ is tuple:
-                if isinstance(ca_obj, CommentedSeq):
-                    cls._transfer_comments(ca_obj, obj)
-                return target_type[0](
-                    cls._loads(item, i, target_type[1], ca_obj[i] if isinstance(ca_obj, Sequence) and len(ca_obj) > i else None)
-                    for i, item in enumerate(obj)
+            if isinstance(type_obj, type):  # 基础类型和非唯一类型的 set
+                return type_obj(obj)
+
+            if not isinstance(type_map := type_obj[1], dict):  # 唯一类型的 set
+                is_unique_ca = ca_obj and len(ca_obj) == 1
+                return type_obj[0](
+                    cls._type2registed(v, ca_obj[0 if is_unique_ca else i] if ca_obj else None, type_map, i)
+                    for i, v in enumerate(obj)
                 )
-            return None
+
+            if ca := getattr(ca_obj, comment_attrib, None):
+                setattr(obj, comment_attrib, deepcopy(ca))  # 转移注释
+            unique_item_type_obj = get_item_by_index(type_map, 0)[1] if len(type_map) == 1 else None
+
+            if obj.__class__ is OptionCommentedSeq:  # 序列
+                is_unique_ca = len(ca_obj) == 1
+                return type_obj[0](
+                    cls._type2registed(
+                        v, ca_obj[0 if is_unique_ca else i] if ca_obj else None, unique_item_type_obj or type_map[i], i
+                    )
+                    for i, v in enumerate(obj)
+                )
+            # 映射与数据类
+            new_obj = (obj_type if (is_mapping := issubclass(obj_type := type_obj[0], Mapping)) else dict)()
+            for k, v in obj.items():
+                items_type_obj = unique_item_type_obj or type_map[k]
+                new_obj[cls._type2registed(k, None, items_type_obj[0], k)] = cls._type2registed(
+                    v, ca_obj.get(k) if ca_obj else None, items_type_obj[1], k
+                )
+            if is_mapping:
+                return new_obj
+            if is_dataclass(obj_type):
+                f = {f.name for f in dc_fields(obj_type)}
+                return obj_type(**{k: v for k, v in new_obj.items() if k in f})
+            if has(obj_type):
+                f = {f.name for f in attrs_fields(obj_type)}
+                return obj_type(**{k: v for k, v in new_obj.items() if k in f})
+            if issubclass(obj_type, BaseModel):
+                return obj_type.model_validate(new_obj)
         except TypeError as e:
-            raise ValueError(f"Failed to convert the config value for key '{key}' to the required type.") from e
+            raise ValueError(f"Failed to convert the config value for index '{index}' to the required type.") from e
 
     @classmethod
-    def _dumps(cls, obj, parent: OptionCommentedMap | OptionCommentedSeq, index, type_map: dict):
-        """记录原始类型并返回可安全序列化的类型"""
-        if isinstance(obj, (str, bytes, int, float, bool, type(None))):
-            type_map[index] = obj.__class__
-            return obj
+    def _type2yaml(cls, obj, as_key=False, index=None, parent: CommentedBase = None) -> tuple[Any, TypeObj]:
+        """
+        Args:
+            index: 若声明此参数则说明 obj 可能为 Option，此时一定作为映射的值或序列的元素。
+            parent: 只有在 `index` 被声明了才可以声明。
+
+        Returns:
+            tuple: 转换后的值、原始类型 / tuple[原始类型, 元素类型字典]
+        """
+        if isinstance(obj, cls.BASE_TYPES):
+            return obj, obj.__class__
+        if isinstance(obj, aioPath):
+            return str(obj), aioPath
+        if isinstance(obj, Sequence):
+            type_map = {}
+            if as_key:
+                # if isinstance(obj, CommentedSeq):
+                #     raise TypeError("Unsupported config key type: CommentedSeq")
+                new_obj = []
+            else:
+                new_obj = OptionCommentedSeq()
+                if ca := getattr(obj, comment_attrib, None):
+                    setattr(new_obj, comment_attrib, ca := deepcopy(ca))
+            for i, item in enumerate(obj):
+                new_item, new_type = cls._type2yaml(item, as_key, i, new_obj)
+                new_obj.append(new_item)
+                type_map[i] = new_type
+            return tuple(new_obj) if as_key else new_obj, (obj.__class__, type_map)
+        if as_key:
+            raise TypeError(f"Unsupported config key type: {obj.__class__.__name__}")
+
         if isinstance(obj, Option):
             if obj.options:
                 parent.yaml_add_eol_comment(", ".join(str(opt) for opt in obj.options), index)
-            type_map[index] = obj.value.__class__
-            return obj
+            return obj, Option
         if has(obj.__class__):
-            type_map[index] = obj.__class__
-            return asdict(obj)
+            new_obj, type_obj = cls._type2yaml(asdict(obj))
+            return new_obj, (obj.__class__, type_obj[1])
         if isinstance(obj, BaseModel):
-            type_map[index] = obj.__class__
-            return obj.model_dump()
+            new_obj, type_obj = cls._type2yaml(obj.model_dump())
+            return new_obj, (obj.__class__, type_obj[1])
         if is_dataclass(obj):
-            type_map[index] = obj.__class__
-            return {field.name: getattr(obj, field.name) for field in dc_fields(obj)}
+            new_obj, type_obj = cls._type2yaml({field.name: getattr(obj, field.name) for field in dc_fields(obj)})
+            return new_obj, (obj.__class__, type_obj[1])
         if isinstance(obj, Mapping):
-            types = type_map[index] = {}
-            processed_dict = obj if isinstance(obj, CommentedMap) else OptionCommentedMap()
-            for key, value in obj.items():
-                if not isinstance(key, str):
-                    raise TypeError(f"Key must be str, not {key.__class__.__name__}")
-                processed_dict[key] = cls._dumps(value, obj, key, types)
-            return processed_dict
-        if isinstance(obj, (Sequence, Set)):
-            type_map[index] = (obj.__class__, types := {})
-            processed_list = obj if isinstance(obj, CommentedSeq) else OptionCommentedSeq()
-            for i, item in enumerate(obj):
-                processed_list.append(cls._dumps(item, obj, i, types))
-            return processed_list
-        if isinstance(obj, aioPath):
-            type_map[index] = aioPath
-            return str(obj)
+            type_map = {}
+            new_obj = OptionCommentedMap()
+            if ca := getattr(obj, comment_attrib, None):
+                setattr(new_obj, comment_attrib, ca := deepcopy(ca))
+            for k in tuple(obj):
+                new_k, new_k_type = cls._type2yaml(k, True)
+                new_v, new_v_type = cls._type2yaml(obj[k], False, k, new_obj)
+                new_obj[new_k] = new_v
+                if ca and k is not new_k and (comments := ca._items.pop(k, None)):
+                    ca._items[new_k] = comments
+                type_map[new_k] = (new_k_type, new_v_type)
+            return new_obj, (obj.__class__, type_map)
+        if isinstance(obj, Set):
+            if isinstance(obj, CommentedSet):
+                raise TypeError("Unsupported config type: CommentedSet")
+            new_obj = []
+            unique_type, is_base = None, True
+            for item in obj:
+                new_item, new_type = cls._type2yaml(item)
+                new_obj.append(new_item)
+                if unique_type is None:
+                    unique_type = item.__class__
+                elif unique_type is False:
+                    if is_base and isinstance(item, cls.BASE_TYPES):
+                        continue
+                    break
+                elif unique_type is not item.__class__:
+                    if is_base:
+                        unique_type = False
+                    else:
+                        break
+                if is_base and not isinstance(item, cls.BASE_TYPES):
+                    is_base = False
+            else:
+                return new_obj, obj.__class__ if is_base else (obj.__class__, new_type)
+            raise TypeError(f"Unsupported config set element type: {item.__class__.__name__}")
         raise TypeError(f"Unsupported config value type: {obj.__class__.__name__}")
 
     # endregion
@@ -479,7 +530,7 @@ class Config(metaclass=SingletonMeta):
         # self._check_permission(module, caller)
         if not module:
             module = caller_aha_module()
-        return self._set_value(key, self._register(key, value, module), module)
+        self._set_value(key, self._register(self._type2yaml(key, True)[0], value, module), module)
 
     # endregion
     # region 注册项
@@ -504,13 +555,8 @@ class Config(metaclass=SingletonMeta):
         # if len(self._data) > 0 and mod != next(iter(self._data)):
         self._comment_update(self._data, module, "\n")
 
-        if isinstance(default, Option) and key in mod_data and (value := mod_data[key]) not in default.options:
-            self._set_value(key, default, module)
-            logger.warning(
-                _("config.not_in_options")
-                % {"mod": module, "key": key, "value": value, "options": " ".join(default.options), "def": default.value}
-            )
-        return self._dumps(default, mod_data, key, self._default_types[module])
+        result, self._default_types[module][key] = self._type2yaml(default, index=key, parent=mod_data)
+        return result
 
     """
     TODO: 使用异步锁而不是像现在依赖内部锁。
@@ -536,25 +582,28 @@ class Config(metaclass=SingletonMeta):
             return
 
         # 获取配置
-        value = _unset
+        key, value = self._type2yaml(key, True)[0], _unset
         for mod in {"aha", storage_module}:
             if (data := self._data.get(mod)) and key in data:
                 if default is _unset:
                     if not self._is_registered(key, mod):
                         raise KeyError(key)
+                    value = self._type2registed(data[key], None, self._default_types[mod][key], key, noneable=noneable)
                 else:
-                    self._register(key, default, mod, comment)
-                value = self._loads(value := data[key], key, self._default_types[mod], default, noneable)
+                    value = self._type2registed(
+                        data[key], self._register(key, default, mod, comment), self._default_types[mod][key], key, noneable
+                    )
 
         if value is not _unset:
-            return value
+            return deepcopy(value)
         if (ee := self._data.get("expr_extractors")) and (ee := ee.get(key)) is not None:
             return ee == storage_module.removeprefix("modules.")
         if default is _unset:
             raise KeyError(key)
 
         # self._check_permission(module, caller)
-        return self._set_value(key, self._register(key, default, storage_module, comment), storage_module)
+        self._set_value(key, self._register(key, default, storage_module, comment), storage_module)
+        return default
 
     # endregion
     async def reload_and_save(self):
@@ -785,9 +834,13 @@ class Config(metaclass=SingletonMeta):
             self._data["bots"] = [
                 {
                     "NapCat": {
-                        "uri": "ws://127.0.0.1:3000",
+                        "uri": "ws://127.0.0.1:3001",
                         "token": "napcat",
-                        "start_server_command": "",
+                        "start_server_command": (
+                            r'@wmic process get commandline 2>nul | findstr /i /r /c:"QQNT\\QQ\.exe. --enable-logging -q 114514" >nul || start "" /d "\path\to\NapCat.Shell" launcher-user.bat 114514'
+                            if os.name == "nt"
+                            else r'pgrep -f "QQ/qq --no-sandbox -q 114514" || napcat start 114514'
+                        ),
                         "retry_config": {"wait_exponential": {"multiplier": 1, "max": 30, "exp_base": 2, "min": 1}},
                         "lang": "zh_CN",
                     }
@@ -842,7 +895,7 @@ if current_process().name == "MainProcess":
     def init_base_cfgs():
         cfg.register("super", (User("QQ", "114514"),), "Super user ID.", module="aha")
         cfg.register("global_msg_prefix", "~", _("config.comment.global_msg_prefix"), True, "aha")
-        database_def = OptionCommentedMap(
+        database_def = CommentedMap(
             {"uri": "sqlite+aiosqlite:///data.db", "green": "sqlite:///data.db", "backup_dir": os.path.abspath("db_backup")}
         )
         database_def.yaml_set_comment_before_after_key("uri", _("config.comment.database"), 4)
@@ -857,6 +910,7 @@ if current_process().name == "MainProcess":
         cfg.register("bot_prefs", 1, _("config.comment.bot_prefs"), module="aha")
         cfg.register("file_msg_ttl", 3600, _("config.comment.file_msg_ttl"), module="cache")
         cfg.register("event", {"size": "16MiB", "ttl": 86400}, _("config.comment.event_cache"), module="cache")
+        cfg.point_feat
         cfg.register(
             "default_group_list_mode",
             Option(("whitelist", "blacklist")),

@@ -96,7 +96,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
         try:
             await self.transport.open(**self._get_transport_kwargs(self.config))
         except Exception as e:
-            self.logger.error(_("api.service.conn.failed") % e)
+            self.logger.error(_("api.service.conn.failed") % f"{e.__class__.__name__}: {e}")
             await self.close()
             return False
         self.logger.info(_("api.service.init.success"))

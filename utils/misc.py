@@ -1,3 +1,4 @@
+from operator import methodcaller
 import re
 import sys
 from array import array
@@ -111,11 +112,10 @@ def get_posarg_count(func: Callable):
 def get_arg_names(func: Callable):
     """获取函数的所有参数名，不包含可变参数和self/cls"""
     code = get_true_func(func := get_true_func(func)).__code__
-    names = list((all_arg_names := code.co_varnames)[: (arg_count := code.co_argcount)])
-    names.extend(all_arg_names[arg_count : arg_count + code.co_kwonlyargcount])
+    names = set((all_arg_names := code.co_varnames)[: (arg_count := code.co_argcount)])
+    names.union(all_arg_names[arg_count : arg_count + code.co_kwonlyargcount])
     if is_instance_method(func):
-        drops = {"self", "cls"}
-        names = [n for n in names if n not in drops]
+        names.difference_update({"self", "cls"})
     return names
 
 
@@ -132,7 +132,7 @@ def get_item_by_index(d, index):
 
 def uninstall_module(module_name):
     modnames = [modname for modname in list(sys.modules) if modname.startswith(f"{module_name}.")]
-    modnames.sort(key=lambda name: name.count("."), reverse=True)
+    modnames.sort(key=methodcaller('count', '.'), reverse=True)
     for modname in modnames:
         del sys.modules[modname]
 

@@ -1,5 +1,5 @@
 api.service.config_error: "The `bots` key in config is an invalid structure. Please verify that the indentation and nesting of configuration elements are correct."
-api.service.conn.failed: "Connection failed: %s"
+api.service.conn.failed: "Connection failed %s"
 api.service.call.error: "API returned exception %(code)s:\n%(msg)s"
 api.service.call.timeout: "API call timed out."
 api.service.init.success: "One API instance initialized successfully, waiting for connections."

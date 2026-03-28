@@ -4,7 +4,10 @@ from collections.abc import AsyncIterable, Buffer
 from contextlib import suppress
 
 from tenacity import before_sleep_log, retry, retry_if_exception_type, wait_exponential
+from websockets import State, connect
+from websockets.exceptions import ConnectionClosed, WebSocketException
 
+from utils.misc import get_arg_names
 from utils.network import local_srv
 
 from ..i18n import _
@@ -19,8 +22,6 @@ class WebSocketClient(ClientTransport):
         self._local_srv = None
 
     async def open(self, uri: str, extra_headers=None, retry_config=None, **kwargs):
-        from websockets.exceptions import WebSocketException
-
         self._retry_args = {
             "wait": wait_exponential(1, 30),
             "retry": retry_if_exception_type((WebSocketException, ConnectionError, TimeoutError)),
@@ -29,7 +30,8 @@ class WebSocketClient(ClientTransport):
         }
         if retry_config:
             self._retry_args |= retry_config
-        self._connect_args = {"additional_headers": extra_headers or {}} | kwargs
+        kwargs["additional_headers"] = extra_headers or {}
+        self._connect_args = {k: v for k, v in kwargs.items() if k in get_arg_names(connect.__init__)}
         self.uri = uri
         self._closed_event = Event()
 
@@ -38,15 +40,11 @@ class WebSocketClient(ClientTransport):
     async def _connect(self):
         if self._closed_event.is_set():
             return
-        from websockets import connect
-
         self.websocket = await connect(self.uri, **self._connect_args)
 
     _connect.__qualname__ = "WebSocketClient"
 
     async def _listen_impl(self):
-        from websockets.exceptions import ConnectionClosed
-
         while True:
             try:
                 yield await self.websocket.recv(decode=False)
@@ -75,7 +73,6 @@ class WebSocketClient(ClientTransport):
     async def close(self):
         with suppress(AttributeError):
             self._closed_event.set()
-        from websockets import State
 
         if (w := getattr(self, "websocket", None)) and w.state is State.OPEN:
             await self.websocket.close()

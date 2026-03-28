@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
 
@@ -32,7 +33,7 @@ class APSTriggerType(Enum):
     INTERVAL_TRIGGER = auto()
 
 
-@define(slots=True)
+@dataclass(slots=True)
 class AddScheduleArgs:
     api_method: str
     api_kwargs: Mapping[str, Any]

@@ -363,7 +363,7 @@ class Downloadable(MsgSeg):
                 self.file = await API.get_file_src(self, record_format, bot=bot_id)
 
                 # 缓存 bytes
-                if type(self.file) is bytes:
+                if self.file.__class__ is bytes:
                     self.file = await session.register(cfg.file_msg_ttl, self.file)
                     return await self.file.copy(dir_ / name) if dir_ else self.file
 
@@ -457,7 +457,7 @@ class Downloadable(MsgSeg):
                 self.file = await API.get_file_src(self, record_format, bot=bot_id)
 
                 # 缓存 bytes
-                if type(self.file) is bytes:
+                if self.file.__class__ is bytes:
                     data = self.file
                     self.file = await session.register(cfg.file_msg_ttl, self.file)
                     for i in range(0, len(data), size):

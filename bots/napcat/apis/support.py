@@ -1,3 +1,4 @@
+from contextlib import suppress
 from typing import TYPE_CHECKING, Literal
 
 from models.api import APIVersion
@@ -46,10 +47,11 @@ class SupportAPI(Utils, BaseSupportAPI):
     async def get_version_info(self, call_id):
         return APIVersion.model_validate(await self._call_api(call_id, "get_version_info"))
 
-    async def stop_server(self: NapCat, call_id):
-        # TODO: 测试
-        await self._call_api(call_id, "bot_exit")
-        await self.close()
+    async def stop_server(self: NapCat, call_id, close_adapter = True):
+        with suppress(TimeoutError):
+            await self._call_api(call_id, "bot_exit", timeout=1)
+        if close_adapter:
+            await self.close()
 
     async def get_status(self, call_id):
         return HeartbeatStatus.model_validate(await self._call_api(call_id, "get_status"))

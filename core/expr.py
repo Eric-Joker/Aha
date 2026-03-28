@@ -1,16 +1,16 @@
 import re
 from abc import abstractmethod
 from collections import defaultdict
-from collections.abc import Callable, Container, Hashable, Iterable, KeysView, Sequence, ValuesView, MutableSequence
+from collections.abc import Callable, Container, Hashable, Iterable, KeysView, MutableSequence, Sequence, ValuesView
 from contextlib import suppress
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from functools import partial
 from logging import getLogger
 from time import localtime, strftime, time
 from types import CoroutineType, GenericAlias, UnionType
 from typing import TYPE_CHECKING, Any, Hashable, NoReturn, TypedDict, Unpack, _Final, _UnionGenericAlias
 
-from attrs import define, field
 from cachetools import Cache
 from pydantic import TypeAdapter
 from pydantic_core._pydantic_core import ValidationError
@@ -34,17 +34,18 @@ from models.api import (
 )
 from models.core import EventCategory, Group, User
 from models.exc import AhaExprFieldDuplicate
-from models.msg import At, MsgSeg, MessageChain, Text
+from models.msg import At, MessageChain, MsgSeg, Text
 from utils.aio import async_all, async_any, async_run_func
 from utils.misc import AHA_MODULE_PATTERN, caller_aha_module, find_first_instance, is_prefix, is_suffix
 from utils.string import halfwidth
-
-# from models.exc import AhaExprTypeError
 
 from .cache import LRUCache, async_cached
 from .config import Option, cfg
 from .i18n import _
 from .identity import group2aha_id, user2aha_id
+
+# from models.exc import AhaExprTypeError
+
 
 if TYPE_CHECKING:
     from .dispatcher import ExprPool
@@ -405,7 +406,7 @@ class FieldClause[Result](Expr[Result]):
         return f"Field.{self.name}(PRI={self.priority})"
 
 
-@define(slots=True)
+@dataclass(slots=True)
 class Field:
     """字段描述符
 
@@ -432,10 +433,10 @@ class Field:
     overrides: dict = None
     cache: CacheConfig = None
     skip_default_on_meta: bool = True
-    _requires_extractor: bool = field(default=False, alias="_requires_extractor")
-    _redirect: str = field(default=None, alias="_redirect")
+    _requires_extractor: bool = False
+    _redirect: str = None
 
-    clause: FieldClause = field(init=False, repr=False, default=None)
+    clause: FieldClause = field(default=None, init=False, repr=False)
 
 
 _registed_operand_types = {}
@@ -1104,7 +1105,7 @@ def get_msg_str_without_prefix(msg: MessageChain):
 
 
 def remove_msg_seq_prefix(msg: MessageChain):
-    from .dispatcher import current_event, current_module, cugp
+    from .dispatcher import cugp, current_event, current_module
 
     if (prefix := cfg.global_msg_prefix if cugp.get() else cfg.get_msg_prefix(current_module.get())) is None:
         return msg
@@ -1146,7 +1147,7 @@ def remove_msg_seq_prefix(msg: MessageChain):
 
 # endregion
 def _has_msg_prefix(event: Message):
-    from .dispatcher import current_module, cugp
+    from .dispatcher import cugp, current_module
 
     if event.message:
         if (prefix := cfg.global_msg_prefix if cugp.get() else cfg.get_msg_prefix(current_module.get())) is None:
@@ -1331,7 +1332,7 @@ if TYPE_CHECKING:
         msg: BaseEvent
 
 
-@define(slots=True)
+@dataclass(slots=True)
 class CacheConfig:
     """二元表达式评估结果缓存配置，用于字段属性
 
@@ -1425,7 +1426,7 @@ class PM(metaclass=PatternMatcherMeta):
     # region 来源限定字段
     isgroup: FieldClause[bool] = Field(lambda event: bool(getattr(event, "group_id", False)), priority=6)
     isprivate: FieldClause[bool] = Field(
-        lambda event: not bool(getattr(event, "group_id", False)),
+        lambda event: not getattr(event, "group_id", False),
         None if cfg.register("private", True, _("expr.fields.isprivate.default_cfg"), module="aha") else (lambda v: v == False),
         priority=7,
     )

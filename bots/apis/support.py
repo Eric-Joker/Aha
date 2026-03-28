@@ -20,14 +20,14 @@ class BaseSupportAPI(BaseAPI):
             return
         raise NotImplementedError
 
-    async def stop_server(self, call_id) -> None:
+    async def stop_server(self, call_id, close_adapter=True) -> None:
         raise NotImplementedError
         await self.close()
 
     async def restart_server(self: BaseBot, call_id) -> None:
         if self._start_server_comm:
             return (
-                await self.stop_server(call_id),
+                await self.stop_server(call_id, False),
                 await self.start_server(call_id),
             )
         raise NotImplementedError

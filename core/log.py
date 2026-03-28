@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from logging.handlers import BaseRotatingHandler
 from multiprocessing import Process
 from multiprocessing import Queue as PQueue
+from operator import itemgetter
 from pathlib import Path
 from queue import Empty
 from queue import Queue as TQueue
@@ -149,7 +150,7 @@ class TimeRangeRotatingFileHandler(AhaHandlerMixin, BaseRotatingHandler):
                     except ValueError, OSError:
                         # 跳过格式不正确的文件
                         continue
-            log_files.sort(key=lambda x: x[1])
+            log_files.sort(key=itemgetter(1))
 
             # 超过数量限制
             self.backupFiles = [f[0] for f in log_files]

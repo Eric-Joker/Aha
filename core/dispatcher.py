@@ -3,11 +3,11 @@ from collections import defaultdict
 from collections.abc import Callable, Container, Hashable, Sequence
 from contextvars import ContextVar
 from copy import deepcopy
+from dataclasses import dataclass
 from logging import getLogger
 from re import Match, Pattern
 from typing import TYPE_CHECKING, get_type_hints, overload
 
-from attrs import define
 from pydantic import TypeAdapter
 
 from models.api import BaseEvent, External, Message, MetaEvent, Notice, Request
@@ -48,14 +48,14 @@ __all__ = (
 
 
 # region 回调容器
-@define(slots=True)
+@dataclass(slots=True)
 class ExprPoolAttach:
     aha_module: str
     pre_hook: Callable[[MessageChain], MessageChain] = None
     need_isolation: bool = False
     use_global_prefix: bool = False
 
-    def __attrs_post_init__(self):
+    def __post_init__(self):
         if self.pre_hook:
             self.need_isolation = True
 

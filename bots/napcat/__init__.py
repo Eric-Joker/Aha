@@ -1,3 +1,4 @@
+from asyncio import sleep
 from collections import deque
 from time import time
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -7,6 +8,7 @@ from orjson import loads
 import core.status
 from core.transports import WebSocketClient
 from models.api import Message, MessageSent, MetaEvent, Notice, NoticeEventType, Request
+from models.api.events import LifecycleSubType, MetaEventType
 from models.core import EventCategory
 
 from ..base import BaseBot
@@ -43,6 +45,7 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
 
     def __init__(self, bot_id, config, pipe=None):
         super().__init__(bot_id, config, pipe)
+        self._sent_connect = False
         if limit_config := self.config.pop("limit_group_increase", None):
             self._gi_window = limit_config[0]
             self._gi_deque = deque(maxlen=limit_config[1])
@@ -90,6 +93,8 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
                         cat, data = EventCategory.REQUEST, Request.model_validate(data)
                     case "meta_event":
                         cat, data = EventCategory.META, MetaEvent.model_validate(data)
+                        if data.sub_type is LifecycleSubType.CONNECT:
+                            self._sent_connect = True
                     case "message_sent":
                         await self._msg_event_processor(data)
                         cat, data = EventCategory.SENT, MessageSent.model_validate(data)
@@ -102,3 +107,14 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
 
         if (future := self._call_handlers.get(echo)) is not None and not future.done():
             future.set_result(data)
+
+    async def _disconnect_cb(self):
+        self._sent_connect = False
+        await super()._disconnect_cb()
+
+    async def _reconnect_cb(self):
+        await sleep(3)
+        if not self._sent_connect:
+            await self.event_post(
+                EventCategory.META, MetaEvent(event_type=MetaEventType.LIFECYCLE, sub_type=LifecycleSubType.CONNECT)
+            )

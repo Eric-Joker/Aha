@@ -57,7 +57,7 @@ class SupportAPI:
         pass
 
     @staticmethod
-    async def stop_server(*, bot: int = None):
+    async def stop_server(close_adapter=True, *, bot: int = None):
         pass
 
     @staticmethod

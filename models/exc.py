@@ -48,7 +48,7 @@ class NotModified(ValueError):
     """用于 utils.string.asub"""
 
 
-class PUAConflictError(ValueError):
+class CodePointConflictError(ValueError):
     """用于 utils.string.InlineStr"""
 
     def __init__(self):

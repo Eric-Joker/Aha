@@ -144,7 +144,7 @@ class Config[
     TypeObj: type
     | type[Option]
     | tuple[type, type | tuple]
-    | tuple[type, dict[int, type | tuple]]
+    | tuple[type, list[type | tuple]]
     | tuple[type, dict[Hashable, tuple[type | tuple, type | tuple]]]
 ](metaclass=SingletonMeta):
     BASE_TYPES = (str, int, float, type(None), date)
@@ -382,7 +382,7 @@ class Config[
             if isinstance(type_obj, type):  # 基础类型和非唯一类型的 set
                 return type_obj(obj)
 
-            if not isinstance(type_map := type_obj[1], dict):  # 唯一类型的 set
+            if isinstance(type_map := type_obj[1], (type, tuple)):  # 唯一类型的 set
                 is_unique_ca = ca_obj and len(ca_obj) == 1
                 return type_obj[0](
                     cls._type2registed(v, ca_obj[0 if is_unique_ca else i] if ca_obj else None, type_map, i)
@@ -391,10 +391,9 @@ class Config[
 
             if ca := getattr(ca_obj, comment_attrib, None):
                 setattr(obj, comment_attrib, deepcopy(ca))  # 转移注释
-            unique_item_type_obj = get_item_by_index(type_map, 0)[1] if len(type_map) == 1 else None
 
             if obj.__class__ is OptionCommentedSeq:  # 序列
-                is_unique_ca = len(ca_obj) == 1
+                unique_item_type_obj, is_unique_ca = type_map[0] if len(type_map) == 1 else None, len(ca_obj) == 1
                 return type_obj[0](
                     cls._type2registed(
                         v, ca_obj[0 if is_unique_ca else i] if ca_obj else None, unique_item_type_obj or type_map[i], i
@@ -402,6 +401,7 @@ class Config[
                     for i, v in enumerate(obj)
                 )
             # 映射与数据类
+            unique_item_type_obj = get_item_by_index(type_map, 0)[1] if len(type_map) == 1 else None
             new_obj = (obj_type if (is_mapping := issubclass(obj_type := type_obj[0], Mapping)) else dict)()
             for k, v in obj.items():
                 items_type_obj = unique_item_type_obj or type_map[k]
@@ -436,7 +436,7 @@ class Config[
         if isinstance(obj, aioPath):
             return str(obj), aioPath
         if isinstance(obj, Sequence):
-            type_map = {}
+            type_map = []
             if as_key:
                 # if isinstance(obj, CommentedSeq):
                 #     raise TypeError("Unsupported config key type: CommentedSeq")
@@ -448,7 +448,7 @@ class Config[
             for i, item in enumerate(obj):
                 new_item, new_type = cls._type2yaml(item, as_key, i, new_obj)
                 new_obj.append(new_item)
-                type_map[i] = new_type
+                type_map.append(new_type)
             return tuple(new_obj) if as_key else new_obj, (obj.__class__, type_map)
         if as_key:
             raise TypeError(f"Unsupported config key type: {obj.__class__.__name__}")

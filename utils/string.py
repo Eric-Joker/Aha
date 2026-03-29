@@ -1,21 +1,21 @@
 import re
+import unicodedata
+from bisect import bisect_right
 from collections.abc import Callable, Coroutine, Iterable, Iterator
 from contextlib import suppress
 from contextvars import ContextVar
 from multiprocessing import current_process
+from secrets import choice, randbelow
 from typing import TYPE_CHECKING, Any, LiteralString, Self, SupportsIndex, overload
 
 from core.i18n import _
-from models.exc import NotModified, PUAConflictError
+from models.exc import CodePointConflictError, NotModified
 from models.msg import Text
-
-# from random import getrandbits
 
 try:
     import numpy as np
 except ImportError:
     np = None
-
 
 if IS_MAINPROC := current_process().name == "MainProcess":
     from core.config import cfg
@@ -31,6 +31,10 @@ def halfwidth(char):
     if (code := ord(char)) == 0x3000:  # 空格
         return chr(0x20)
     return chr(code - 0xFEE0) if 0xFF01 <= code <= 0xFF5E else char
+
+
+def is_version_newer(version_str: str, target_str: str):
+    return tuple(map(int, version_str.split("."))) > tuple(map(int, target_str.split(".")))
 
 
 # region re
@@ -104,124 +108,140 @@ async def series_asub(
 
 # endregion
 # endregion
-# region PUA
-_PUA_PATTERN = re.compile(r"[\uE000-\uF8FF]" r"|[\U000F0000-\U000FFFFD]" r"|[\U00100000-\U0010FFFD]")
-current_PUAs: ContextVar[set] = ContextVar("current_PUAs", default=None)
+with suppress(ImportError):
+    import unicodedata2
+
+    if is_version_newer(unicodedata2.unicode_version, unicodedata.unicode_version):
+        unicodedata = unicodedata2
+    del unicodedata2
 
 
-def extract_pua_ord(s: str) -> set[int]:
-    if len(s) < 5:
-        return {cp for ch in s if 0xE000 <= (cp := ord(ch)) <= 0xF8FF or 0xF0000 <= cp <= 0xFFFFD or 0x100000 <= cp <= 0x10FFFD}
-    elif len(s) < 300 or not np:
-        return set(map(ord, _PUA_PATTERN.findall(s)))
-    arr = np.frombuffer(s.encode("utf-32-le"), dtype=np.uint32)
-    return set(
-        arr[
-            ((arr >= 0xE000) & (arr <= 0xF8FF))
-            | ((arr >= 0xF0000) & (arr <= 0xFFFFD))
-            | ((arr >= 0x100000) & (arr <= 0x10FFFD))
-        ]
-    )
-
-
-if TYPE_CHECKING:
-
-    def gen_pua_char() -> str | None:
-        """返回一个 PUA 字符。同一个上下文中不会返回相同的 PUA。"""
-
-elif IS_MAINPROC and cfg.memory_level == "high":
-    _PUAs: list[tuple[int, str]] = []
-
-    def _init_pua_map():
-        for i in range(6400):
-            _PUAs.append((cp := 0xE000 + i, chr(cp)))
-        for i in range(65534):
-            _PUAs.append((cp := 0xF0000 + i, chr(cp)))
-        for i in range(65534):
-            _PUAs.append((cp := 0x100000 + i, chr(cp)))
-
-    _init_pua_map()
-
-    def gen_pua_char():
-        if (PUAs := current_PUAs.get()) is None:
-            current_PUAs.set({_PUAs[0][0]})
-            return _PUAs[0][1]
-        for cp, char in _PUAs:
-            if cp not in PUAs:
-                PUAs.add(cp)
-                return char
-        return None
-
-else:
-
-    def gen_pua_char():
-        if (PUAs := current_PUAs.get()) is None:
-            current_PUAs.set({0xE000})
-            return chr(0xE000)
-
-        # 遍历
-        for i in range(6400):
-            if (cp := 0xE000 + i) not in PUAs:
-                PUAs.add(cp)
-                return chr(cp)
-        for i in range(65534):
-            if (cp := 0xF0000 + i) not in PUAs:
-                PUAs.add(cp)
-                return chr(cp)
-        for i in range(65534):
-            if (cp := 0x100000 + i) not in PUAs:
-                PUAs.add(cp)
-                return chr(cp)
-        return None
-
-
-"""
-def contains_pua(s: str):
-    if not s:
-        return False
-    if len(s) <= 100:
-        for ch in s:
-            if 0xE000 <= (cp := ord(ch)) <= 0xF8FF or 0xF0000 <= cp <= 0xFFFFD or 0x100000 <= cp <= 0x10FFFD:
-                return True
-    else:
-        arr = np.frombuffer(s.encode("utf-32-le"), dtype=np.uint32)
-        return bool(
-            np.any(
-                ((arr >= 0xE000) & (arr <= 0xF8FF))
-                | ((arr >= 0xF0000) & (arr <= 0xFFFFD))
-                | ((arr >= 0x100000) & (arr <= 0x10FFFD))
-            )
-        )
-"""
-
-
-# endregion
 class InlineStr[T](str):
     cism: ContextVar[dict] = ContextVar("aha_inline_str_map", default=None)
+    current_cp: ContextVar[set] = ContextVar("current_code_points", default=None)
 
-    """
-    cisK: ContextVar[list] = ContextVar("aha_inline_str_Ks", default=None)
+    if IS_MAINPROC and cfg.memory_level == "high":
+
+        def _init_intervals():
+            _AREAS, _A_LEN, _A_PATTERN, _A_CPS, start, prev_cat = [], 0, [], [], None, None
+            for code in range(0x110000):
+                if (cur_cat := unicodedata.category(chr(code))) == "Cn" or cur_cat == "Co":
+                    if start is None:
+                        start, prev_cat = code, cur_cat
+                    elif cur_cat != prev_cat:
+                        # 类别变化
+                        if (length := code - start) >= 1024:
+                            _AREAS.append((start, code - 1))
+                            _A_LEN += length
+                            _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                            for i in range(length):
+                                _A_CPS.append((cp := start + i, chr(cp)))
+                        start, prev_cat = code, cur_cat
+                elif start is not None:
+                    # 非 Cn/Co
+                    if (length := code - start) >= 1024:
+                        _AREAS.append((start, code - 1))
+                        _A_LEN += length
+                        _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                        for i in range(length):
+                            _A_CPS.append((cp := start + i, chr(cp)))
+                    start = None
+
+            if start is not None:  # 处理最后一个区间
+                if (length := 0x110000 - start) >= 1024:
+                    _AREAS.append((start, 0x10FFFF))
+                    _A_LEN += length
+                    _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                    for i in range(length):
+                        _A_CPS.append((cp := start + i, chr(cp)))
+
+            return _AREAS, _A_LEN, _A_PATTERN, _A_CPS
+
+        _AREAS, _A_LEN, _A_PATTERN, _A_CPS = _init_intervals()
+
+        @classmethod
+        def gen_char(cls):
+            if (code_points := cls.current_cp.get()) is None:
+                cls.current_cp.set({(t := choice(cls._A_CPS))[0]})
+                return t[1]
+
+            if len(code_points) >= cls._A_LEN * 0.95:
+                raise OverflowError
+            while (cp := (t := choice(cls._A_CPS))[0]) not in code_points:
+                code_points.add(cp)
+                return t[1]
+
+    else:
+
+        def _init_intervals():
+            _AREAS, _A_LEN, _A_PATTERN, _A_CUM, _A_STARTS, start, prev_cat = [], 0, [], [], [], None, None
+            for code in range(0x110000):
+                if (cur_cat := unicodedata.category(chr(code))) == "Cn" or cur_cat == "Co":
+                    if start is None:
+                        start, prev_cat = code, cur_cat
+                    elif cur_cat != prev_cat:
+                        # 类别变化
+                        if (length := code - start) >= 1024:
+                            _AREAS.append((start, code - 1))
+                            _A_LEN += length
+                            _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                            _A_CUM.append(_A_LEN)
+                            _A_STARTS.append(start)
+                        start, prev_cat = code, cur_cat
+                elif start is not None:
+                    # 非 Cn/Co
+                    if (length := code - start) >= 1024:
+                        _AREAS.append((start, code - 1))
+                        _A_LEN += length
+                        _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                        _A_CUM.append(_A_LEN)
+                        _A_STARTS.append(start)
+                    start = None
+
+            if start is not None:  # 处理最后一个区间
+                if (length := 0x110000 - start) >= 1024:
+                    _AREAS.append((start, 0x10FFFF))
+                    _A_LEN += length
+                    _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                    _A_CUM.append(_A_LEN)
+                    _A_STARTS.append(start)
+            return _AREAS, _A_LEN, _A_PATTERN, _A_CUM, _A_STARTS
+
+        _AREAS, _A_LEN, _A_PATTERN, _A_CUM, _A_STARTS = _init_intervals()
+
+        @classmethod
+        def _random_cp(cls):
+            idx = bisect_right(cls._A_CUM, r := randbelow(cls._A_LEN))  # 找到所在区间的索引
+            return cls._A_STARTS[idx] + (r if idx == 0 else r - cls._A_CUM[idx - 1])
+
+        @classmethod
+        def gen_char(cls):
+            if (code_points := cls.current_cp.get()) is None:
+                cls.current_cp.set({cp := cls._random_cp()})
+                return chr(cp)
+
+            # 已有已使用集合，需避免重复
+            if len(code_points) >= cls._A_LEN * 0.95:
+                raise OverflowError
+            while (cp := cls._random_cp()) not in code_points:
+                code_points.add(cp)
+                return chr(cp)
+
+    _A_PATTERN = re.compile("[" + "".join(_A_PATTERN) + "]")
+
     @classmethod
-    def permute(cls) -> int:
-        if Ks := cls.cisK.get():
-            K0, K1 = Ks
-        else:
-            seed = getrandbits(30)
-            cls.cisK.set((K0 := seed ^ 461845907, K1 := seed ^ 433494437))
-        mixed = (len(cls.cism.get()) + 1) * 403  # 403: 16777619 & ((2^30-1) // 131072)
+    def _extract_A_ord(cls, s: str) -> set[int]:
+        if len(s) < 5:
+            return {cp for ch in s if any(start <= (cp := ord(ch)) <= end for start, end in cls._AREAS)}
 
-        L = mixed >> 9  # high 8 bits
-        R = mixed & 0x1FF  # low 9 bits
-        L, R = R, L ^ (((R ^ K0) * 1073741789) & 0xFF)  # R width 8 bits
-        L, R = R, L ^ (((R ^ K1) * 1073741047) & 0x1FF)  # R width 9 bits
-        L, R = R, L ^ (((R ^ K0) * 1073740781) & 0xFF)
-        L, R = R, L ^ (((R ^ K1) * 1073741173) & 0x1FF)
-        L, R = R, L ^ (((R ^ K0) * 1073741621) & 0xFF)
-        L, R = R, L ^ (((R ^ K1) * 1073741287) & 0x1FF)
-        L, R = R, L ^ (((R ^ K0) * 1073741783) & 0xFF)
-        L, R = R, L ^ (((R ^ K1) * 1073741371) & 0x1FF)
-        return (L << 9) | R
-    """
+        elif len(s) < 300 or not np:
+            return set(map(ord, cls._A_PATTERN.findall(s)))
+
+        else:
+            mask = np.zeros(len(arr := np.frombuffer(s.encode("utf-32-le"), dtype=np.uint32)), dtype=bool)
+            for start, end in cls._AREAS:
+                mask |= (arr >= start) & (arr <= end)
+            return set(arr[mask])
 
     @classmethod
     def from_iterable[T](cls, obj: Iterable[T], mapping: dict = None) -> Self[T]:
@@ -234,20 +254,20 @@ class InlineStr[T](str):
         inline_indices = {}
         if (current_map := cls.cism.get()) is None:
             cls.cism.set(current_map := {})
-        if (current_set := current_PUAs.get()) is None:
-            current_PUAs.set(current_set := set())
+        if (current_set := cls.current_cp.get()) is None:
+            cls.current_cp.set(current_set := set())
 
         for seg in obj:
             if isinstance(seg, Text):
-                if current_set.isdisjoint(extracted := extract_pua_ord(seg.text)):
+                if current_set.isdisjoint(extracted := cls._extract_A_ord(seg.text)):
                     current_set |= extracted
                 else:
-                    raise PUAConflictError
+                    raise CodePointConflictError
             elif isinstance(seg, str):
-                if current_set.isdisjoint(extracted := extract_pua_ord(seg)):
+                if current_set.isdisjoint(extracted := cls._extract_A_ord(seg)):
                     current_set |= extracted
                 else:
-                    raise PUAConflictError
+                    raise CodePointConflictError
 
         if mapping is None:
             for seg in obj:
@@ -258,7 +278,7 @@ class InlineStr[T](str):
                     result.append(seg)
                     result_len += len(seg)
                 else:
-                    current_map.setdefault(char := gen_pua_char(), seg)
+                    current_map.setdefault(char := cls.gen_char(), seg)
                     inline_indices[result_len] = seg
                     result.append(char)
                     result_len += 1
@@ -271,7 +291,7 @@ class InlineStr[T](str):
                     result.append(seg)
                     result_len += len(seg)
                 else:
-                    current_map.setdefault(char := gen_pua_char(), seg)
+                    current_map.setdefault(char := cls.gen_char(), seg)
                     mapping[char] = seg
                     inline_indices[result_len] = seg
                     result.append(char)
@@ -330,6 +350,11 @@ class InlineStr[T](str):
                 result.append(self[last_end:])
         return result
 
+    @classmethod
+    def clear_map(cls):
+        cls.cism.set(None)
+        cls.current_cp.set(None)
+
     if TYPE_CHECKING:
         from _typeshed import ReadableBuffer
 
@@ -338,10 +363,10 @@ class InlineStr[T](str):
         @overload
         def __new__(cls, object: ReadableBuffer, encoding: str = "utf-8", errors: str = "strict") -> Self: ...
     def __new__(cls, *args, **kwargs):
-        if (current_set := current_PUAs.get()) is None:
-            current_PUAs.set(extract_pua_ord(str(obj := super().__new__(cls, *args, **kwargs))))
+        if (current_set := cls.current_cp.get()) is None:
+            cls.current_cp.set(cls._extract_A_ord(str(obj := super().__new__(cls, *args, **kwargs))))
         else:
-            current_set |= extract_pua_ord(str(obj := super().__new__(cls, *args, **kwargs)))
+            current_set |= cls._extract_A_ord(str(obj := super().__new__(cls, *args, **kwargs)))
         return obj
 
     if TYPE_CHECKING:

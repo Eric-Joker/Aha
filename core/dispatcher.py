@@ -14,7 +14,7 @@ from models.api import BaseEvent, External, Message, MetaEvent, Notice, Request
 from models.core import EventCategory
 from models.msg import MessageChain, MsgSeg
 from utils.aio import async_run_func
-from utils.misc import FULL_AHA_MODULE_PATTERN, caller_aha_module, get_arg_names, get_true_func
+from utils.misc import FULL_AHA_MODULE_PATTERN, SetList, caller_aha_module, get_arg_names, get_true_func
 
 from .config import cfg
 from .expr import (
@@ -166,11 +166,11 @@ _notice_handlers = defaultdict(ExprPool[Expr, None])
 _request_handlers = defaultdict(ExprPool[Expr, None])
 _meta_handlers = defaultdict(ExprPool[Expr, None])
 _external_handlers = defaultdict(ExprPool[Expr, None])
-_message_handler_key_combs = []
-_notice_handler_key_combs = []
-_request_handler_key_combs = []
-_meta_handler_key_combs = []
-_external_handler_key_combs = []
+_message_handler_key_combs = SetList()
+_notice_handler_key_combs = SetList()
+_request_handler_key_combs = SetList()
+_meta_handler_key_combs = SetList()
+_external_handler_key_combs = SetList()
 
 _logger = getLogger("AHA (Dispatcher)")
 

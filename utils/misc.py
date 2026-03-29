@@ -1,12 +1,12 @@
-from operator import methodcaller
 import re
 import sys
 from array import array
 from collections.abc import Callable, Iterable, Sequence
 from contextlib import suppress
 from decimal import ROUND_HALF_UP, Decimal
+from operator import methodcaller
 from types import FunctionType
-from typing import TYPE_CHECKING, Any, Literal, Self, SupportsIndex, overload
+from typing import TYPE_CHECKING, Literal, Self, SupportsIndex, overload
 
 from models.exc import ExactlyOneTruthyValueError
 
@@ -132,13 +132,13 @@ def get_item_by_index(d, index):
 
 def uninstall_module(module_name):
     modnames = [modname for modname in list(sys.modules) if modname.startswith(f"{module_name}.")]
-    modnames.sort(key=methodcaller('count', '.'), reverse=True)
+    modnames.sort(key=methodcaller("count", "."), reverse=True)
     for modname in modnames:
         del sys.modules[modname]
 
 
-class SetArray[_T](array):
-    """基于集合实现的array，支持O(1)存在性检查"""
+class SetArray[_T](array[_T]):
+    """支持O(1)存在性检查的 array"""
 
     if TYPE_CHECKING:
 
@@ -162,10 +162,8 @@ class SetArray[_T](array):
         @overload
         def __new__(cls, typecode: str, initializer: bytes | bytearray = b"", /) -> Self: ...
     def __new__(cls, typecode, initializer=b"", /):
-        if isinstance(initializer, SetArray):
-            raise NotImplementedError
-        obj = super().__new__(cls, typecode, seen := set(initializer))
-        obj._set = seen
+        obj = super().__new__(cls, typecode, initializer := set(initializer))
+        obj._set = initializer
         return obj
 
     __mul__ = __rmul__ = __imul__ = __add__ = __iadd__ = __buffer__ = __release_buffer__ = itemsize = buffer_info = byteswap = (
@@ -194,7 +192,7 @@ class SetArray[_T](array):
             self._set.remove(self[key])
         super().__delitem__(key)
 
-    def pop(self, i: int = -1, /) -> _T:
+    def pop(self, i: int = -1, /):
         self._set.remove(item := super().pop(i))
         return item
 
@@ -228,25 +226,65 @@ class SetArray[_T](array):
     def __deepcopy__(self, unused, /):
         return self.__copy__()
 
-    def __le__(self, value: array[_T], /) -> bool:
-        if isinstance(value, SetArray):
-            return self._set <= value._set
-        return super().__le__(value)
 
-    def __lt__(self, value: array[_T], /) -> bool:
-        if isinstance(value, SetArray):
-            return self._set < value._set
-        return super().__lt__(value)
+class SetList[_T](list[_T]):
+    """支持O(1)存在性检查的 list"""
 
-    def __ge__(self, value: array[_T], /) -> bool:
-        if isinstance(value, SetArray):
-            return self._set >= value._set
-        return super().__ge__(value)
+    def __init__(self, iterable: Iterable[_T] = None, /):
+        super().__init__(iterable := set(iterable)) if iterable else super().__init__(iterable := set())
+        self._set = iterable
 
-    def __gt__(self, value: SetArray[_T], /) -> bool:
-        if isinstance(value, SetArray):
-            return self._set > value._set
-        return super().__gt__(value)
+    __mul__ = __rmul__ = __imul__ = __add__ = __iadd__ = __setitem__ = None
+
+    def append(self, object: _T, /):
+        if object not in self._set:
+            super().append(object)
+            self._set.add(object)
+
+    def extend(self, iterable: Iterable[_T], /):
+        for item in iterable:
+            self.append(item)
+
+    def insert(self, index: SupportsIndex, object: _T, /):
+        if object not in self._set:
+            super().insert(index, object)
+            self._set.add(object)
+
+    def __delitem__(self, key: SupportsIndex | slice, /):
+        if isinstance(key, slice):
+            for item in self[key]:
+                self._set.remove(item)
+        else:
+            self._set.remove(self[key])
+        super().__delitem__(key)
+
+    def pop(self, index: SupportsIndex = -1, /):
+        self._set.remove(item := super().pop(index))
+        return item
+
+    def remove(self, value: _T, /):
+        super().remove(value)
+        self._set.remove(value)
+
+    def __contains__(self, key: object, /):
+        return key in self._set
+
+    def isdisjoint(self, s: Iterable, /):
+        return self._set.isdisjoint(s)
+
+    def issubset(self, s: Iterable, /):
+        return self._set.issubset(s)
+
+    def issuperset(self, s: Iterable, /):
+        return self._set.issuperset(s)
+
+    def count(self, v: _T, /):
+        return 1 if v in self._set else 0
+
+    def index(self, v: _T, start: int = 0, stop: int = sys.maxsize, /):
+        if v not in self._set:
+            raise ValueError(f"{v} not in list")
+        return super().index(v, start, stop)
 
 
 class IndexedDict[_KT, _VT](dict[_KT, _VT]):

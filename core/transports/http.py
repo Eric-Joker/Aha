@@ -24,7 +24,9 @@ class _HttpMixin(ClientTransport):
     async def open(self, *, api_connect_config: dict, api_client_config: dict, **kwargs):
         await super().open(**kwargs)
         self._http_config = {k: v for k, v in api_connect_config.items() if k in get_arg_names(AsyncClient.request)}
-        self._http_client = AsyncClient(**{k: v for k, v in api_client_config.items() if k in get_arg_names(AsyncClient.__init__)})
+        self._http_client = AsyncClient(
+            **{k: v for k, v in api_client_config.items() if k in get_arg_names(AsyncClient.__init__)}
+        )
 
     async def invoke(self, **kwargs):
         response = await self._http_client.request(**kwargs)
@@ -68,7 +70,9 @@ class _SseMixin(ClientTransport):
         }
         if retry_config:
             self._retry_args |= retry_config
-        self._sse_client = AsyncClient(**{k: v for k, v in sse_client_config.items() if k in get_arg_names(AsyncClient.__init__)})
+        self._sse_client = AsyncClient(
+            **{k: v for k, v in sse_client_config.items() if k in get_arg_names(AsyncClient.__init__)}
+        )
         self._closed_event = Event()
 
         await self._connect()
@@ -80,8 +84,10 @@ class _SseMixin(ClientTransport):
         from httpx_sse import aconnect_sse
 
         self.sse_connect = await aconnect_sse(self._sse_client, **self._sse_config).__aenter__()
+        return True
 
     _connect.__qualname__ = "HTTPSse"
+    _connect.__module__ = None
 
     async def _listen_impl(self):
         while True:
@@ -95,7 +101,8 @@ class _SseMixin(ClientTransport):
                 self._logger.warning(msg=_("api.transport.conn_close_retry"))
                 try:
                     await self._disconnect_cb()
-                    await retry(**self._retry_args)(self._connect)()
+                    if not await retry(**self._retry_args)(self._connect)():
+                        break
                     self._logger.info(_("api.transport.retry_success"))
                     create_task(self._reconnect_cb())
                     continue

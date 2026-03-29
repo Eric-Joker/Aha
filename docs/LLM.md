@@ -3787,7 +3787,7 @@ async def _(event: Message):
 
 **返回**: [GroupMembers](../../数据结构/API%20相关.md#modelsapigroupmembers)
 
-### get_group_list
+### get_groups
 
 获取群列表。
 

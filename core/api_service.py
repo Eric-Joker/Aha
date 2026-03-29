@@ -46,9 +46,6 @@ deduplicators: dict[str, Deduplicator] = {}
 
 _logger = getLogger("AHA (IPC)")
 
-if cfg.cache_conv:
-    _flag_mapping = FIFOCache(64)
-
 MAX_WAITING_TASKS = 648
 IS_PROCESS_MODE = cfg.execution_mode == "process"
 IS_THREAD_MODE = cfg.execution_mode == "thread"
@@ -138,6 +135,7 @@ async def _start_async_bot(bot: BaseBot, server_ok: Event):
 
 
 def spawn_bot_instance(bot_class: str, config: Mapping, bot_id: int = None, block_event=False):
+    config = commented2basic(config)
     if bot_id is None:
         bot_id = _get_bot_id(bot_class, config)
     if IS_PROCESS_MODE:
@@ -152,7 +150,7 @@ def spawn_bot_instance(bot_class: str, config: Mapping, bot_id: int = None, bloc
                     cls := get_bot_class(bot_class),
                     bot_id,
                     event_child,
-                    commented2basic(config),
+                    config,
                     cfg.base64_buffer,
                     cfg.lang,
                     log_config,
@@ -182,9 +180,27 @@ async def start_bots():
         status.main_task.cancel()
 
 
-async def start_bot(cfg: dict, bot_id: int = None, block_event=False):
+if cfg.cache_conv:
+    _flag_mapping = FIFOCache(64)
+    groups: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "q")))
+    users: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "q")))
+
+    async def _cache_group(bot_id, bot: BotInstance):
+        with suppress(NotImplementedError):
+            cacher = groups[bot.platform]
+            for g in await call_api("get_groups", bot=bot_id):
+                cacher[g.group_id].append(bot_id)
+
+    async def _cache_user(bot_id, bot: BotInstance):
+        with suppress(NotImplementedError):
+            cacher = users[bot.platform]
+            for u in await call_api("get_friends", bot=bot_id):
+                cacher[u.user_id].append(bot_id)
+
+
+async def start_bot(bot_cfg: dict, bot_id: int = None, block_event=False):
     try:
-        bot_id, bot = spawn_bot_instance(*next(iter(cfg.items())), bot_id=bot_id, block_event=block_event)
+        bot_id, bot = spawn_bot_instance(*next(iter(bot_cfg.items())), bot_id=bot_id, block_event=block_event)
     except TypeError as e:
         raise ValueError(_("api.service.config_error")) from e
 
@@ -198,6 +214,10 @@ async def start_bot(cfg: dict, bot_id: int = None, block_event=False):
         create_task(_start_async_bot(bot.instance, bot.server_ok))
 
     await bot.server_ok.wait()
+
+    if bots[bot_id] and cfg.cache_conv:
+        await gather(_cache_group(bot_id, bot), _cache_user(bot_id, bot))
+
     return bot_id, bot
 
 
@@ -354,19 +374,21 @@ api_result_caches: dict[str, Cache | WeakValueDictionary] = {
 
 
 async def call_api(method: str, *args, bot: int, **kwargs):
-    return await create_task(_call_api(method, *args, bot=bot, **kwargs))
+    return await create_task(__call_api(method, *args, bot=bot, **kwargs))
 
 
-async def _call_api(method, *args, bot, **kwargs):
+async def __call_api(method, *args, bot, **kwargs):
     # 缓存
     cache_key = None
     if (cacher := api_result_caches.get(method)) and (result := cacher.get(cache_key := hash(hashkey(bot, *args, **kwargs)))):
         return result
 
+    is_close = method == "close"
+
     # 服务存活检查
     try:
         if not (meta := bots[bot]):
-            if method == "close":
+            if is_close:
                 return
             raise RuntimeError(_("router.api_closed"))
     except KeyError:
@@ -375,21 +397,22 @@ async def _call_api(method, *args, bot, **kwargs):
 
     call_id = token_hex(4)[:7]
     calls = bots[bot].calls
-    if IS_PROCESS_MODE:
-        calls[call_id] = future = get_running_loop().create_future()
-    else:
-        calls.add(current_task())
     try:
         # 等待服务状态
-        if not meta.server_ok.is_set() and method != "close":
-            if len(calls) >= MAX_WAITING_TASKS:
-                raise MemoryError(_("router.many_wating"))
-            await meta.server_ok.wait()
+        if not is_close:
+            if IS_PROCESS_MODE:
+                calls[call_id] = future = get_running_loop().create_future()
+            else:
+                calls.add(current_task())
+            if not meta.server_ok.is_set():
+                if len(calls) >= MAX_WAITING_TASKS:
+                    raise MemoryError(_("router.many_wating"))
+                await meta.server_ok.wait()
 
         # 请求
         if IS_PROCESS_MODE:
             await meta.pipe.send((call_id, method, args, kwargs))
-            if not meta.block_event:
+            if not meta.block_event and not is_close:
                 result = await future
         else:
             result = await getattr(meta.instance, method)(call_id, *args, **kwargs)

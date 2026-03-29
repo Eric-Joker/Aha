@@ -359,7 +359,7 @@ class GroupAPI(Utils, BaseGroupAPI):
                 i["account_age"] = aa
         return GroupMembers(data)
 
-    async def get_group_list(self, call_id):
+    async def get_groups(self, call_id):
         return [GroupInfo.model_validate(g) for g in await self._call_api(call_id, "get_group_list")]
 
     async def get_group_shut_list(self, call_id, group_id):

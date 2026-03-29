@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Annotated, Any, overload
 
 from anyio import Path
 from pydantic import BeforeValidator, Field
-# from websockets import State
 
 import core.status
 from bots.apis import BaseAPI
@@ -40,6 +39,8 @@ from models.msg import (
 )
 from utils.aha import aha_code2dict_list, parse_aha_code
 from utils.typekit import AsyncBase64Encoder, stream_async_json
+
+# from websockets import State
 
 if TYPE_CHECKING:
     from . import NapCat
@@ -114,6 +115,7 @@ class AICharacter(FrozenBaseModel):
 
 class AICharacterList(list[AICharacter]):
     if TYPE_CHECKING:
+
         @overload
         def __init__(self) -> None: ...
 
@@ -160,7 +162,7 @@ class Utils(BaseAPI):
             raise APIException(data["message"], retcode)
         except TimeoutError:
             # if self.transport.websocket.state is not State.CLOSING and self.transport.websocket.state is not State.CLOSED:
-                raise APITimeoutError()
+            raise APITimeoutError()
         finally:
             del self._call_handlers[echo]
 

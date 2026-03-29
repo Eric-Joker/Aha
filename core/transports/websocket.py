@@ -41,8 +41,10 @@ class WebSocketClient(ClientTransport):
         if self._closed_event.is_set():
             return
         self.websocket = await connect(self.uri, **self._connect_args)
+        return True
 
     _connect.__qualname__ = "WebSocketClient"
+    _connect.__module__ = None
 
     async def _listen_impl(self):
         while True:
@@ -55,7 +57,8 @@ class WebSocketClient(ClientTransport):
                 self._logger.warning(_("api.transport.conn_close_retry"))
                 try:
                     await self._disconnect_cb()
-                    await retry(**self._retry_args)(self._connect)()
+                    if not await retry(**self._retry_args)(self._connect)():
+                        break
                     self._logger.info(_("api.transport.retry_success"))
                     create_task(self._reconnect_cb())
                     continue

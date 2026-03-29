@@ -123,7 +123,7 @@ def get_kwonlyarg_count(func: Callable):
     return get_true_func(func).__code__.co_kwonlyargcount
 
 
-def get_item_by_index(d, index):
+def get_item_by_index[KT, VT](d: dict[KT, VT], index):
     for i, (k, v) in enumerate(d.items()):
         if i == index:
             return (k, v)

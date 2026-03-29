@@ -263,7 +263,7 @@ class GroupAPI:
         """获取群成员列表"""
 
     @staticmethod
-    async def get_group_list(call_id, *, bot: int = None) -> list[GroupInfo]:
+    async def get_groups(call_id, *, bot: int = None) -> list[GroupInfo]:
         """获取群列表"""
 
     @staticmethod

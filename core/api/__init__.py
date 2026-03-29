@@ -1,6 +1,3 @@
-from asyncio import create_task
-from collections import defaultdict
-from contextlib import suppress
 from enum import Enum, auto
 from functools import partial
 from random import choice
@@ -8,9 +5,9 @@ from types import FunctionType
 from typing import TYPE_CHECKING, Literal, _overload_dummy, _overload_registry, overload
 
 from models.api import BaseEvent
-from utils.misc import SetArray, get_arg_names, get_kwonlyarg_count
+from utils.misc import get_arg_names, get_kwonlyarg_count
 
-from ..api_service import call_api
+from ..api_service import call_api, groups, users
 from ..config import cfg
 from ..dispatcher import current_event
 from ..i18n import _
@@ -21,11 +18,6 @@ from .private import PrivateAPI
 from .support import SupportAPI
 
 __all__ = ("API", "SS", "select_bot")
-
-
-if cfg.cache_conv:
-    groups: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "i")))
-    users: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "i")))
 
 
 class APIMeta(type):
@@ -145,32 +137,6 @@ cfg.register(
     "脱离 Aha 事件上下文调用发送消息等 API 请求时偏好第几个 bot。支持负数（倒数），为 0 时随机选择。",
     module="aha",
 )
-
-
-async def init_conversations():
-    from ..api_service import bots, call_api
-
-    for i, v in bots.items():
-        if v is None:
-            continue
-
-        g_task = create_task(call_api("get_group_list", bot=i))
-        u_task = create_task(call_api("get_friends", bot=i))
-        group_list = groups[v.platform]
-        user_list = users[v.platform]
-
-        with suppress(NotImplementedError):
-            for u in await u_task:
-                if (available_bots := user_list.get(u.user_id)) is None:
-                    available_bots = user_list[u.user_id] = []
-                available_bots.append(i)
-        with suppress(NotImplementedError):
-            for g in await g_task:
-                if (available_bots := group_list.get(g.group_id)) is None:
-                    available_bots = group_list[g.group_id] = []
-                available_bots.append(i)
-
-    return sum(len(i) for i in groups.values()), sum(len(i) for i in users.values())
 
 
 if TYPE_CHECKING:

@@ -244,13 +244,13 @@ class BaseGroupAPI(BaseAPI):
         """获取群成员列表"""
         raise NotImplementedError
 
-    async def get_group_list(self, call_id) -> list[GroupInfo]:
+    async def get_groups(self, call_id) -> list[GroupInfo]:
         """获取群列表"""
         raise NotImplementedError
 
     async def get_user_by_groups(self, call_id, user_id: str | int) -> GroupMemberInfo:
         """从所有群中查询群成员信息"""
-        tasks = [create_task(self.get_group_members(self.gen_id(), g["group_id"])) for g in (await self.get_group_list())]
+        tasks = [create_task(self.get_group_members(self.gen_id(), g["group_id"])) for g in (await self.get_groups())]
         for task in as_completed(tasks):
             for member in await task:
                 if member.user_id == user_id:

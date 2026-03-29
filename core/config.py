@@ -383,9 +383,9 @@ class Config[
                 return type_obj(obj)
 
             if isinstance(type_map := type_obj[1], (type, tuple)):  # 唯一类型的 set
-                is_unique_ca = ca_obj and len(ca_obj) == 1
+                is_unique_ca = hasattr(ca_obj, "__len__") and len(ca_obj) == 1
                 return type_obj[0](
-                    cls._type2registed(v, ca_obj[0 if is_unique_ca else i] if ca_obj else None, type_map, i)
+                    cls._type2registed(v, ca_obj[0] if is_unique_ca else None if ca_obj is None else ca_obj[i], type_map, i)
                     for i, v in enumerate(obj)
                 )
 
@@ -393,10 +393,11 @@ class Config[
                 setattr(obj, comment_attrib, deepcopy(ca))  # 转移注释
 
             if obj.__class__ is OptionCommentedSeq:  # 序列
-                unique_item_type_obj, is_unique_ca = type_map[0] if len(type_map) == 1 else None, len(ca_obj) == 1
+                unique_item_type_obj = type_map[0] if len(type_map) == 1 else None
+                is_unique_ca = hasattr(ca_obj, "__len__") and len(ca_obj) == 1
                 return type_obj[0](
                     cls._type2registed(
-                        v, ca_obj[0 if is_unique_ca else i] if ca_obj else None, unique_item_type_obj or type_map[i], i
+                        v, ca_obj[0] if is_unique_ca else None if ca_obj is None else ca_obj[i], unique_item_type_obj or type_map[i], i
                     )
                     for i, v in enumerate(obj)
                 )

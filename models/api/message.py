@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import Field
 
 from ..base import FrozenBaseModel
@@ -10,6 +12,7 @@ class Reactions(FrozenBaseModel):
 
 
 class RetrievedMessage(Message):
+    time: datetime
     reactions: list[Reactions] | None = None
 
 

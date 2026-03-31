@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal, _overload_dummy, _overload_registry, 
 from models.api import BaseEvent
 from utils.misc import get_arg_names, get_kwonlyarg_count
 
-from ..api_service import call_api, groups, users
+from ..api_service import call_api, friends, groups
 from ..config import cfg
 from ..dispatcher import current_event
 from ..i18n import _
@@ -250,9 +250,9 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
                 platform = event.platform
             try:
                 if not (prefs := cfg.bot_prefs):
-                    return choice(users[platform][conv_id])
+                    return choice(friends[platform][conv_id])
                 result = bots.key_at(prefs if prefs < 0 else prefs - 1)
-                return result if result in users[platform][conv_id] else users[platform][conv_id][index]
+                return result if result in friends[platform][conv_id] else friends[platform][conv_id][index]
             except KeyError as e:
                 raise KeyError(_("router.select_bot.user404") % {"platform": platform, "conv_id": conv_id})
         case SS.FRIEND_NTH:
@@ -263,7 +263,7 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
             if not platform:
                 platform = event.platform
             try:
-                return users[platform][conv_id][index]
+                return friends[platform][conv_id][index]
             except KeyError as e:
                 raise KeyError(_("router.select_bot.user404") % {"platform": platform, "conv_id": conv_id})
         case SS.FRIEND_RANDOM:
@@ -273,7 +273,7 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
                 if not platform:
                     platform = event.platform
                 try:
-                    return choice(users[platform][conv_id])
+                    return choice(friends[platform][conv_id])
                 except KeyError as e:
                     raise KeyError(_("router.select_bot.user404") % {"platform": platform, "conv_id": conv_id})
             raise RuntimeError(_("router.select_bot.403"))

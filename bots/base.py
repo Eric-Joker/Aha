@@ -57,7 +57,7 @@ async def _run(coroutine):
     await core.status.main_task
 
 
-class BaseBotMeta(PerProcessSingletonMeta):
+class BaseBotMeta(type):
     """注册所有API子类"""
 
     def __new__(cls, name, *args):
@@ -66,6 +66,9 @@ class BaseBotMeta(PerProcessSingletonMeta):
         register(cls)
         (new_class := super().__new__(cls, name, *args)).logger = getLogger(name)
         return new_class
+
+
+class BaseBotSingletonMeta(BaseBotMeta, PerProcessSingletonMeta): ...
 
 
 class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, BaseSupportAPI, metaclass=BaseBotMeta):
@@ -80,12 +83,14 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
         self.pipe = pipe
         self.is_process_mode = pipe is not None
         self._start_server_comm = config.pop("start_server_command", None)
+        self._stop_server_comm = config.pop("stop_server_command", None)
         self.config = config
         self.transport = (
-            self.transport_class(self.logger, self._disconnect_cb, self._reconnect_cb)
+            self.transport_class(self.logger, self._disconnect_cb, self._connect_cb)
             if issubclass(self.transport_class, ClientTransport)
             else self.transport_class(self.logger)
         )
+        self._closing = False
 
     async def start(self):
         if self.is_process_mode:
@@ -93,6 +98,8 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
             self._request_listen = create_task(self._handle_requests())
 
         await load_locales(self.__class__.__module__)
+        with suppress(NotImplementedError):
+            await self.start_server()
         try:
             await self.transport.open(**self._get_transport_kwargs(self.config))
         except Exception as e:
@@ -100,7 +107,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
             await self.close()
             return False
         self.logger.info(_("api.service.init.success"))
-        create_task(self.transport.listen(self._listen_callback)).add_done_callback(self._close)
+        create_task(self.transport.listen(self._listen_callback)).add_done_callback(lambda _: create_task(self.close()))
 
         if self.is_process_mode:
             with suppress(CancelledError):
@@ -115,7 +122,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
         else:
             from core.api_service import event_route
 
-            event_route(self.bot_id, catrgory, data)
+            await event_route(self.bot_id, catrgory, data)
 
     async def _handle_requests(self):
         """仅多进程模式"""
@@ -130,18 +137,16 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
             await sleep(0.001)
 
     async def close(self, _=None):  # 参数为 call_id
-        await self.transport.close()
-        self._close()
+        if not self._closing:
+            await self.transport.close()
+            if self.is_process_mode:
+                self._request_listen.cancel()
+                self.pipe.close()
+            else:
+                # TODO: 重写这里超越界限的逻辑
+                from core.api_service import clean_bot
 
-    def _close(self, _=None):
-        if self.is_process_mode:
-            self._request_listen.cancel()
-            self.pipe.close()
-        else:
-            # TODO: 重写这里超越界限的逻辑
-            from core.api_service import clean_bot
-
-            clean_bot(self.bot_id)
+                clean_bot(self.bot_id)
 
     @classmethod
     def parse_retry_config(cls, config: dict[RetryConfigKey, int | float | list[dict[RetryConfigKey, Any] | Any]]):
@@ -195,7 +200,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
             EventCategory.META, MetaEvent(event_type=MetaEventType.LIFECYCLE, sub_type=LifecycleSubType.DISCONNECT)
         )
 
-    async def _reconnect_cb(self):
+    async def _connect_cb(self):
         pass
 
     @classmethod

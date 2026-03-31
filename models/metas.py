@@ -1,19 +1,28 @@
-import threading
+from gc import collect
 from multiprocessing import current_process
+from threading import Lock
+from weakref import WeakValueDictionary
 
 
 class PerProcessSingletonMeta(type):
     """线程安全的进程内单例元类"""
 
-    _instances = {}
-    _thread_lock = threading.Lock()
+    _instances = WeakValueDictionary()
+    _thread_lock = Lock()
+    
+    def __new__(cls, name, bases, namespace):
+        if slots := namespace.get("__slots__"):
+            namespace['__slots__'] = (*slots, "__weakref__")
+        return super().__new__(cls, name, bases, namespace)
 
     def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            with cls._thread_lock:
-                if cls not in cls._instances:
-                    cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
+        collect()
+        if cls in cls._instances:
+            return cls._instances[cls]
+        with cls._thread_lock:
+            if cls not in cls._instances:
+                cls._instances[cls] = instance = super().__call__(*args, **kwargs)
+        return instance
 
     def __getattr__(cls, name: str):
         if name.startswith("_"):

@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 from anyio import Path
 
-from models.api import AudioFormat, Message, ReactionUser
+from models.api import AudioFormat, ReactionUser, RetrievedMessage
 from models.msg import Downloadable, File, Forward, MsgSeg
 
 from .base import BaseAPI
@@ -146,7 +146,7 @@ class BaseMessageAPI(BaseAPI):
     # endregion
     # region 消息获取
 
-    async def get_msg(self, call_id, message_id: str | int) -> Message:
+    async def get_msg(self, call_id, message_id: str | int) -> RetrievedMessage:
         raise NotImplementedError
 
     async def get_forward_msg(self, call_id, message_id: str | int) -> Forward:

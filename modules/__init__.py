@@ -1,13 +1,12 @@
 import importlib
 import os
 import sys
-from asyncio import create_task, gather
+from asyncio import gather
 from contextlib import suppress
 from logging import getLogger
 from pkgutil import iter_modules
 
 from anyio import Path
-from tqdm import tqdm
 
 SYSTEM_MODULES = {"reload", "cache_manager", "id_mapper"}
 persist_blacklist = set()
@@ -21,9 +20,9 @@ async def disable_modules(*mods: str):
         root = Path(root)
         for mod in mods:
             with suppress(OSError):
-                tasks.append(create_task((root / mod).rename(root / f"DISABLED{mod}")))
+                tasks.append((root / mod).rename(root / f"DISABLED{mod}"))
             with suppress(OSError):
-                tasks.append(create_task((root / f"{mod}.py").rename(root / f"DISABLED{mod}.py")))
+                tasks.append((root / f"{mod}.py").rename(root / f"DISABLED{mod}.py"))
     await gather(*tasks)
 
 
@@ -33,9 +32,9 @@ async def enable_modules(*mods: str):
         root = Path(root)
         for mod in mods:
             with suppress(OSError):
-                tasks.append(create_task((root / f"DISABLED{mod}").rename(root / mod)))
+                tasks.append((root / f"DISABLED{mod}").rename(root / mod))
             with suppress(OSError):
-                tasks.append(create_task((root / f"DISABLED{mod}.py").rename(root / f"{mod}.py")))
+                tasks.append((root / f"DISABLED{mod}.py").rename(root / f"{mod}.py"))
     await gather(*tasks)
 
 
@@ -71,19 +70,14 @@ async def init_load_mod(exclude: set = None):
 
     await load_locales(*modules)
 
+    _logger.info(_("module.import"))
     loaded = 0
-    with tqdm(
-        modules.items(), desc="Loading aha modules", bar_format="{desc}: |{bar}| {n_fmt}/{total_fmt} {elapsed}", leave=False
-    ) as bar:
-        for mod, shorter in bar:
-            bar.set_description(f"Loading aha module {shorter} ({loaded} loaded)")
-            try:
-                globals()[mod] = importlib.import_module(mod)
-                loaded += 1
-            except Exception:
-                _logger.warning(_("module.import.error") % shorter, exc_info=True)
-                bar.colour = "yellow"
-
+    for mod, shorter in modules.items():
+        try:
+            globals()[mod] = importlib.import_module(mod)
+            loaded += 1
+        except Exception:
+            _logger.warning(_("module.import.error") % shorter, exc_info=True)
     _logger.info(_("module.import.done") % loaded)
 
 
@@ -140,17 +134,14 @@ async def reload_modules(disable: set[str] = None):
     await load_locales(*root_module_names)
 
     modules.sort(key=lambda m: m.__name__.count("."), reverse=True)  # 按模块层级深度降序排序（确保先加载子模块）
-    with tqdm(modules, desc="Reloading aha modules", bar_format="{l_bar}{bar}| {elapsed}", leave=False) as bar:
-        for module in bar:
-            try:
-                bar.set_description(f"Reloading module {module.__name__}")
-                importlib.reload(module)
-            except Exception:
-                _logger.error(_("module.import.error") % module.__name__, exc_info=True)
-                bar.colour = "red"
-        bar.set_description(_("main.run_start_callback"))
-        redirect_extractors()
-        await process_start()
+    _logger.info(_("module.reload"))
+    for module in modules:
+        try:
+            importlib.reload(module)
+        except Exception:
+            _logger.error(_("module.import.error") % module.__name__, exc_info=True)
+    redirect_extractors()
+    await process_start()
 
     _logger.info(_("module.reload.done") % len(root_module_names))
     await init_load_mod(exclude=root_module_shorter_names)

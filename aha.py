@@ -1,5 +1,6 @@
 from core.log import setup_logging, shutdown_logging  # isort: skip
 import os
+import utils.misc
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -58,6 +59,7 @@ if __name__ == "__main__":
             logger.info(_("main.run_start_callback"))
             await process_start()
             logger.info(_("main.started"))
+            core.status.all_ready.set()
             await get_running_loop().create_future()
         except Exception:
             raise

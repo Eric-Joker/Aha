@@ -1,7 +1,9 @@
 from asyncio import sleep
 from collections import deque
+from datetime import datetime
 from time import time
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from zoneinfo import ZoneInfo
 
 from orjson import loads
 
@@ -68,6 +70,7 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
 
         if (echo := (data := loads(data)).get("echo")) is None:
             if type_ := data.pop("post_type", None):
+                data["time"] = datetime.fromtimestamp(int(data["time"]), ZoneInfo("Asia/Shanghai"))
                 match type_:
                     case "message":
                         await self._msg_event_processor(data)
@@ -112,7 +115,7 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
         self._sent_connect = False
         await super()._disconnect_cb()
 
-    async def _reconnect_cb(self):
+    async def _connect_cb(self):
         await sleep(3)
         if not self._sent_connect:
             await self.event_post(

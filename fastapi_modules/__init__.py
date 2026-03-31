@@ -3,8 +3,6 @@ import importlib
 from logging import getLogger
 from pkgutil import iter_modules
 
-from tqdm import tqdm
-
 _logger = getLogger("AHA")
 
 
@@ -25,16 +23,12 @@ async def init_load_mod():
 
     await load_locales(*modules)
 
+    _logger.info(_("fastapi_module.import"), "bots.fastapi")
     loaded = 0
-    with tqdm(
-        modules.items(), desc="Loading fastapi modules", bar_format="{desc}: |{bar}| {n_fmt}/{total_fmt} {elapsed}", leave=False
-    ) as bar:
-        for mod, shorter in bar:
-            bar.set_description(f"Loading fastapi module {shorter} ({loaded} loaded)")
-            try:
-                globals()[mod] = importlib.import_module(mod)
-                loaded += 1
-            except Exception:
-                _logger.warning(_("fastapi_module.import.error", "bots.fastapi") % mod, exc_info=True)
-                bar.colour = "yellow"
+    for mod, shorter in modules.items():
+        try:
+            globals()[mod] = importlib.import_module(mod)
+            loaded += 1
+        except Exception:
+            _logger.warning(_("fastapi_module.import.error", "bots.fastapi") % shorter, exc_info=True)
     _logger.info(_("fastapi_module.import.done", "bots.fastapi") % loaded)

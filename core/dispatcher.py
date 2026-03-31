@@ -14,7 +14,7 @@ from models.api import BaseEvent, External, Message, MetaEvent, Notice, Request
 from models.core import EventCategory
 from models.msg import MessageChain, MsgSeg
 from utils.aio import async_run_func
-from utils.misc import FULL_AHA_MODULE_PATTERN, SetList, caller_aha_module, get_arg_names, get_true_func
+from utils.misc import FULL_AHA_MODULE_PATTERN, DefaultIndexedDict, caller_aha_module, get_arg_names, get_true_func
 
 from .config import cfg
 from .expr import (
@@ -33,18 +33,9 @@ from .expr import (
     remove_msg_seq_prefix,
 )
 from .i18n import _, create_translator
+from .status import all_ready
 
-__all__ = (
-    "on_message",
-    "on_notice",
-    "on_request",
-    "on_meta",
-    "on_start",
-    "on_cleanup",
-    "clear_handlers",
-    "help_items",
-    "select_bot",
-)
+__all__ = ("on_message", "on_notice", "on_request", "on_meta", "on_start", "on_cleanup", "clear_handlers", "help_items")
 
 
 # region 回调容器
@@ -161,16 +152,11 @@ start_handlers: list[Callable] = []
 clean_handlers: list[Callable] = []
 help_items: list[tuple[str, Expr, str | None]] = []
 
-_message_handlers = defaultdict(ExprPool[Expr, Callable[[MessageChain], MessageChain]])
-_notice_handlers = defaultdict(ExprPool[Expr, None])
-_request_handlers = defaultdict(ExprPool[Expr, None])
-_meta_handlers = defaultdict(ExprPool[Expr, None])
-_external_handlers = defaultdict(ExprPool[Expr, None])
-_message_handler_key_combs = SetList()
-_notice_handler_key_combs = SetList()
-_request_handler_key_combs = SetList()
-_meta_handler_key_combs = SetList()
-_external_handler_key_combs = SetList()
+_message_handlers = DefaultIndexedDict(ExprPool[Expr, Callable[[MessageChain], MessageChain]])
+_notice_handlers = DefaultIndexedDict(ExprPool[Expr, None])
+_request_handlers = DefaultIndexedDict(ExprPool[Expr, None])
+_meta_handlers = DefaultIndexedDict(ExprPool[Expr, None])
+_external_handlers = DefaultIndexedDict(ExprPool[Expr, None])
 
 _logger = getLogger("AHA (Dispatcher)")
 
@@ -179,6 +165,7 @@ _message_args = {"event", "match_", "args", "localizer"}
 
 
 if TYPE_CHECKING:
+
     @overload
     def on_message(
         *conditions: Expr | str | Pattern | Sequence[str | type[MsgSeg]],
@@ -187,7 +174,6 @@ if TYPE_CHECKING:
         pre_hook: Callable[[MessageChain], MessageChain] = None,
         register_help: dict[str, str | None] = None,
     ) -> Callable: ...
-
 
     @overload
     def on_message(
@@ -231,17 +217,21 @@ def on_message(*conditions, exp=None, debug=False, pre_hook=None, callback=None,
         current_module.set(module)
 
         conditions = build_cond(conditions, EventCategory.CHAT, exp, debug)
-
         # 通过 event 关键字参数的类型注解添加 ValidateBy 条件
-        if (
-            (ann := get_type_hints(get_true_func(func)).get("event"))
-            and (ann := getattr(ann, "__pydantic_generic_metadata__", None))
-            and ann.get("args")
-            and not field_exists(conditions, (PM.msg, PM.command, PM.msg_chain))
-        ):
-            (conditions := And(conditions, PM.msg_chain.validateby(TypeAdapter(MessageChain[ann[0]]))))._exp = exp
+        if not field_exists(conditions, (PM.msg, PM.command, PM.msg_chain)):
+            if (
+                (ann := get_type_hints(get_true_func(func)).get("event"))
+                and (ann := getattr(ann, "__pydantic_generic_metadata__", None))
+                and ann.get("args")
+            ):
+                (conditions := And(conditions, PM.msg_chain.validateby(TypeAdapter(MessageChain[ann[0]]))))._exp = exp
+            conditions = conditions.modify(PM.limit == None)
             if cfg.debug:
                 conditions._debug = debug
+        if exprs := getattr(func, "aha_exprs", None):
+            exprs.append(conditions)
+        else:
+            func.aha_exprs = [conditions]
 
         # 注册菜单
         if register_help:
@@ -256,14 +246,11 @@ def on_message(*conditions, exp=None, debug=False, pre_hook=None, callback=None,
                 help_items.append((k, help_expr, v))
 
         (args := [s for s in get_arg_names(func) if s in _message_args]).sort()
-        _message_handlers[key := frozenset(args)].add(
+        _message_handlers[frozenset(args)].add(
             conditions,
             func,
-            ExprPoolAttach(
-                module, pre_hook, binary_expr_exists(conditions, (Apply, GetAttr, Call)), register_help is not None
-            ),
+            ExprPoolAttach(module, pre_hook, binary_expr_exists(conditions, (Apply, GetAttr, Call)), register_help is not None),
         )
-        _message_handler_key_combs.append(key)
         return func
 
     return decorator(callback) if callback else decorator
@@ -273,11 +260,11 @@ _other_args = {"event", "localizer"}
 
 
 if TYPE_CHECKING:
+
     @overload
     def on_notice[Callback: Callable](
         *conditions: Expr | str, exp: float = None, debug=False
     ) -> Callable[[Callback], Callback]: ...
-
 
     @overload
     def on_notice(*conditions: Expr | str, callback: Callable, exp: float = None, debug=False) -> None: ...
@@ -297,29 +284,37 @@ def on_notice(*conditions, exp=None, debug=False, callback=None):
     """
 
     def decorator(func: Callable):
+        nonlocal conditions
         if module := FULL_AHA_MODULE_PATTERN.match(func.__module__):
             module = module[1]
         else:
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
-        _notice_handlers[key := frozenset(args)].add(
-            build_cond(conditions, EventCategory.NOTICE, exp, debug),
-            func,
-            ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call))),
+
+        if not field_exists(conditions := build_cond(conditions, EventCategory.NOTICE, exp, debug), (PM.type_, PM.sub_type)):
+            conditions.modify(PM.limit == None)
+            if cfg.debug:
+                conditions._debug = debug
+        if exprs := getattr(func, "aha_exprs", None):
+            exprs.append(conditions)
+        else:
+            func.aha_exprs = [conditions]
+
+        _notice_handlers[frozenset(args)].add(
+            conditions, func, ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call)))
         )
-        _notice_handler_key_combs.append(key)
         return func
 
     return decorator(callback) if callback else decorator
 
 
 if TYPE_CHECKING:
+
     @overload
     def on_request[Callback: Callable](
         *conditions: Expr | str, exp: float = None, debug=False
     ) -> Callable[[Callback], Callback]: ...
-
 
     @overload
     def on_request(*conditions: Expr | str, callback: Callable, exp: float = None, debug=False) -> None: ...
@@ -339,27 +334,37 @@ def on_request(*conditions, exp=None, debug=False, callback=None):
     """
 
     def decorator(func: Callable):
+        nonlocal conditions
         if module := FULL_AHA_MODULE_PATTERN.match(func.__module__):
             module = module[1]
         else:
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
-        _request_handlers[key := frozenset(args)].add(
-            build_cond(conditions, EventCategory.REQUEST, exp, debug),
-            func,
-            ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call))),
+
+        if not field_exists(conditions := build_cond(conditions, EventCategory.NOTICE, exp, debug), (PM.type_, PM.sub_type)):
+            conditions.modify(PM.limit == None)
+            if cfg.debug:
+                conditions._debug = debug
+        if exprs := getattr(func, "aha_exprs", None):
+            exprs.append(conditions)
+        else:
+            func.aha_exprs = [conditions]
+
+        _request_handlers[frozenset(args)].add(
+            conditions, func, ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call)))
         )
-        _request_handler_key_combs.append(key)
         return func
 
     return decorator(callback) if callback else decorator
 
 
 if TYPE_CHECKING:
-    @overload
-    def on_meta[Callback: Callable](*conditions: Expr | str, exp: float = None, debug=False) -> Callable[[Callback], Callback]: ...
 
+    @overload
+    def on_meta[Callback: Callable](
+        *conditions: Expr | str, exp: float = None, debug=False
+    ) -> Callable[[Callback], Callback]: ...
 
     @overload
     def on_meta(*conditions: Expr | str, callback: Callable, exp: float = None, debug=False) -> None: ...
@@ -386,12 +391,16 @@ def on_meta(*conditions, exp=None, debug=False, callback=None):
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
-        _meta_handlers[key := frozenset(args)].add(
+        _meta_handlers[frozenset(args)].add(
             build_cond(conditions, EventCategory.META, exp, debug),
             func,
             ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call))),
         )
-        _meta_handler_key_combs.append(key)
+
+        if exprs := getattr(func, "aha_exprs", None):
+            exprs.append(conditions)
+        else:
+            func.aha_exprs = [conditions]
         return func
 
     return decorator(callback) if callback else decorator
@@ -400,7 +409,7 @@ def on_meta(*conditions, exp=None, debug=False, callback=None):
 _external_args = _other_args | {"data"}
 
 
-def on_external(key):
+def on_external(key, callback=None):
     """其他服务请求回调函数装饰器
     - 被装饰的函数必须是异步协程（`async def`），可以选择性声明以下关键字参数：
       - `data`: 由 API 层上报的数据。
@@ -419,11 +428,15 @@ def on_external(key):
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _external_args]).sort()
-        _external_handlers[key := frozenset(args)].add(key, func, ExprPoolAttach(module))
-        _external_handler_key_combs.append(key)
+        _external_handlers[frozenset(args)].add(key, func, ExprPoolAttach(module))
+
+        if exprs := getattr(func, "aha_exprs", None):
+            exprs.append(key)
+        else:
+            func.aha_exprs = [key]
         return func
 
-    return decorator
+    return decorator(callback) if callback else decorator
 
 
 def on_start(func: Callable = None):
@@ -444,14 +457,31 @@ def on_cleanup(func: Callable = None):
 
 # endregion
 # region event processers
-def get_adapter_lang(platform):
-    return next((v.get("lang") for p in cfg.bots for k, v in p.items() if k == platform), None)
+_waiting_event_calls = 0
 
 
+def _processer(func: Callable = None):
+    async def wrapper(event: BaseEvent, *args, **kwargs):
+        global _waiting_event_calls
+        from .api_service import MAX_WAITING_TASKS, bots
+
+        if bots[event.bot_id].block_event:
+            return
+        if not all_ready.is_set():
+            if _waiting_event_calls > MAX_WAITING_TASKS:
+                raise MemoryError(_("router.many_wating"))
+            _waiting_event_calls += 1
+            await all_ready.wait()
+
+        current_lang.set(next((v.get("lang") for p in cfg.bots for k, v in p.items() if k == event.adapter), None))
+        current_event.set(event)
+        return await func(event, *args, **kwargs)
+
+    return wrapper
+
+
+@_processer
 async def process_message(event: Message, ignore_prefix=False):
-    current_lang.set(get_adapter_lang(event.adapter))
-    current_event.set(event)
-
     # 删除过时缓存
     cprmc.set(None)
     cprms.set(None)
@@ -488,24 +518,22 @@ async def process_message(event: Message, ignore_prefix=False):
             except Exception as ex:
                 _logger.error(ex)
 
-    for k in _message_handler_key_combs:
+    for k, pool in _message_handlers.safe_iter_items():
         kwargs = None
         e, m, a, l = "event" in k, "match_" in k, "args" in k, "localizer" in k
-        for expr, func, token, attach in (pool := _message_handlers[k]):
+        for expr, func, token, attach in pool:
             current_module.set(attach.aha_module)
             if ignore_prefix:
                 expr = expr.modify(PM.prefix == False)
             await create_task(evaluate_(event))
 
 
+@_processer
 async def process_notice(event: Notice):
-    current_lang.set(get_adapter_lang(event.adapter))
-    current_event.set(event)
-
-    for k in _notice_handler_key_combs:
+    for k, pool in _notice_handlers.safe_iter_items():
         kwargs = None
         e, l = "event" in k, "localizer" in k
-        for expr, func, token, attach in (pool := _notice_handlers[k]):
+        for expr, func, token, attach in pool:
             current_module.set(attach.aha_module)
             if attach.need_isolation:
                 event = event.model_copy(deep=True)
@@ -522,14 +550,12 @@ async def process_notice(event: Notice):
                     _logger.error(e)
 
 
+@_processer
 async def process_request(event: Request):
-    current_lang.set(get_adapter_lang(event.adapter))
-    current_event.set(event)
-
-    for k in _request_handler_key_combs:
+    for k, pool in _request_handlers.safe_iter_items():
         kwargs = None
         e, l = "event" in k, "localizer" in k
-        for expr, func, token, attach in (pool := _request_handlers[k]):
+        for expr, func, token, attach in pool:
             current_module.set(attach.aha_module)
             if attach.need_isolation:
                 event = event.model_copy(deep=True)
@@ -546,14 +572,12 @@ async def process_request(event: Request):
                     _logger.error(e)
 
 
+@_processer
 async def process_meta(event: MetaEvent):
-    current_lang.set(get_adapter_lang(event.adapter))
-    current_event.set(event)
-
-    for k in _meta_handler_key_combs:
+    for k, pool in _meta_handlers.safe_iter_items():
         kwargs = None
         e, l = "event" in k, "localizer" in k
-        for expr, func, token, attach in (pool := _meta_handlers[k]):
+        for expr, func, token, attach in pool:
             current_module.set(attach.aha_module)
             if attach.need_isolation:
                 event = event.model_copy(deep=True)
@@ -570,11 +594,12 @@ async def process_meta(event: MetaEvent):
                     _logger.error(e)
 
 
+@_processer
 async def process_external(event: External):
-    for k in _external_handler_key_combs:
+    for k, pool in _external_handlers.safe_iter_items():
         kwargs = None
         e, d, l = "event" in k, "data" in k, "localizer" in k
-        for k, func, _, attach in _external_handlers[k]:
+        for k, func, _, attach in pool:
             # current_module.set(attach.aha_module)
             if k == event.key:
                 if kwargs is None:
@@ -586,7 +611,7 @@ async def process_external(event: External):
                 elif d:
                     kwargs["data"] = deepcopy(event.data)
                 if l:
-                    kwargs["localizer"] = create_translator(attach.aha_module, event.lang)
+                    kwargs["localizer"] = create_translator(attach.aha_module, event.lang or current_lang.get())
                 try:
                     create_task(func(**kwargs))
                 except Exception as e:
@@ -594,8 +619,12 @@ async def process_external(event: External):
 
 
 async def process_start():
+    logger = getLogger("AHA (start callback)")
     for t in start_handlers:
-        await async_run_func(t)
+        try:
+            await async_run_func(t)
+        except Exception as e:
+            logger.exception(e)
     start_handlers.clear()
 
 

@@ -234,14 +234,14 @@
 
 ## get_group_msg_history
 
-获取群消息历史。
+获取群消息历史，默认从旧到新排序。
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | group_id | str \| int | 群组 ID。 |
-| message_seq | str \| int | 起始消息序列号或消息 ID。 |
-| number | int | 获取数量，默认为 20。 |
-| reverseOrder | bool | 是否倒序，默认为 `False`。 |
+| message_id | str \| int | 起始消息序列号或消息 ID。 |
+| count | int | 获取数量，默认为 20。 |
+| reverse | bool | 是否倒序，默认为 `False`。 |
 
 **返回**: list[[RetrievedMessage](../../数据结构/消息序列与消息段.md#message)]
 

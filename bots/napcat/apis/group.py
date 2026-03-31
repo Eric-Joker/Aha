@@ -249,13 +249,13 @@ class GroupAPI(Utils, BaseGroupAPI):
     # endregion
 
     # region 群消息管理
-    async def get_group_msg_history(self: NapCat, call_id, group_id, message_seq, number=20, reverseOrder=False):
+    async def get_group_msg_history(self: NapCat, call_id, group_id, message_id, count=20, reverse=False):
         return [
             RetrievedMessage.model_validate(await self._msg_event_processor(data["message"]))
             for data in await self._call_api(
                 call_id,
                 "get_group_msg_history",
-                {"group_id": group_id, "message_seq": message_seq, "number": number, "reverseOrder": reverseOrder},
+                {"group_id": group_id, "message_seq": message_id, "number": count, "reverseOrder": reverse},
             )
         ]
 

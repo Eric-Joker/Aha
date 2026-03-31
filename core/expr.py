@@ -1216,8 +1216,6 @@ def _wrap_conditions(conditions, event_type: EventCategory):
         elif isinstance(expr, BinaryExpr):
             expr.left, expr.right = _adjust_binary_field(expr.left, expr.right)
             expr.left = recursion(expr.left)
-            if expr.left is None or expr.right is None:
-                return None
 
             # 将形似 PM.message == Or("a", "b") 转化为 Or(PM.message == "a", PM.message == "b")
             if isinstance(expr.right, BoolExpr):

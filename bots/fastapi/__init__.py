@@ -15,7 +15,7 @@ from core.transports import Transport
 from models.api import External, LifecycleSubType, MetaEvent, MetaEventType
 from models.core import EventCategory
 
-from ..base import BaseBot
+from ..base import BaseBot, BaseBotSingletonMeta
 
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -149,6 +149,7 @@ class FastAPIConnection(Transport):
     __slots__ = ("logger", "server")
 
     def __init__(self, _=None):
+        super().__init__()
         self.logger = getLogger("AHA (FastAPI)")
         self.server: Server
 
@@ -195,16 +196,16 @@ class FastAPIConnection(Transport):
         args = [n for n in config if n not in drops]
         self.server = Server(Config(app, log_config=log_cfg, **{k: v for k, v in config.items() if k in args}))
 
-    async def listen(self, _):
+    async def _listen_impl(self, _):
         with suppress(SystemExit):
             await self.server._serve()
 
-    async def close(self):
+    async def _close_impl(self):
         with suppress(AttributeError):
             await self.server.shutdown()
 
 
-class FastAPI(BaseBot):
+class FastAPI(BaseBot, metaclass=BaseBotSingletonMeta):
     platform = "Web"
     transport_class = FastAPIConnection
     _calls: dict[str, Future] = None

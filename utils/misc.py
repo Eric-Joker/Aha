@@ -1,4 +1,7 @@
+from collections import defaultdict
+import os
 import re
+import shlex
 import sys
 from array import array
 from collections.abc import Callable, Iterable, Sequence
@@ -60,6 +63,11 @@ def find_first_instance(seq: Sequence, type_: type, start_index=0, end_index: in
         if isinstance(item := seq[i], type_):
             return i, item
     return (None, None)
+
+
+def is_one_instance_of_other(a, b):
+    """是否其中有一方是另一方的类或其子类的实例"""
+    return isinstance(a, b.__class__) or isinstance(b, a.__class__)
 
 
 def is_subsequence(a: Sequence, b: Sequence):
@@ -135,6 +143,42 @@ def uninstall_module(module_name):
     modnames.sort(key=methodcaller("count", "."), reverse=True)
     for modname in modnames:
         del sys.modules[modname]
+
+
+# region fuck cmd
+if os.name == "nt":
+    import asyncio
+    import asyncio.subprocess
+
+    import _winapi
+
+    _original_CreateProcess = _winapi.CreateProcess
+    VON_PATTERN = re.compile(r"/v:(?:on|off)", re.IGNORECASE)
+
+    def CreateProcess(application_name, command_line: str, *args):
+        splited = command_line.partition("cmd.exe")
+        if splited[1] and not any(VON_PATTERN.fullmatch(a) for a in shlex.split(splited[2], posix=False)):
+            return _original_CreateProcess(application_name, f"{splited[0]}{splited[1]} /v:on{splited[2]}", *args)
+        return _original_CreateProcess(application_name, command_line, *args)
+
+    _winapi.CreateProcess = CreateProcess
+
+    _original_create_subprocess_shell = asyncio.subprocess.create_subprocess_shell
+    SET_PATTERN = re.compile(r'(?:^|\s+)set\s+(?:/.\s+)*(("?).+?)=.+?(?:("?)|&|\||\)|>|<|$)', re.IGNORECASE)
+
+    async def create_subprocess_shell(cmd: str, *args, **kwargs):
+        if len(lines := cmd.splitlines()) > 1:
+            declared_vars = set()
+            for line in lines:
+                if m := SET_PATTERN.search(line):
+                    declared_vars.add(re.escape(m[1] if m[3] else m[1].lstrip(m[2])))
+            replaced = re.sub(rf'%({"|".join(declared_vars)})%', r"!\1!", cmd)
+            cmd = " & ".join(f"({x})" for x in replaced.splitlines())
+
+        return await _original_create_subprocess_shell(cmd, *args, **kwargs)
+
+    asyncio.subprocess.create_subprocess_shell = asyncio.create_subprocess_shell = create_subprocess_shell
+# endregion
 
 
 class SetArray[_T](array[_T]):
@@ -227,85 +271,7 @@ class SetArray[_T](array[_T]):
         return self.__copy__()
 
 
-class SetList[_T](list[_T]):
-    """支持O(1)存在性检查的 list"""
-
-    def __init__(self, iterable: Iterable[_T] = None, /):
-        super().__init__(iterable := set(iterable)) if iterable else super().__init__(iterable := set())
-        self._set = iterable
-
-    __mul__ = __rmul__ = __imul__ = __add__ = __iadd__ = __setitem__ = None
-
-    def append(self, object: _T, /):
-        if object not in self._set:
-            super().append(object)
-            self._set.add(object)
-
-    def extend(self, iterable: Iterable[_T], /):
-        for item in iterable:
-            self.append(item)
-
-    def insert(self, index: SupportsIndex, object: _T, /):
-        if object not in self._set:
-            super().insert(index, object)
-            self._set.add(object)
-
-    def __delitem__(self, key: SupportsIndex | slice, /):
-        if isinstance(key, slice):
-            for item in self[key]:
-                self._set.remove(item)
-        else:
-            self._set.remove(self[key])
-        super().__delitem__(key)
-
-    def pop(self, index: SupportsIndex = -1, /):
-        self._set.remove(item := super().pop(index))
-        return item
-
-    def remove(self, value: _T, /):
-        super().remove(value)
-        self._set.remove(value)
-
-    def __contains__(self, key: object, /):
-        return key in self._set
-
-    def isdisjoint(self, s: Iterable, /):
-        return self._set.isdisjoint(s)
-
-    def issubset(self, s: Iterable, /):
-        return self._set.issubset(s)
-
-    def issuperset(self, s: Iterable, /):
-        return self._set.issuperset(s)
-
-    def count(self, v: _T, /):
-        return 1 if v in self._set else 0
-
-    def index(self, v: _T, start: int = 0, stop: int = sys.maxsize, /):
-        if v not in self._set:
-            raise ValueError(f"{v} not in list")
-        return super().index(v, start, stop)
-
-
-class IndexedDict[_KT, _VT](dict[_KT, _VT]):
-    if TYPE_CHECKING:
-
-        @overload
-        def __init__(self) -> None: ...
-        @overload
-        def __init__(self: dict[str, _VT], **kwargs: _VT) -> None: ...
-        @overload
-        def __init__(self, map: SupportsKeysAndGetItem[_KT, _VT], /) -> None: ...
-        @overload
-        def __init__(self: dict[str, _VT], map: SupportsKeysAndGetItem[str, _VT], /, **kwargs: _VT) -> None: ...
-        @overload
-        def __init__(self, iterable: Iterable[tuple[_KT, _VT]], /) -> None: ...
-        @overload
-        def __init__(self: dict[str, _VT], iterable: Iterable[tuple[str, _VT]], /, **kwargs: _VT) -> None: ...
-        @overload
-        def __init__(self: dict[str, str], iterable: Iterable[list[str]], /) -> None: ...
-        @overload
-        def __init__(self: dict[bytes, bytes], iterable: Iterable[list[bytes]], /) -> None: ...
+class IndexedDictMixin[_KT, _VT]:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._keys = list(iter(self))
@@ -361,4 +327,71 @@ class IndexedDict[_KT, _VT](dict[_KT, _VT]):
         return self._keys.index(key, start, stop)
 
     def copy(self):
-        return IndexedDict(self)
+        return self.__class__(self)
+
+    def safe_iter_keys(self):
+        return iter(self._keys)
+
+    def safe_iter_values(self):
+        return (self[key] for key in self._keys)
+
+    def safe_iter_items(self):
+        return ((key, self[key]) for key in self._keys)
+
+
+class IndexedDict[_KT, _VT](IndexedDictMixin[_KT, _VT], dict[_KT, _VT]):
+    if TYPE_CHECKING:
+
+        @overload
+        def __init__(self) -> None: ...
+        @overload
+        def __init__(self: dict[str, _VT], **kwargs: _VT) -> None: ...
+        @overload
+        def __init__(self, map: SupportsKeysAndGetItem[_KT, _VT], /) -> None: ...
+        @overload
+        def __init__(self: dict[str, _VT], map: SupportsKeysAndGetItem[str, _VT], /, **kwargs: _VT) -> None: ...
+        @overload
+        def __init__(self, iterable: Iterable[tuple[_KT, _VT]], /) -> None: ...
+        @overload
+        def __init__(self: dict[str, _VT], iterable: Iterable[tuple[str, _VT]], /, **kwargs: _VT) -> None: ...
+        @overload
+        def __init__(self: dict[str, str], iterable: Iterable[list[str]], /) -> None: ...
+        @overload
+        def __init__(self: dict[bytes, bytes], iterable: Iterable[list[bytes]], /) -> None: ...
+
+
+class DefaultIndexedDict[_KT, _VT](IndexedDictMixin[_KT, _VT], defaultdict[_KT, _VT]):
+    if TYPE_CHECKING:
+
+        @overload
+        def __init__(self) -> None: ...
+        @overload
+        def __init__(self: defaultdict[str, _VT], **kwargs: _VT) -> None: ...
+        @overload
+        def __init__(self, default_factory: Callable[[], _VT] | None, /) -> None: ...
+        @overload
+        def __init__(self: defaultdict[str, _VT], default_factory: Callable[[], _VT] | None, /, **kwargs: _VT) -> None: ...
+        @overload
+        def __init__(self, default_factory: Callable[[], _VT] | None, map: SupportsKeysAndGetItem[_KT, _VT], /) -> None: ...
+        @overload
+        def __init__(
+            self: defaultdict[str, _VT],
+            default_factory: Callable[[], _VT] | None,
+            map: SupportsKeysAndGetItem[str, _VT],
+            /,
+            **kwargs: _VT,
+        ) -> None: ...
+        @overload
+        def __init__(self, default_factory: Callable[[], _VT] | None, iterable: Iterable[tuple[_KT, _VT]], /) -> None: ...
+        @overload
+        def __init__(
+            self: defaultdict[str, _VT],
+            default_factory: Callable[[], _VT] | None,
+            iterable: Iterable[tuple[str, _VT]],
+            /,
+            **kwargs: _VT,
+        ) -> None: ...
+
+    def __missing__(self, key: _KT, /) -> _VT:
+        self._keys.append(key)
+        return super().__missing__(key)

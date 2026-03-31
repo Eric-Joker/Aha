@@ -8,7 +8,8 @@
 | --- | --- | --- | --- |
 | uri    | str |        | `ws://127.0.0.1:3000` |
 | token  | str |
-| start_server_command | str | 当前系统环境的命令语句。调用 `restart_server` 等 API 时会调用。 |
+| start_server_command | str | 当前系统环境的命令语句。Windows 下建议包含已有进程检查逻辑。 | Linux：<pre><code>napcat start 114514</code></pre>Windows：<pre><code>set "QQ=114514"<br>wmic process get CommandLine 2>nul \| findstr /i /r /c:"QQNT\\QQ\.exe. --enable-logging -q %QQ%" >nul \|\| start "" /d "\path\to\NapCat.Shell" launcher-user.bat %q%</code></pre> |
+| stop_server_command | str | 当前系统环境的命令语句。 | Linux：<pre><code>napcat stop 114514</code></pre>Windows：<pre><code>for /f "tokens=*" %A in ('wmic process get CommandLine^,ProcessId 2^>nul ^\| findstr /i /r /c:"QQNT\\QQ\.exe. --enable-logging -q 114514"') do if not defined TARGET_PID for %B in (%A) do set "TARGET_PID=%B"<br>if not defined TARGET_PID exit /b<br>taskkill /F /PID %TARGET_PID% 2>nul</code></pre> |
 | retry_config | dict[dict \| list] | 基于 [`tenacity`](https://github.com/jd/tenacity) 的重试配置，键支持 [`stop 方法`](https://tenacity.readthedocs.io/en/latest/api.html#stop-functions) 和 [`wait 方法`](https://tenacity.readthedocs.io/en/latest/api.html#wait-functions)，通过 kwargs 声明参数。| <pre><code>wait_exponential:<br>  multiplier: 1<br>  max: 30<br>  exp_base: 2<br>  min: 1</code></pre> |
 | lang | str | 语言代码。 | `zh-CN` |
 

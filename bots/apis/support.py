@@ -1,4 +1,4 @@
-from asyncio import create_subprocess_shell, subprocess
+from asyncio import create_subprocess_shell
 from typing import TYPE_CHECKING
 
 from models.api import APIVersion
@@ -14,18 +14,24 @@ class BaseSupportAPI(BaseAPI):
     async def get_version_info(self, call_id) -> APIVersion:
         raise NotImplementedError
 
-    async def start_server(self: BaseBot, _):
+    async def start_server(self: BaseBot, call_id = None):
         if self._start_server_comm:
-            await create_subprocess_shell(self._start_server_comm, subprocess.PIPE, subprocess.PIPE, subprocess.PIPE)
+            await (await create_subprocess_shell(self._start_server_comm)).wait()
             return
         raise NotImplementedError
 
-    async def stop_server(self, call_id, close_adapter=True) -> None:
+    async def stop_server(self: BaseBot, call_id = None, close_adapter=True) -> None:
+        if self._stop_server_comm:
+            await (await create_subprocess_shell(self._stop_server_comm)).wait()
+            if close_adapter:
+                await self.close()
+            return
         raise NotImplementedError
-        await self.close()
 
     async def restart_server(self: BaseBot, call_id) -> None:
-        if self._start_server_comm:
+        if (self.start_server is not BaseSupportAPI.start_server or self._start_server_comm) and (
+            self.stop_server is not BaseSupportAPI.stop_server or self._stop_server_comm
+        ):
             return (
                 await self.stop_server(call_id, False),
                 await self.start_server(call_id),

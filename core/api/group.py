@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Literal
 from anyio import Path
 
-from models.api import EssenceMessage, GroupFiles, GroupInfo, GroupMemberInfo, GroupMembers, Message
+from models.api import EssenceMessage, GroupFiles, GroupInfo, GroupMemberInfo, GroupMembers, RetrievedMessage
 from models.msg import MsgSeg
 
 if TYPE_CHECKING:
@@ -172,9 +172,9 @@ class GroupAPI:
     # region 群消息管理
     @staticmethod
     async def get_group_msg_history(
-        group_id: str | int, message_seq: str | int, number=20, reverseOrder=False, *, bot: int = None
-    ) -> list[Message]:
-        pass
+        group_id: str | int, message_id: str | int, count=20, reverse=False, *, bot: int = None
+    ) -> list[RetrievedMessage]:
+        """获取群消息历史，默认从旧到新排序。"""
 
     @staticmethod
     async def set_essence_msg(message_id: str | int, *, bot: int = None):

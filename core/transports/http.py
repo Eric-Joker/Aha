@@ -38,11 +38,10 @@ class _HttpMixin(ClientTransport):
             return response.text
         return await response.content
 
-    async def close(self):
+    async def _close_impl(self):
         if self._http_client:
             await self._http_client.aclose()
             self._http_client = None
-        await super().close()
 
     @property
     def local_srv(self):
@@ -62,14 +61,15 @@ class _SseMixin(ClientTransport):
 
         await super().open(**kwargs)
         self._sse_config = {k: v for k, v in sse_connect_config.items() if k in get_arg_names(aconnect_sse)}
-        self._retry_args = {
+        _retry_args = {
             "wait": wait_exponential(multiplier=1, max=30),
             "retry": retry_if_exception_type((RequestError, TimeoutException, ConnectionError)),
             "before_sleep": before_sleep_log(self._logger, logging.WARNING),
             "reraise": True,
         }
         if retry_config:
-            self._retry_args |= retry_config
+            _retry_args |= retry_config
+        self._connect = retry(**_retry_args)(self._connect)
         self._sse_client = AsyncClient(
             **{k: v for k, v in sse_client_config.items() if k in get_arg_names(AsyncClient.__init__)}
         )
@@ -101,10 +101,10 @@ class _SseMixin(ClientTransport):
                 self._logger.warning(msg=_("api.transport.conn_close_retry"))
                 try:
                     await self._disconnect_cb()
-                    if not await retry(**self._retry_args)(self._connect)():
+                    if not await self._connect():
                         break
                     self._logger.info(_("api.transport.retry_success"))
-                    create_task(self._reconnect_cb())
+                    create_task(self._connect_cb())
                     continue
                 except Exception as e:
                     self._logger.error(_("api.transport.retry_failed") % e)
@@ -112,12 +112,11 @@ class _SseMixin(ClientTransport):
             except Exception as e:
                 self._logger.exception(_("api.transport.unknown_error") % e)
 
-    async def close(self):
+    async def _close_impl(self):
         with suppress(AttributeError):
             self._closed_event.set()
         if self._sse_client:
             await self._sse_client.aclose()
-        await super().close()
 
     @property
     def local_srv(self):
@@ -128,18 +127,7 @@ class _SseMixin(ClientTransport):
 
 
 class HttpSse(_HttpMixin, _SseMixin):
-    __slots__ = (
-        "_local_srv",
-        # _HttpMixin的slots
-        "_http_client",
-        "_http_config",
-        # _SseMixin的slots
-        "_sse_client",
-        "_sse_config",
-        "sse_connect",
-        "_closed_event",
-        "_retry_args",
-    )
+    __slots__ = ("_local_srv", "_http_client", "_http_config", "_sse_client", "_sse_config", "sse_connect", "_closed_event")
 
     async def open(
         self,

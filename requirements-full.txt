@@ -21,7 +21,6 @@ pympler
 ruamel.yaml[libyaml]
 SQLAlchemy[asyncio, aiosqlite, postgresql-psycopgbinary] >= 2
 tenacity >= 9
-tqdm >= 4
 uvloop; sys_platform == 'linux'
 websockets >= 15
 wrapt >= 2

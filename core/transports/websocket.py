@@ -15,21 +15,22 @@ from .base import ClientTransport, FastAPITransport
 
 
 class WebSocketClient(ClientTransport):
-    __slots__ = ("websocket", "uri", "_closed_event", "_connect_args", "_retry_args", "_local_srv")
+    __slots__ = ("websocket", "uri", "_closed_event", "_connect_args", "_local_srv")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._local_srv = None
 
     async def open(self, uri: str, extra_headers=None, retry_config=None, **kwargs):
-        self._retry_args = {
+        _retry_args = {
             "wait": wait_exponential(1, 30),
             "retry": retry_if_exception_type((WebSocketException, ConnectionError, TimeoutError)),
             "before_sleep": before_sleep_log(self._logger, logging.WARNING),
             "reraise": True,
         }
         if retry_config:
-            self._retry_args |= retry_config
+            _retry_args |= retry_config
+        self._connect = retry(**_retry_args)(self._connect)
         kwargs["additional_headers"] = extra_headers or {}
         self._connect_args = {k: v for k, v in kwargs.items() if k in get_arg_names(connect.__init__)}
         self.uri = uri
@@ -41,11 +42,12 @@ class WebSocketClient(ClientTransport):
         if self._closed_event.is_set():
             return
         self.websocket = await connect(self.uri, **self._connect_args)
+        create_task(self._connect_cb())
         return True
 
     _connect.__qualname__ = "WebSocketClient"
     _connect.__module__ = None
-
+    
     async def _listen_impl(self):
         while True:
             try:
@@ -57,10 +59,9 @@ class WebSocketClient(ClientTransport):
                 self._logger.warning(_("api.transport.conn_close_retry"))
                 try:
                     await self._disconnect_cb()
-                    if not await retry(**self._retry_args)(self._connect)():
+                    if not await self._connect():
                         break
                     self._logger.info(_("api.transport.retry_success"))
-                    create_task(self._reconnect_cb())
                     continue
                 except Exception as e:
                     self._logger.error(_("api.transport.retry_failed") % e)
@@ -73,7 +74,7 @@ class WebSocketClient(ClientTransport):
             raise RuntimeError(_("api.transport.conn_close"))
         await self.websocket.send(data, text=True)
 
-    async def close(self):
+    async def _close_impl(self):
         with suppress(AttributeError):
             self._closed_event.set()
 

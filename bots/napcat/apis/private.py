@@ -138,13 +138,13 @@ class PrivateAPI(Utils, BasePrivateAPI):
         return await self._call_api(call_id, "friend_poke", {"user_id": user_id})
 
     # endregion
-    async def get_private_msg_history(self, call_id, user_id, message_seq, number=20, reverseOrder=False):
+    async def get_private_msg_history(self, call_id, user_id, message_id, count=20, reverse=False):
         return [
             RetrievedMessage.model_validate(data)
             for data in await self._call_api(
                 call_id,
                 "get_friend_msg_history",
-                {"user_id": user_id, "message_seq": message_seq, "number": number, "reverseOrder": reverseOrder},
+                {"user_id": user_id, "message_seq": message_id, "number": count, "reverseOrder": reverse},
             )
         ]
 

@@ -1,4 +1,4 @@
-from asyncio import Event, Future, Task, create_task, current_task, gather, get_running_loop, sleep
+from asyncio import CancelledError, Event, Future, Task, create_task, current_task, gather, get_running_loop, sleep
 from collections import defaultdict
 from collections.abc import Mapping
 from contextlib import suppress
@@ -33,9 +33,9 @@ from . import status
 from .bot_register import get_bot_class
 from .cache import Cache, CronMemLRUCache, FIFOCache, hashkey
 from .config import cfg
+from .dispatcher import process_external, process_message, process_meta, process_notice, process_request
 from .i18n import _
 from .log import log_config
-from .dispatcher import process_external, process_message, process_meta, process_notice, process_request
 
 if TYPE_CHECKING:
     from bots import BaseBot
@@ -183,19 +183,17 @@ async def start_bots():
 if cfg.cache_conv:
     _flag_mapping = FIFOCache(64)
     groups: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "q")))
-    users: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "q")))
+    friends: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "q")))
 
     async def _cache_group(bot_id, bot: BotInstance):
-        with suppress(NotImplementedError):
-            cacher = groups[bot.platform]
-            for g in await call_api("get_groups", bot=bot_id):
-                cacher[g.group_id].append(bot_id)
+        cacher = groups[bot.platform]
+        for g in await call_api("get_groups", bot=bot_id):
+            cacher[g.group_id].append(bot_id)
 
     async def _cache_user(bot_id, bot: BotInstance):
-        with suppress(NotImplementedError):
-            cacher = users[bot.platform]
-            for u in await call_api("get_friends", bot=bot_id):
-                cacher[u.user_id].append(bot_id)
+        cacher = friends[bot.platform]
+        for u in await call_api("get_friends", bot=bot_id):
+            cacher[u.user_id].append(bot_id)
 
 
 async def start_bot(bot_cfg: dict, bot_id: int = None, block_event=False):
@@ -206,17 +204,17 @@ async def start_bot(bot_cfg: dict, bot_id: int = None, block_event=False):
 
     if IS_PROCESS_MODE:
         bot.instance.start()
-        if not block_event:
-            create_task(monitor_processing_events(bot.pipe, bot_id))
+        create_task(monitor_processing_events(bot.pipe, bot_id))
     elif IS_THREAD_MODE:
         bot.threading.start()
     else:
         create_task(_start_async_bot(bot.instance, bot.server_ok))
 
-    await bot.server_ok.wait()
+    with suppress(CancelledError):
+        await bot.server_ok.wait()
 
-    if bots[bot_id] and cfg.cache_conv:
-        await gather(_cache_group(bot_id, bot), _cache_user(bot_id, bot))
+        if bots[bot_id] and cfg.cache_conv:
+            await gather(_cache_group(bot_id, bot), _cache_user(bot_id, bot), return_exceptions=True)
 
     return bot_id, bot
 
@@ -236,12 +234,12 @@ def clean_bot(bot_id):
         return
     meta.server_ok.clear()
     if cfg.cache_conv:
-        from .api import groups, users
+        from .api import groups, friends
 
         for l in groups[bots[bot_id].platform].values():
             with suppress(ValueError):
                 l.remove(bot_id)
-        for l in users[bots[bot_id].platform].values():
+        for l in friends[bots[bot_id].platform].values():
             with suppress(ValueError):
                 l.remove(bot_id)
     _del_bot(bot_id)
@@ -302,8 +300,8 @@ def process_service_request(service: ServiceType, args, bot_id=None):
             create_task(sched.rm_persist_schedules_by_meta(args))
 
 
-def event_route(bot_id, event_type, payload):
-    if not (bot := bots[bot_id]) or bot.block_event:
+async def event_route(bot_id, event_type, payload):
+    if not (bot := bots[bot_id]):
         return
     match event_type:
         case EventCategory.META:
@@ -322,9 +320,9 @@ def event_route(bot_id, event_type, payload):
         case EventCategory.NOTICE:
             # 会话列表维护
             if cfg.cache_conv and payload.event_type is NoticeEventType.FRIEND_ADD:
-                from .api import users
+                from .api import friends
 
-                users[payload.platform][payload.user_id].append(payload.bot_id)
+                friends[payload.platform][payload.user_id].append(payload.bot_id)
 
             if deduplicators[payload.platform].is_duplicate(payload):
                 return
@@ -353,7 +351,7 @@ def event_route(bot_id, event_type, payload):
 async def monitor_processing_events(pipe: AsyncConnection, bot_id):
     while True:
         try:
-            event_route(bot_id, *await pipe.recv())
+            await event_route(bot_id, *await pipe.recv())
         except (EOFError, BrokenPipeError) as e:
             clean_bot(bot_id)
             break
@@ -374,10 +372,6 @@ api_result_caches: dict[str, Cache | WeakValueDictionary] = {
 
 
 async def call_api(method: str, *args, bot: int, **kwargs):
-    return await create_task(__call_api(method, *args, bot=bot, **kwargs))
-
-
-async def __call_api(method, *args, bot, **kwargs):
     # 缓存
     cache_key = None
     if (cacher := api_result_caches.get(method)) and (result := cacher.get(cache_key := hash(hashkey(bot, *args, **kwargs)))):
@@ -412,7 +406,7 @@ async def __call_api(method, *args, bot, **kwargs):
         # 请求
         if IS_PROCESS_MODE:
             await meta.pipe.send((call_id, method, args, kwargs))
-            if not meta.block_event and not is_close:
+            if not is_close:
                 result = await future
         else:
             result = await getattr(meta.instance, method)(call_id, *args, **kwargs)

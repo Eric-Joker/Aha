@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from typing import Literal
 from anyio import Path
 
-from models.api import Message
+from models.api import RetrievedMessage
 from models.msg import MsgSeg
 
 
@@ -116,9 +116,9 @@ class PrivateAPI:
 
     @staticmethod
     async def get_private_msg_history(
-        user_id: str | int, message_seq: str | int, number=20, reverseOrder=False, *, bot: int = None
-    ) -> list[Message]:
-        pass
+        user_id: str | int, message_id: str | int, count=20, reverse=False, *, bot: int = None
+    ) -> list[RetrievedMessage]:
+        """获取私聊消息历史，默认从旧到新排序。"""
 
     @staticmethod
     async def upload_private_file(user_id: str | int, file: str, name: str, *, bot: int = None):

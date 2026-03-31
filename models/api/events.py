@@ -1,11 +1,13 @@
 from collections.abc import Sequence
+from datetime import datetime
 from random import getrandbits
-from time import time
 from typing import Annotated, Any
 
 from anyio import Path
 from pydantic import BeforeValidator, Field, PrivateAttr, field_validator
 from xxhash import xxh3_64
+
+from utils.misc import is_one_instance_of_other
 
 from ..base import BaseModel, PureNameEnum
 from ..core import Group, User
@@ -20,7 +22,7 @@ class BaseEvent(BaseModel):
     _user_obj: User = PrivateAttr(None)
     _group_obj: Group = PrivateAttr(None)
 
-    time: int = Field(default_factory=time)
+    time: datetime = Field(default_factory=datetime.now().astimezone)
     self_id: Annotated[str, BeforeValidator(str)] | None = None
 
     event_type: EventType | None = None
@@ -60,7 +62,7 @@ class BaseEvent(BaseModel):
         raise NotImplementedError
 
     def __eq__(self, other):
-        return isinstance(other, BaseEvent) and self.__hash__() == other.__hash__()
+        return is_one_instance_of_other(self, other) and self.__hash__() == other.__hash__()
 
     def _recursion_hash(self, obj, hasher: xxh3_64):
         if isinstance(obj, dict):

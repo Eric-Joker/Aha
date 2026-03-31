@@ -14,7 +14,7 @@ from utils.sqlalchemy import upsert
 
 from .database import Status
 
-__all__ = ("reload_or_restart")
+__all__ = "reload_or_restart"
 
 
 async def reload_or_restart():
@@ -29,16 +29,17 @@ async def reload_or_restart():
 
 @on_start
 async def post_msg():
-    async with db_sessionmaker() as session:
-        for row in (await session.execute(delete(Status).returning(Status))).scalars().all():
-            await API.send_msg(
-                user_id=row.user_id,
-                group_id=row.group_id,
-                msg=_("reloaded"),
-                reply=row.message_id,
-                bot=row.bot_id or select_bot(SS.GROUP_NTH, platform=row.platform, conv_id=row.group_id),
-            )
-        await session.commit()
+    if cfg.bot_prefs:
+        async with db_sessionmaker() as session:
+            for row in (await session.execute(delete(Status).returning(Status))).scalars().all():
+                await API.send_msg(
+                    user_id=row.user_id,
+                    group_id=row.group_id or None,
+                    msg=_("reloaded"),
+                    reply=row.message_id,
+                    bot=row.bot_id or select_bot(SS.GROUP, platform=row.platform, conv_id=row.group_id),
+                )
+            await session.commit()
 
 
 @on_message(PM.message == _("reload"), PM.prefix == True, PM.super == True)
@@ -50,7 +51,7 @@ async def msg_entry(event: Message):
             upsert(
                 Status,
                 user_id=event.user_id,
-                group_id=event.group_id,
+                group_id=event.group_id or "",
                 message_id=event.message_id,
                 platform=event.platform,
                 bot_id=event.bot_id,

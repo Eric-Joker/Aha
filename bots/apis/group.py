@@ -2,7 +2,7 @@ from asyncio import as_completed, create_task
 from collections.abc import Sequence
 from anyio import Path
 
-from models.api import EssenceMessage, GroupFiles, GroupInfo, GroupMemberInfo, GroupMembers, Message
+from models.api import EssenceMessage, GroupFiles, GroupInfo, GroupMemberInfo, GroupMembers, RetrievedMessage
 from models.msg import MsgSeg
 
 from .base import BaseAPI
@@ -159,8 +159,9 @@ class BaseGroupAPI(BaseAPI):
 
     # region 群消息管理
     async def get_group_msg_history(
-        self, call_id, group_id: str | int, message_seq: str | int, number=20, reverseOrder=False
-    ) -> list[Message]:
+        self, call_id, group_id: str | int, message_id: str | int, count=20, reverse=False
+    ) -> list[RetrievedMessage]:
+        """获取群消息历史，默认从旧到新排序。"""
         raise NotImplementedError
 
     async def set_essence_msg(self, call_id, message_id: str | int) -> None:

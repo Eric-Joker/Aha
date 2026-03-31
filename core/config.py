@@ -1,4 +1,42 @@
-# from asyncio import Lock, get_running_loop
+from ruamel.yaml.emitter import Emitter
+
+
+def choose_scalar_style(self: Emitter):
+    if not self.event.value and self.event.ctag.handle == "!!":
+        return None
+    if self.analysis is None:
+        self.analysis = self.analyze_scalar(self.event.value)
+    if self.event.style == '"' or self.canonical:
+        return '"'
+    if (self.event.implicit[0] or not self.event.implicit[2]) and (
+        (not self.event.style or self.event.style == "?")
+        and not (self.simple_key_context and (self.analysis.empty or self.analysis.multiline))
+        and (self.flow_level and self.analysis.allow_flow_plain or (not self.flow_level and self.analysis.allow_block_plain))
+        or self.event.style == "-"
+    ):
+        return ""
+    self.analysis.allow_block = True
+    if not self.flow_level and not self.simple_key_context:
+        if self.event.style and self.event.style in "|>":
+            return self.event.style
+        elif self.analysis.multiline:
+            return "|"
+    if not self.event.style:
+        if self.analysis.allow_double_quoted and "'" in self.event.value:
+            return '"'
+        return "'"
+    if (
+        self.event.style == "'"
+        and self.analysis.allow_single_quoted
+        and not (self.simple_key_context and self.analysis.multiline)
+    ):
+        return "'"
+    return '"'
+
+
+Emitter.choose_scalar_style = choose_scalar_style
+
+
 import os
 from collections import defaultdict
 from collections.abc import Hashable, Iterable, Mapping, Sequence, Set
@@ -11,7 +49,7 @@ from logging import getLevelNamesMapping, getLogger
 from multiprocessing import current_process
 from pathlib import Path
 from sys import exit
-from typing import Any, SupportsIndex
+from typing import TYPE_CHECKING, Any, Literal, SupportsIndex, overload
 
 from aiofiles import open as aioopen
 from anyio import Path as aioPath
@@ -397,7 +435,10 @@ class Config[
                 is_unique_ca = hasattr(ca_obj, "__len__") and len(ca_obj) == 1
                 return type_obj[0](
                     cls._type2registed(
-                        v, ca_obj[0] if is_unique_ca else None if ca_obj is None else ca_obj[i], unique_item_type_obj or type_map[i], i
+                        v,
+                        ca_obj[0] if is_unique_ca else None if ca_obj is None else ca_obj[i],
+                        unique_item_type_obj or type_map[i],
+                        i,
                     )
                     for i, v in enumerate(obj)
                 )
@@ -560,7 +601,6 @@ class Config[
         return result
 
     """
-    TODO: 使用异步锁而不是像现在依赖内部锁。
     async def register_async[T: Any | Option](self, key: str, default: T = None, comment: str = None, module: str = None) -> T:
         async with self._lock:
             return self.register(key, default, comment, module=module)
@@ -571,7 +611,24 @@ class Config[
         return self._register(key, default, comment, module=module)
     """
 
-    def register[T: Any | Option](self, key, default: T = _unset, comment=None, noneable=False, module=None) -> T | None:
+    if TYPE_CHECKING:
+
+        @overload
+        def register[T: Any | Option](
+            self, key: str, default: T = _unset, comment=None, noneable: Literal[False] = False, module=None
+        ) -> T: ...
+
+        @overload
+        def register[T: Any | Option](
+            self, key: str, default: T, comment, noneable: Literal[True], module=None
+        ) -> T | None: ...
+
+        @overload
+        def register[T: Any | Option](
+            self, key: str, default: T = _unset, *, noneable: Literal[True], module=None
+        ) -> T | None: ...
+
+    def register(self, key, default=_unset, comment=None, noneable=False, module=None):
         """获取配置值，如果键值不存在则使用默认值初始化
 
         Args:
@@ -699,7 +756,7 @@ class Config[
         return self.register("point_feat", False, _("config.comment.point_feat"), module="aha")
 
     @property
-    def memory_level(self) -> str:
+    def memory_level(self) -> Literal["low", "medium", "high"]:
         return self.get("memory_level", module="aha")
 
     @property
@@ -715,7 +772,7 @@ class Config[
         return self.get("cache_conv", module="aha")
 
     @property
-    def execution_mode(self) -> str:
+    def execution_mode(self) -> Literal["async", "process"]:
         return self.get("execution_mode", module="aha")
 
     @property
@@ -735,7 +792,7 @@ class Config[
         return self.get("debug", module="aha")
 
     @property
-    def _default_group_list_mode(self) -> str:
+    def _default_group_list_mode(self) -> Literal["blacklist", "whitelist"]:
         return self.get("default_group_list_mode", module="aha")
 
     @property
@@ -743,7 +800,7 @@ class Config[
         return self.get("default_group_list", module="aha")
 
     @property
-    def _default_user_list_mode(self) -> str:
+    def _default_user_list_mode(self) -> Literal["blacklist", "whitelist"]:
         return self.get("default_user_list_mode", module="aha")
 
     @property
@@ -838,9 +895,17 @@ class Config[
                         "uri": "ws://127.0.0.1:3001",
                         "token": "napcat",
                         "start_server_command": (
-                            r'@wmic process get commandline 2>nul | findstr /i /r /c:"QQNT\\QQ\.exe. --enable-logging -q 114514" >nul || start "" /d "\path\to\NapCat.Shell" launcher-user.bat 114514'
+                            r"""set "QQ=114514"
+wmic process get CommandLine 2>nul | findstr /i /r /c:"QQNT\\QQ\.exe. --enable-logging -q %QQ%" >nul || start "" /d "\path\to\NapCat.Shell" launcher-user.bat %q%"""
                             if os.name == "nt"
-                            else r'pgrep -f "QQ/qq --no-sandbox -q 114514" || napcat start 114514'
+                            else r"napcat start 114514"
+                        ),
+                        "stop_server_command": (
+                            r"""for /f "tokens=*" %A in ('wmic process get CommandLine^,ProcessId 2^>nul ^| findstr /i /r /c:"QQNT\\QQ\.exe. --enable-logging -q 114514"') do if not defined TARGET_PID for %B in (%A) do set "TARGET_PID=%B"
+if not defined TARGET_PID exit /b
+taskkill /F /PID %TARGET_PID% 2>nul"""
+                            if os.name == "nt"
+                            else r"napcat stop 114514"
                         ),
                         "retry_config": {"wait_exponential": {"multiplier": 1, "max": 30, "exp_base": 2, "min": 1}},
                         "lang": "zh_CN",

@@ -1,49 +1,65 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator, Callable, Coroutine
+from asyncio import Task, current_task, gather
+from collections.abc import AsyncGenerator, Callable
 from logging import Logger, getLogger
+from types import CoroutineType
 from typing import TYPE_CHECKING, Any
+from weakref import ReferenceType, ref
 
 from utils.aio import async_run_func
 
 
 class Transport(ABC):
-    __slots__ = ("_logger", "_disconnect_cb", "_reconnect_cb")
+    __slots__ = ("_logger", "_listen_tasks", "_disconnect_cb", "_connect_cb")
     
     def __init__(
         self,
         logger=None,
-        disconnect_cb: Callable[[], Coroutine[Any, Any, Any]] = None,
-        reconnect_cb: Callable[[], Coroutine[Any, Any, Any]] = None,
+        disconnect_cb: Callable[[], CoroutineType] = None,
+        reconnect_cb: Callable[[], CoroutineType] = None,
     ):
         """参数中两个回调不必须使用"""
         self._logger: Logger = logger or getLogger(self.__class__.__name__)
+        self._listen_tasks: list[ReferenceType[Task]] = []
         self._disconnect_cb = disconnect_cb
-        self._reconnect_cb = reconnect_cb
+        self._connect_cb = reconnect_cb
 
     @abstractmethod
     async def open(self, *args, **kwargs):
         pass
 
+    async def listen(self, callback: Callable):
+        self._listen_tasks.append(ref(current_task()))
+        await self._listen_impl(callback)
+    
     @abstractmethod
-    async def listen(self, callback: Callable[[Any], Any]):
+    async def _listen_impl(self, callback: Callable):
         """正常情况下应一直阻塞，返回代表不再连接"""
 
-    @abstractmethod
     async def close(self):
-        """关闭连接"""
+        """关闭连接并清理资源"""
+        await self._close_impl()
+        tasks = []
+        for t in self._listen_tasks:
+            if (t := t()) is not None:
+                t.cancel()
+                tasks.append(t)
+        await gather(*tasks, return_exceptions=True)
+        
+    @abstractmethod
+    async def _close_impl(self):
+        pass
+        
 
 
 class ClientTransport(Transport):
-    async def listen(self, callback: Callable[[Any], Any]):
+    async def listen(self, callback):
+        self._listen_tasks.append(ref(current_task()))
         async for data in self._listen_impl():
             try:
                 await async_run_func(callback, data)
             except Exception:
                 self._logger.exception("")
-
-    @abstractmethod
-    async def _listen_impl(self) -> AsyncGenerator:
-        pass
 
     @abstractmethod
     async def invoke(self, *args, **kwargs) -> Any | None:
@@ -55,6 +71,8 @@ class ClientTransport(Transport):
         pass
 
     if TYPE_CHECKING:
+        @abstractmethod
+        async def _listen_impl(self) -> AsyncGenerator: ...
 
         @abstractmethod
         async def open(self, *args, **kwargs):

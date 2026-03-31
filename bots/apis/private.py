@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from anyio import Path
 
-from models.api import Message
+from models.api import RetrievedMessage
 from models.msg import MsgSeg
 
 from .base import BaseAPI
@@ -26,6 +26,7 @@ class BasePrivateAPI(BaseAPI):
         Returns:
             str: message_id
         """
+        raise NotImplementedError
 
     async def send_private_raw_msg(self, call_id, user_id: str | int, data) -> str:
         """发送不经过 Aha 处理的私聊原始消息。
@@ -33,6 +34,7 @@ class BasePrivateAPI(BaseAPI):
         Returns:
             str: message_id
         """
+        raise NotImplementedError
 
     async def send_private_image(self, call_id, user_id: str | int, image: str | Path) -> str:
         """发送私聊图片消息。
@@ -43,6 +45,7 @@ class BasePrivateAPI(BaseAPI):
         Returns:
             str: message_id
         """
+        raise NotImplementedError
 
     async def send_private_record(self, call_id, user_id: str | int, file: str | Path) -> str:
         """发送私聊语音消息。
@@ -53,6 +56,7 @@ class BasePrivateAPI(BaseAPI):
         Returns:
             str: message_id
         """
+        raise NotImplementedError
 
     async def send_private_file(self, call_id, user_id: str | int, file: str | Path, name: str = None) -> str:
         """发送私聊文件消息。
@@ -63,6 +67,7 @@ class BasePrivateAPI(BaseAPI):
         Returns:
             str: message_id
         """
+        raise NotImplementedError
 
     async def send_private_music(
         self,
@@ -84,22 +89,26 @@ class BasePrivateAPI(BaseAPI):
         Returns:
             str: message_id
         """
+        raise NotImplementedError
 
     async def send_private_forward_msg_by_id(self, call_id, user_id: str | int, messages: Sequence[str | int]) -> str:
         """
         Returns:
             str: message_id
         """
+        raise NotImplementedError
 
     async def friend_poke(self, call_id, user_id: str | int) -> None:
         """私聊戳一戳"""
+        raise NotImplementedError
 
     # endregion
 
     async def get_private_msg_history(
-        self, call_id, user_id: str | int, message_seq: str | int, number=20, reverseOrder=False
-    ) -> list[Message]:
+        self, call_id, user_id: str | int, message_id: str | int, count=20, reverse=False
+    ) -> list[RetrievedMessage]:
+        """获取私聊消息历史，默认从旧到新排序。"""
         raise NotImplementedError
 
     async def upload_private_file(self, call_id, user_id: str | int, file: str, name: str) -> None:
-        pass
+        raise NotImplementedError

@@ -339,7 +339,7 @@ async def event_route(bot_id, event_type, payload):
             create_task(process_external(payload))
         case EventCategory.RESPONSE:
             call_id, result = payload
-            if future := bot.calls[call_id]:
+            if future := bot.calls.get(call_id):
                 if isinstance(result, BaseException):
                     future.set_exception(result)
                 else:

@@ -14,7 +14,7 @@ from models.api import BaseEvent, External, Message, MetaEvent, Notice, Request
 from models.core import EventCategory
 from models.msg import MessageChain, MsgSeg
 from utils.aio import async_run_func
-from utils.misc import FULL_AHA_MODULE_PATTERN, DefaultIndexedDict, caller_aha_module, get_arg_names, get_true_func
+from utils.misc import FULL_AHA_MODULE_PATTERN, DefaultIndexedDict, IndexedDict, caller_aha_module, get_arg_names, get_true_func
 
 from .config import cfg
 from .expr import (
@@ -40,7 +40,7 @@ __all__ = ("on_message", "on_notice", "on_request", "on_meta", "on_start", "on_c
 
 # region 回调容器
 @dataclass(slots=True)
-class ExprPoolAttach:
+class ExprAttach:
     aha_module: str
     pre_hook: Callable[[MessageChain], MessageChain] = None
     need_isolation: bool = False
@@ -58,18 +58,18 @@ class ExprPoolNode[Key: Hashable | Expr]:
         self.key: Key = key
         self.value: Callable = value
         self.token: int = token
-        self.attach: ExprPoolAttach = attach
+        self.attach: ExprAttach = attach
         self.prev: ExprPoolNode[Key] | None = None
         self.next: ExprPoolNode[Key] | None = None
 
 
-class ExprPool[Key: Hashable | Expr](Container[tuple[Key, Callable, ExprPoolAttach | None]]):
+class ExprPool[Key: Hashable | Expr](Container[tuple[Key, Callable, ExprAttach | None]]):
     __slots__ = ("_head", "_tail", "token_map", "_key_nodes")
 
     def __init__(self):
         self._head: ExprPoolNode[Key] | None = None
         self._tail: ExprPoolNode[Key] | None = None
-        self.token_map: dict[int, ExprPoolNode[Key]] = {}
+        self.token_map: IndexedDict[int, ExprPoolNode[Key]] = IndexedDict()
         self._key_nodes: defaultdict[Key, list[ExprPoolNode[Key]]] = defaultdict(list)
 
     def __len__(self):
@@ -84,8 +84,8 @@ class ExprPool[Key: Hashable | Expr](Container[tuple[Key, Callable, ExprPoolAtta
             yield current.key, current.value, current.token, current.attach
             current = current.prev
 
-    def add(self, key: Key, value: Callable, attach: ExprPoolAttach = None):
-        node = ExprPoolNode(key, value, token := id(key), attach)
+    def add(self, key: Key, value: Callable, attach: ExprAttach = None):
+        node = ExprPoolNode(key, value, token := (self.token_map.key_at(-1) + 1) if self.token_map else 0, attach)
 
         # 添加到链表尾部
         if self._tail is None:
@@ -97,6 +97,7 @@ class ExprPool[Key: Hashable | Expr](Container[tuple[Key, Callable, ExprPoolAtta
 
         self.token_map[token] = node
         self._key_nodes[key].append(node)
+        return token
 
     def remove(self, token):
         if (node := self.token_map.pop(token, None)) is None:
@@ -141,6 +142,16 @@ class ExprPool[Key: Hashable | Expr](Container[tuple[Key, Callable, ExprPoolAtta
 
 
 # endregion
+@dataclass(slots=True)
+class CallbackMeta:
+    args: frozenset
+    pool: ExprPool
+    condition: Hashable | Expr
+    func: Callable
+    token: int
+    cond_attach: ExprAttach
+
+
 current_module = ContextVar("aha_module")
 cugp = ContextVar("aha_use_global_prefix", default=False)
 current_event: ContextVar[BaseEvent] = ContextVar("aha_event", default=None)
@@ -228,10 +239,6 @@ def on_message(*conditions, exp=None, debug=False, pre_hook=None, callback=None,
             conditions = conditions.modify(PM.limit == None)
             if cfg.debug:
                 conditions._debug = debug
-        if exprs := getattr(func, "aha_exprs", None):
-            exprs.append(conditions)
-        else:
-            func.aha_exprs = [conditions]
 
         # 注册菜单
         if register_help:
@@ -246,11 +253,18 @@ def on_message(*conditions, exp=None, debug=False, pre_hook=None, callback=None,
                 help_items.append((k, help_expr, v))
 
         (args := [s for s in get_arg_names(func) if s in _message_args]).sort()
-        _message_handlers[frozenset(args)].add(
-            conditions,
-            func,
-            ExprPoolAttach(module, pre_hook, binary_expr_exists(conditions, (Apply, GetAttr, Call)), register_help is not None),
+
+        cond_attach = ExprAttach(
+            module, pre_hook, binary_expr_exists(conditions, (Apply, GetAttr, Call)), register_help is not None
         )
+        token = _message_handlers[args := frozenset(args)].add(conditions, func, cond_attach)
+
+        func_meta = CallbackMeta(args, _message_handlers[args], conditions, func, token, cond_attach)
+        if metas := getattr(func, "aha_meta", None):
+            metas.append(func_meta)
+        else:
+            func.aha_meta = [func_meta]
+
         return func
 
     return decorator(callback) if callback else decorator
@@ -296,14 +310,15 @@ def on_notice(*conditions, exp=None, debug=False, callback=None):
             conditions.modify(PM.limit == None)
             if cfg.debug:
                 conditions._debug = debug
-        if exprs := getattr(func, "aha_exprs", None):
-            exprs.append(conditions)
-        else:
-            func.aha_exprs = [conditions]
 
-        _notice_handlers[frozenset(args)].add(
-            conditions, func, ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call)))
-        )
+        cond_attach = ExprAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call)))
+        token = _notice_handlers[args := frozenset(args)].add(conditions, func, cond_attach)
+
+        func_meta = CallbackMeta(args, _notice_handlers[args], conditions, func, token, cond_attach)
+        if metas := getattr(func, "aha_meta", None):
+            metas.append(func_meta)
+        else:
+            func.aha_meta = [func_meta]
         return func
 
     return decorator(callback) if callback else decorator
@@ -346,14 +361,15 @@ def on_request(*conditions, exp=None, debug=False, callback=None):
             conditions.modify(PM.limit == None)
             if cfg.debug:
                 conditions._debug = debug
-        if exprs := getattr(func, "aha_exprs", None):
-            exprs.append(conditions)
-        else:
-            func.aha_exprs = [conditions]
 
-        _request_handlers[frozenset(args)].add(
-            conditions, func, ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call)))
-        )
+        cond_attach = ExprAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call)))
+        token = _request_handlers[args := frozenset(args)].add(conditions, func, cond_attach)
+
+        func_meta = CallbackMeta(args, _request_handlers[args], conditions, func, token, cond_attach)
+        if metas := getattr(func, "aha_meta", None):
+            metas.append(func_meta)
+        else:
+            func.aha_meta = [func_meta]
         return func
 
     return decorator(callback) if callback else decorator
@@ -391,16 +407,16 @@ def on_meta(*conditions, exp=None, debug=False, callback=None):
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
-        _meta_handlers[frozenset(args)].add(
-            build_cond(conditions, EventCategory.META, exp, debug),
-            func,
-            ExprPoolAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call))),
+        cond_attach = ExprAttach(module, need_isolation=binary_expr_exists(conditions, (Apply, GetAttr, Call)))
+        token = _meta_handlers[args := frozenset(args)].add(
+            build_cond(conditions, EventCategory.META, exp, debug), func, cond_attach
         )
 
-        if exprs := getattr(func, "aha_exprs", None):
-            exprs.append(conditions)
+        func_meta = CallbackMeta(args, _meta_handlers[args], conditions, func, token, cond_attach)
+        if metas := getattr(func, "aha_meta", None):
+            metas.append(func_meta)
         else:
-            func.aha_exprs = [conditions]
+            func.aha_meta = [func_meta]
         return func
 
     return decorator(callback) if callback else decorator
@@ -428,12 +444,13 @@ def on_external(key, callback=None):
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _external_args]).sort()
-        _external_handlers[frozenset(args)].add(key, func, ExprPoolAttach(module))
+        token = _external_handlers[args := frozenset(args)].add(key, func, cond_attach := ExprAttach(module))
 
-        if exprs := getattr(func, "aha_exprs", None):
-            exprs.append(key)
+        func_meta = CallbackMeta(args, _meta_handlers[args], key, func, token, cond_attach)
+        if metas := getattr(func, "aha_meta", None):
+            metas.append(func_meta)
         else:
-            func.aha_exprs = [key]
+            func.aha_meta = [func_meta]
         return func
 
     return decorator(callback) if callback else decorator
@@ -481,7 +498,7 @@ def _processer(func: Callable = None):
 
 
 @_processer
-async def process_message(event: Message, ignore_prefix=False):
+async def process_message(event: Message, ignore_prefix=False, once: CallbackMeta = None):
     # 删除过时缓存
     cprmc.set(None)
     cprms.set(None)
@@ -515,8 +532,17 @@ async def process_message(event: Message, ignore_prefix=False):
                 kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
             try:
                 create_task(func(**kwargs))
-            except Exception as ex:
-                _logger.error(ex)
+            except Exception as exc:
+                _logger.error(exc)
+
+    if once:
+        k, pool, kwargs = once.args, once.pool, None
+        expr, func, token, attach = once.condition, once.func, once.token, once.cond_attach
+        e, m, a, l = "event" in k, "match_" in k, "args" in k, "localizer" in k
+        current_module.set(attach.aha_module)
+        if ignore_prefix:
+            expr = expr.modify(PM.prefix == False)
+        return await create_task(evaluate_(event))
 
     for k, pool in _message_handlers.safe_iter_items():
         kwargs = None
@@ -529,93 +555,133 @@ async def process_message(event: Message, ignore_prefix=False):
 
 
 @_processer
-async def process_notice(event: Notice):
+async def process_notice(event: Notice, once: CallbackMeta = None):
+    async def evaluate_():
+        nonlocal event, kwargs
+        current_module.set(attach.aha_module)
+        if attach.need_isolation:
+            event = event.model_copy(deep=True)
+        if await evaluate(event, expr, token, pool):
+            if kwargs is None:
+                kwargs = {}
+            if e:
+                kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
+            if l:
+                kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
+            try:
+                create_task(func(**kwargs))
+            except Exception as exc:
+                _logger.error(exc)
+
+    if once:
+        k, pool, kwargs = once.args, once.pool, None
+        expr, func, token, attach = once.condition, once.func, once.token, once.cond_attach
+        e, l = "event" in k, "localizer" in k
+        return await evaluate_()
+
     for k, pool in _notice_handlers.safe_iter_items():
         kwargs = None
         e, l = "event" in k, "localizer" in k
         for expr, func, token, attach in pool:
-            current_module.set(attach.aha_module)
-            if attach.need_isolation:
-                event = event.model_copy(deep=True)
-            if await evaluate(event, expr, token, pool):
-                if kwargs is None:
-                    kwargs = {}
-                if e:
-                    kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
-                if l:
-                    kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
-                try:
-                    create_task(func(**kwargs))
-                except Exception as e:
-                    _logger.error(e)
+            await evaluate_()
 
 
 @_processer
-async def process_request(event: Request):
+async def process_request(event: Request, once: CallbackMeta = None):
+    async def evaluate_():
+        nonlocal event, kwargs
+        current_module.set(attach.aha_module)
+        if attach.need_isolation:
+            event = event.model_copy(deep=True)
+        if await evaluate(event, expr, token, pool):
+            if kwargs is None:
+                kwargs = {}
+            if e:
+                kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
+            if l:
+                kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
+            try:
+                create_task(func(**kwargs))
+            except Exception as exc:
+                _logger.error(exc)
+
+    if once:
+        k, pool, kwargs = once.args, once.pool, None
+        expr, func, token, attach = once.condition, once.func, once.token, once.cond_attach
+        e, l = "event" in k, "localizer" in k
+        return await evaluate_()
+
     for k, pool in _request_handlers.safe_iter_items():
         kwargs = None
         e, l = "event" in k, "localizer" in k
         for expr, func, token, attach in pool:
-            current_module.set(attach.aha_module)
-            if attach.need_isolation:
-                event = event.model_copy(deep=True)
-            if await evaluate(event, expr, token, pool):
-                if kwargs is None:
-                    kwargs = {}
-                if e:
-                    kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
-                if l:
-                    kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
-                try:
-                    create_task(func(**kwargs))
-                except Exception as e:
-                    _logger.error(e)
+            await evaluate_()
 
 
 @_processer
-async def process_meta(event: MetaEvent):
+async def process_meta(event: MetaEvent, once: CallbackMeta = None):
+    async def evaluate_():
+        nonlocal event, kwargs
+        current_module.set(attach.aha_module)
+        if attach.need_isolation:
+            event = event.model_copy(deep=True)
+        if await evaluate(event, expr, token, pool):
+            if kwargs is None:
+                kwargs = {}
+            if e:
+                kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
+            if l:
+                kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
+            try:
+                create_task(func(**kwargs))
+            except Exception as exc:
+                _logger.error(exc)
+
+    if once:
+        k, pool, kwargs = once.args, once.pool, None
+        expr, func, token, attach = once.condition, once.func, once.token, once.cond_attach
+        e, l = "event" in k, "localizer" in k
+        return await evaluate_()
+
     for k, pool in _meta_handlers.safe_iter_items():
         kwargs = None
         e, l = "event" in k, "localizer" in k
         for expr, func, token, attach in pool:
-            current_module.set(attach.aha_module)
-            if attach.need_isolation:
-                event = event.model_copy(deep=True)
-            if await evaluate(event, expr, token, pool):
-                if kwargs is None:
-                    kwargs = {}
-                if e:
-                    kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
-                if l:
-                    kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
-                try:
-                    create_task(func(**kwargs))
-                except Exception as e:
-                    _logger.error(e)
+            await evaluate_()
 
 
 @_processer
-async def process_external(event: External):
-    for k, pool in _external_handlers.safe_iter_items():
+async def process_external(event: External, once: CallbackMeta = None):
+    async def evaluate_():
+        nonlocal kwargs
+        # current_module.set(attach.aha_module)
+        if key == event.key:
+            if kwargs is None:
+                kwargs = {}
+            if e:
+                kwargs["event"] = copied_event = event.model_copy(deep=True)
+                if d:
+                    kwargs["data"] = copied_event.data
+            elif d:
+                kwargs["data"] = deepcopy(event.data)
+            if l:
+                kwargs["localizer"] = create_translator(attach.aha_module, event.lang or current_lang.get())
+            try:
+                create_task(func(**kwargs))
+            except Exception as exc:
+                _logger.error(exc)
+
+    if once:
+        args, pool, kwargs = once.args, once.pool, None
+        key, func, attach = once.condition, once.func, once.cond_attach
+        e, d, l = "event" in args, "data" in args, "localizer" in args
+        return await evaluate_()
+
+    for args, pool in _external_handlers.safe_iter_items():
         kwargs = None
-        e, d, l = "event" in k, "data" in k, "localizer" in k
-        for k, func, _, attach in pool:
-            # current_module.set(attach.aha_module)
-            if k == event.key:
-                if kwargs is None:
-                    kwargs = {}
-                if e:
-                    kwargs["event"] = copied_event = event.model_copy(deep=True)
-                    if d:
-                        kwargs["data"] = copied_event.data
-                elif d:
-                    kwargs["data"] = deepcopy(event.data)
-                if l:
-                    kwargs["localizer"] = create_translator(attach.aha_module, event.lang or current_lang.get())
-                try:
-                    create_task(func(**kwargs))
-                except Exception as e:
-                    _logger.error(e)
+        e, d, l = "event" in args, "data" in args, "localizer" in args
+        for key, func, _, attach in pool:
+            await evaluate_()
 
 
 async def process_start():

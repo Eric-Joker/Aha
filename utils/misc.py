@@ -1,10 +1,10 @@
-from collections import defaultdict
 import os
 import re
 import shlex
 import sys
 from array import array
-from collections.abc import Callable, Iterable, Sequence
+from collections import defaultdict
+from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import suppress
 from decimal import ROUND_HALF_UP, Decimal
 from operator import methodcaller
@@ -274,7 +274,7 @@ class SetArray[_T](array[_T]):
 class IndexedDictMixin[_KT, _VT]:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._keys = list(iter(self))
+        self._keys: list[_KT] = list(self)
 
     def __setitem__(self, key: _KT, value: _VT):
         if key not in self:
@@ -302,7 +302,7 @@ class IndexedDictMixin[_KT, _VT]:
             self._keys.remove(key)
         return super().pop(key, default)
 
-    def popitem(self):
+    def popitem(self) -> _VT:
         self._keys.remove((result := super().popitem())[0])
         return result
 
@@ -311,16 +311,16 @@ class IndexedDictMixin[_KT, _VT]:
     def key_at(self, index: SupportsIndex):
         return self._keys[index]
 
-    def value_at(self, index: SupportsIndex):
+    def value_at(self, index: SupportsIndex) -> _VT:
         return self[self._keys[index]]
 
-    def item_at(self, index: SupportsIndex):
+    def item_at(self, index: SupportsIndex) -> tuple[_KT, _VT]:
         return (k := self._keys[index]), self[k]
 
     def set_value_at(self, index: SupportsIndex, value: _VT):
         self[self._keys[index]] = value
 
-    def pop_at(self, index: SupportsIndex):
+    def pop_at(self, index: SupportsIndex) -> tuple[_KT, _VT]:
         return (key := self._keys.pop(index)), super().pop(key)
 
     def index(self, key: _KT, start: SupportsIndex = 0, stop: SupportsIndex = sys.maxsize, /):
@@ -332,10 +332,10 @@ class IndexedDictMixin[_KT, _VT]:
     def safe_iter_keys(self):
         return iter(self._keys)
 
-    def safe_iter_values(self):
+    def safe_iter_values(self) -> Generator[_VT, None, None]:
         return (self[key] for key in self._keys)
 
-    def safe_iter_items(self):
+    def safe_iter_items(self) -> Generator[tuple[_KT, _VT], None, None]:
         return ((key, self[key]) for key in self._keys)
 
 

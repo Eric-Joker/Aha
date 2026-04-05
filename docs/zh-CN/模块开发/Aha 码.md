@@ -13,6 +13,8 @@
 
 > Aha 码中不应有多余的空格。
 
+本系统线程安全。
+
 ## 转义
 
 可以通过 [`utils.aha.escape_aha` 和 `utils.aha.unescape_aha`](./内置轮子与最佳实践/零碎%20utils.md#escape_aha--unescape_aha) 函数进行转义和反转义 Aha 码。

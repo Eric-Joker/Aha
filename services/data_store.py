@@ -1,21 +1,21 @@
-from asyncio import Event, Task, create_task, shield
-from contextlib import suppress
+from asyncio import Task, create_task, shield
 from logging import getLogger
 from weakref import WeakSet
 
+from aiologic import REvent
 from sqlalchemy import Column, PickleType, String, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import core.database
 from core.i18n import _
-from utils.misc import AHA_MODULE_PATTERN, caller_aha_module
+from utils.aha import AHA_MODULE_PATTERN, caller_aha_module
 from utils.sqlalchemy import upsert
 
 __all__ = "SimpleStore"
 
 # 全局状态管理
 _commit_task: Task = None
-_commit_event = Event()
+_commit_event = REvent()
 _instances: WeakSet[SimpleStore] = WeakSet()
 _created_modules = set()
 
@@ -41,7 +41,6 @@ async def _shield_commit():
             try:
                 await instance.flush_to_db(session)
                 await session.commit()
-                instance._reset_changes()
             except Exception:
                 _logger.exception(_("simple_data_store.commit_error") % instance._module)
 
@@ -49,7 +48,7 @@ async def _shield_commit():
 async def commit_worker():
     try:
         while True:
-            await _commit_event.wait()
+            await _commit_event
             _commit_event.clear()
             try:
                 await (task := shield(create_task(_shield_commit())))
@@ -75,8 +74,11 @@ class SimpleStore[K: str, V]:
     __slots__ = ("__weakref__", "table", "_cache", "_changed_keys", "_removed_keys", "_module")
 
     def __init__(self):
-        if (module := caller_aha_module(pattern=AHA_MODULE_PATTERN)) in _created_modules:
-            raise RuntimeError(_("simple_data_store.duplicate"))
+        if module := caller_aha_module(pattern=AHA_MODULE_PATTERN):
+            if module in _created_modules:
+                raise RuntimeError(_("simple_data_store.duplicate"))
+        else:
+            raise RuntimeError(_("cannot_get_caller_aha_module"))
         _created_modules.add(module)
 
         if core.database.database_initialized:
@@ -205,25 +207,25 @@ class SimpleStore[K: str, V]:
         if self._has_changes:
             _commit_event.set()
 
-    def _reset_changes(self):
-        """重置更改状态"""
-        self._changed_keys.clear()
-        self._removed_keys.clear()
-
     async def flush_to_db(self, session: AsyncSession):
         """将变更数据刷新到数据库"""
-        for key in self._changed_keys:
-            if key in self._cache:  # 确保键没有被并发删除
-                await session.execute(upsert(self.table, key=key, value=self._cache[key]))
+        while self._has_changes:
+            for key in tuple(self._changed_keys):
+                if key in self._changed_keys:
+                    self._changed_keys.remove(key)
+                    await session.execute(upsert(self.table, key=key, value=self._cache[key]))
 
-        for key in self._removed_keys:
-            await session.execute(delete(self.table).where(self.table.key == key))
+            for key in tuple(self._removed_keys):
+                if key in self._removed_keys:
+                    self._removed_keys.remove(key)
+                    await session.execute(delete(self.table).where(self.table.key == key))
 
     async def load_from_db(self):
         """从数据库加载所有数据到缓存"""
         async with core.database.db_sessionmaker() as session:
             self._cache.clear()
-            self._reset_changes()
+            self._changed_keys.clear()
+            self._removed_keys.clear()
 
             for row in (await session.scalars(select(self.table))).all():
                 self._cache[row.key] = row.value

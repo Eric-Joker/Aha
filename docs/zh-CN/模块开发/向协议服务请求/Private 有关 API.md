@@ -10,7 +10,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | msg | str \| Sequence[[MsgSeg](../../数据结构/消息序列与消息段.md#msgseg) \| str] \| [MsgSeg](../../数据结构/消息序列与消息段.md#msgseg) \| None | 消息内容。不支持 [InlineStr](../内置轮子与最佳实践/零碎%20utils.md#inlinestr)。 |
 | at | str \| int \| None | 若有值视为平台用户 ID，自动在消息内容前部添加 [At](../../数据结构/消息序列与消息段.md#at) 。 |
 | reply | str \| int \| None | 若有值视为消息 ID，自动在消息内容前部添加 [Reply](../../数据结构/消息序列与消息段.md#reply) 。 |
@@ -24,7 +24,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | data | Any | 目标协议消息内容数据格式。 |
 
 **返回**: 消息 ID (str)
@@ -35,7 +35,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | image | str \| Path | 接受路径或 URL。 |
 
 **返回**: 消息 ID (str)
@@ -46,7 +46,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | file | str \| Path | 接受路径或 URL。 |
 
 **返回**: 消息 ID (str)
@@ -57,7 +57,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | value | int | 骰子点数。默认为 1。 |
 
 **返回**: 消息 ID (str)
@@ -68,7 +68,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | value | int | 猜拳点数。默认为 1。 |
 
 **返回**: 消息 ID (str)-->
@@ -79,7 +79,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | file | str \| Path | 接受路径或 URL。 |
 | name | str \| None | 文件名，为空时自动从路径提取。默认为 `None`。 |
 
@@ -91,7 +91,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | url | str | 卡片跳转链接。 |
 | audio | str \| None | 媒体链接。 |
 | title | str \| None | 音乐标题。 |
@@ -106,7 +106,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | messages | Sequence[str \| int] | 消息 ID 序列。 |
 
 **返回**: 消息 ID (str)
@@ -117,18 +117,17 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 ## get_private_msg_history
 
-获取私聊消息历史，默认从旧到新排序。
+获取与指定用户从指定消息开始的新消息历史，包含指定消息。从旧到新排序。
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
-| message_id | str \| int | 起始消息序列号或消息 ID。 |
-| count | int | 获取数量，默认为 20。 |
-| reverse | bool | 是否倒序，默认为 `False`。 |
+| user_id | str \| int | 平台用户 ID。 |
+| message_id | str \| int | 起始消息 ID。未提供时获取最新的一些消息。 |
+| count | int | 预期获取数量，实际数量小于等于此。默认为 20。 |
 
 **返回**: list[[RetrievedMessage](../../数据结构/消息序列与消息段.md#message)]
 
@@ -138,6 +137,6 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | file | str | 本地文件路径。 |
 | name | str | 文件名。 |

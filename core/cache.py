@@ -1,6 +1,5 @@
 from collections.abc import Callable, Hashable  # , MutableMapping
-# from contextlib import suppress
-from functools import partial
+from functools import partial, wraps
 from logging import getLogger
 from random import choice
 from time import monotonic
@@ -9,12 +8,12 @@ from typing import TYPE_CHECKING, Any, ClassVar, overload
 from weakref import WeakSet  # , WeakKeyDictionary, ref
 
 import cachetools
+from aiologic import Lock
 from cachetools import Cache
 from cachetools.keys import hashkey
-from pympler import asizeof
-from wrapt import decorator
 
 from utils.aio import async_run_func
+from utils.asizeof import asizeof
 
 __all__ = (
     "Cache",
@@ -68,13 +67,13 @@ class AhaCacheMixin:
 class MemoryCacheMixin:
     INIT_MEM_SIZE: ClassVar[int]
     ADDITIONAL_PER_ITEM_MEM_SIZE: ClassVar[int]
-    
+
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, getsizeof=asizeof.asizeof, **kwargs)
+        super().__init__(*args, getsizeof=asizeof, **kwargs)
         self._Cache__currsize = self.INIT_MEM_SIZE
 
     def __setitem(self, key, value):
-        if (size := asizeof.asizeof(key, value) + self.ADDITIONAL_PER_ITEM_MEM_SIZE) > self._Cache__maxsize:
+        if (size := asizeof(key, value) + self.ADDITIONAL_PER_ITEM_MEM_SIZE) > self._Cache__maxsize:
             raise ValueError("value too large")
         if key not in self._Cache__data or self._Cache__size[key] < size:
             while self._Cache__currsize + size > self._Cache__maxsize:
@@ -129,6 +128,7 @@ class WeakKeyCacheMixin:
             self._Cache__size = HybridKeyDictionary()
 """
 
+
 class CronCacheMixin:
     """需要在模块初始化时就实例化"""
 
@@ -146,21 +146,27 @@ class CronCacheMixin:
 
 # endregion
 if TYPE_CHECKING:
-    @overload
-    def async_cached(
-        cache: Cache, key: Callable = None, ignore: Callable[..., bool] = None
-    ) -> Callable[[Callable[..., CoroutineType[Any, Any, Any]]], Callable[..., CoroutineType[Any, Any, Any]]]: ...
-
 
     @overload
-    def async_cached(
-        cache: Cache, key: Callable = None, ignore: Callable[..., bool] = None, func: Callable = None
-    ) -> CoroutineType[Any, Any, Any]: ...
+    def async_cached[T: Callable[..., CoroutineType]](
+        cache: Cache,
+        key: Callable[..., Hashable | CoroutineType[Any, Any, Hashable]] = None,
+        lock: Lock = None,
+        ignore: Callable[..., bool] = None,
+    ) -> Callable[[T], T]: ...
+
+    @overload
+    def async_cached[T: Callable[..., CoroutineType]](
+        cache: Cache,
+        key: Callable[..., Hashable | CoroutineType[Any, Any, Hashable]] = None,
+        lock: Lock = None,
+        ignore: Callable[..., bool] = None,
+        *,
+        func: T,
+    ) -> T: ...
 
 
-def async_cached(
-    cache, key: Callable[..., Hashable | CoroutineType[Any, Any, Hashable]] = None, ignore: Callable = None, func=None
-):
+def async_cached(cache: Cache, key=None, lock=None, ignore=None, func=None):
     """
     被装饰的函数增加了两个 kwargs：
         no_cache: 调用时不查询缓存。
@@ -171,25 +177,34 @@ def async_cached(
         key: 缓存键生成器。
         ignore: 接受被装饰函数返回值、位置与关键字参数，返回值的 bool 为 True 时本次调用结果不写入缓存。
     """
+    if lock is None:
+        lock = Lock()
 
-    @decorator
-    async def wrapper(func, _, args, kwargs):
-        no_cache = kwargs.pop("no_cache", False)
-        cache_key = kwargs.pop("cache_key", None)
+    def decorator[T: Callable](func: T) -> T:
+        @wraps(func)
+        async def wrapper(*args, __func=func, __lock=lock, **kwargs) -> T:
+            no_cache = kwargs.pop("no_cache", False)
+            cache_key = kwargs.pop("cache_key", None)
 
-        if not no_cache:
-            if not cache_key:
-                cache_key = key
-            cache_key = hashkey(*args, **kwargs) if cache_key is None else await async_run_func(cache_key, *args, **kwargs)
-            if result := cache.get(cache_key):
-                return result
+            async with __lock:
+                if not no_cache:
+                    if cache_key:
+                        cache_key = await async_run_func(cache_key, *args, **kwargs)
+                    elif key:
+                        cache_key = await async_run_func(key, *args, **kwargs)
+                    else:
+                        cache_key = hashkey(*args, **kwargs)
+                        if result := cache.get(cache_key):
+                            return result
 
-        result = await func(*args, **kwargs)
-        if not ignore or not await async_run_func(ignore, result, *args, **kwargs):
-            cache[cache_key] = result
-        return result
+                result = await __func(*args, **kwargs)
+                if not ignore or not await async_run_func(ignore, result, *args, **kwargs):
+                    cache[cache_key] = result
+            return result
 
-    return wrapper(func) if func else wrapper
+        return wrapper
+
+    return decorator(func) if func else decorator
 
 
 # region 超级拼装
@@ -294,9 +309,10 @@ class WeakKeyRRCache(WeakKeyCacheMixin, RRCache):
     def __init__(self, maxsize: int, choice=choice, getsizeof: Callable[[Any], float] = None):
 """
 
+
 class MemFIFOCache(MemoryCacheMixin, FIFOCache):
     """限制内存FIFO缓存"""
-    
+
     INIT_MEM_SIZE = 840
     ADDITIONAL_PER_ITEM_MEM_SIZE = 253
 
@@ -306,7 +322,7 @@ class MemFIFOCache(MemoryCacheMixin, FIFOCache):
 
 class MemLFUCache(MemoryCacheMixin, LFUCache):
     """限制内存LFU缓存"""
-    
+
     INIT_MEM_SIZE = 1112
     ADDITIONAL_PER_ITEM_MEM_SIZE = 223
 
@@ -353,6 +369,7 @@ class MemTLRUCache(MemoryCacheMixin, TLRUCache):
     def __init__(self, maxsize: int, ttu: float, timer: Callable[[], float] = monotonic):
         super().__init__(maxsize, ttu, timer)
 
+
 """
 class MemWeakKeyFIFOCache(MemoryCacheMixin, WeakKeyFIFOCache):
     \"""限制内存的过期项转为弱引用的FIFO缓存\"""
@@ -381,6 +398,7 @@ class MemWeakKeyRRCache(MemoryCacheMixin, WeakKeyRRCache):
     def __init__(self, maxsize: int, choice=choice):
         super().__init__(maxsize, choice)
 """
+
 
 class CronFIFOCache(CronCacheMixin, FIFOCache):
     """定时清空FIFO缓存，需要在模块初始化时就实例化"""
@@ -437,6 +455,7 @@ class CronTLRUCache(CronCacheMixin, TLRUCache):
     ):
         super().__init__(maxsize, ttu, timer, getsizeof, cron=cron)
 
+
 """
 class CronWeakKeyFIFOCache(CronCacheMixin, WeakKeyFIFOCache):
     \"""过期转为弱引用的定期将全部项过期的FIFO缓存，需要在模块初始化时就实例化。\"""
@@ -465,6 +484,7 @@ class CronWeakKeyRRCache(CronCacheMixin, WeakKeyRRCache):
     def __init__(self, maxsize: int, choice=choice, cron="0 0 * * *"):
         super().__init__(maxsize, choice, cron=cron)
 """
+
 
 class CronMemFIFOCache(CronCacheMixin, MemFIFOCache):
     """定时清空限制内存FIFO缓存，需要在模块初始化时就实例化"""
@@ -506,6 +526,7 @@ class CronMemTLRUCache(CronCacheMixin, MemTLRUCache):
 
     def __init__(self, maxsize: int, ttu: float, timer: Callable[[], float] = monotonic, cron="0 0 * * *"):
         super().__init__(maxsize, ttu, timer, cron=cron)
+
 
 """
 class CronMemWeakKeyFIFOCache(CronCacheMixin, MemWeakKeyFIFOCache):

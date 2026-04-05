@@ -78,7 +78,7 @@ async def init_load_mod(exclude: set = None):
             loaded += 1
         except Exception:
             _logger.warning(_("module.import.error") % shorter, exc_info=True)
-    _logger.info(_("module.import.done") % loaded)
+    # _logger.info(_("module.import.done") % loaded)
 
 
 async def reload_modules(disable: set[str] = None):

@@ -1,6 +1,5 @@
-from asyncio import CancelledError, Event, Future, Task, create_task, current_task, gather, get_running_loop, sleep
+from asyncio import Future, Task, create_task, current_task, gather, get_running_loop, sleep
 from collections import defaultdict
-from collections.abc import Mapping
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -9,24 +8,25 @@ from logging import getLogger
 from multiprocessing import Pipe, Process
 from secrets import token_hex
 from threading import Thread
-from typing import TYPE_CHECKING
 from weakref import WeakValueDictionary
 
+from aiologic import Lock, REvent, RLock
 from apscheduler.triggers.calendarinterval import CalendarIntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from orjson import dumps
 from pydantic import BaseModel
+from ssrjson import dumps_to_bytes
 from xxhash import xxh3_64
 
+from bots import BaseBot, api_process
 from models.api import BaseEvent, LifecycleSubType, MetaEventType, NoticeEventType, RequestEventType, RequestSubType
 from models.core import APSTriggerType, EventCategory, ServiceType
 from services.apscheduler import sched
 from utils.aio import AsyncConnection, run_with_uvloop
 from utils.apscheduler import TimeTrigger
-from utils.misc import IndexedDict, SetArray
-from utils.typekit import commented2basic
+from utils.container import IndexedDict, SetArray
+from utils.misc import commented2basic
 from utils.unit import parse_size
 
 from . import status
@@ -37,12 +37,11 @@ from .dispatcher import process_external, process_message, process_meta, process
 from .i18n import _
 from .log import log_config
 
-if TYPE_CHECKING:
-    from bots import BaseBot
+bots: IndexedDict[int, BotInstance | None] = IndexedDict()  # 操作该对象需要拿 bots_lock
+platform_bot_map = defaultdict(partial(SetArray, "q"))  # 不论深度操作需要拿 bots_lock
+deduplicators: dict[str, Deduplicator] = {}  # 操作该对象需要拿 bots_lock，但操作去重器实例无需拿锁
+bots_lock = RLock()
 
-bots: IndexedDict[int, BotInstance | None] = IndexedDict()
-platform_bot_map = defaultdict(partial(SetArray, "q"))
-deduplicators: dict[str, Deduplicator] = {}
 
 _logger = getLogger("AHA (IPC)")
 
@@ -57,17 +56,18 @@ class BotInstance:
     platform: str
     block_event: bool
     if IS_THREAD_MODE:
-        threading: Thread
+        threading: Thread = None
     if IS_PROCESS_MODE:
         pipe: AsyncConnection | None = None
         calls: dict[str, Future] = field(default_factory=dict)
     else:
         calls: set[Task] = field(default_factory=set)
-    server_ok: Event = field(default_factory=Event)
+    call_lock: RLock = field(default_factory=RLock)
+    server_ok: REvent = field(default_factory=REvent)
 
 
 class Deduplicator:
-    __slots__ = ("cache",)
+    __slots__ = ("cache", "_lock")
 
     class Bucket:
         __slots__ = ("_counts", "services", "released")
@@ -106,72 +106,36 @@ class Deduplicator:
         from .config import cfg
 
         cache_cfg = cfg.event_cache
-        self.cache: Cache[int, Deduplicator.Bucket | set[int]] = MemTTLCache(parse_size(cache_cfg["size"]), cache_cfg["ttl"])
+        self.cache: Cache[int, Deduplicator.Bucket] = MemTTLCache(parse_size(cache_cfg["size"]), cache_cfg["ttl"])
+        self._lock = Lock()
         super().__init__()
 
-    def is_duplicate(self, event: BaseEvent):
-        if (bucket := self.cache.get(hashed := hash(event))) is None:
-            self.cache[hashed] = self.Bucket(event.bot_id)
-            return False
+    async def is_duplicate(self, event: BaseEvent):
+        async with self._lock:
+            if (bucket := self.cache.get(hashed := hash(event))) is None:
+                self.cache[hashed] = self.Bucket(event.bot_id)
+                return False
 
-        result = bucket.is_duplicate(event.bot_id)
-        self.cache[hashed] = bucket  # 更新缓存计数
+            result = bucket.is_duplicate(event.bot_id)
+            self.cache[hashed] = bucket  # 更新缓存计数
         return result
 
-    def services_of(self, event):
-        return b.services.copy() if (b := self.cache.get(hash(event))) else []
+    async def services_of(self, event):
+        async with self._lock:
+            return b.services.copy() if (b := self.cache.get(hash(event))) else []
 
 
 # region instance manager
 def _get_bot_id(bot_class, config):
-    (hasher := xxh3_64(dumps(config))).update(bot_class)
+    (hasher := xxh3_64(dumps_to_bytes(config))).update(bot_class)
     return int.from_bytes(hasher.digest(), signed=True)
 
 
-async def _start_async_bot(bot: BaseBot, server_ok: Event):
+async def _start_async_bot(bot: BaseBot, server_ok: REvent):
     if not await bot.start():
-        _del_bot(bot.bot_id)
+        async with bots_lock:
+            _del_bot(bot.bot_id)
         server_ok.set()  # 让启动流程通过
-
-
-def spawn_bot_instance(bot_class: str, config: Mapping, bot_id: int = None, block_event=False):
-    config = commented2basic(config)
-    if bot_id is None:
-        bot_id = _get_bot_id(bot_class, config)
-    if IS_PROCESS_MODE:
-        from bots import api_process
-
-        event_parent, event_child = Pipe()
-
-        bots[bot_id] = BotInstance(
-            Process(
-                target=api_process,
-                args=(
-                    cls := get_bot_class(bot_class),
-                    bot_id,
-                    event_child,
-                    config,
-                    cfg.base64_buffer,
-                    cfg.lang,
-                    log_config,
-                ),
-                daemon=True,
-            ),
-            cls.platform,
-            block_event,
-            pipe=AsyncConnection(event_parent),
-        )
-    elif IS_THREAD_MODE:
-        bots[bot_id] = meta = BotInstance(obj := (cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event)
-        meta.threading = Thread(target=run_with_uvloop, args=(_start_async_bot(obj, meta.server_ok),), daemon=True)
-    else:
-        bots[bot_id] = BotInstance((cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event)
-
-    platform_bot_map[cls.platform].append(bot_id)
-    if cls.platform not in deduplicators:
-        deduplicators[cls.platform] = Deduplicator()
-
-    return bot_id, bots[bot_id]
 
 
 async def start_bots():
@@ -182,44 +146,85 @@ async def start_bots():
 
 if cfg.cache_conv:
     _flag_mapping = FIFOCache(64)
+    # 下两个变量需要拿 bots_lock
     groups: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "q")))
     friends: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "q")))
+    group_conv_lock = Lock()
+    friend_conv_lock = Lock()
 
     async def _cache_group(bot_id, bot: BotInstance):
         cacher = groups[bot.platform]
-        for g in await call_api("get_groups", bot=bot_id):
-            cacher[g.group_id].append(bot_id)
+        if gs := await call_api("get_groups", bot=bot_id):
+            async with group_conv_lock:
+                for g in gs:
+                    cacher[g.group_id].append(bot_id)
 
     async def _cache_user(bot_id, bot: BotInstance):
         cacher = friends[bot.platform]
-        for u in await call_api("get_friends", bot=bot_id):
-            cacher[u.user_id].append(bot_id)
+        if fs := await call_api("get_friends", bot=bot_id):
+            async with friend_conv_lock:
+                for u in fs:
+                    cacher[u.user_id].append(bot_id)
 
 
 async def start_bot(bot_cfg: dict, bot_id: int = None, block_event=False):
     try:
-        bot_id, bot = spawn_bot_instance(*next(iter(bot_cfg.items())), bot_id=bot_id, block_event=block_event)
+        bot_class, config = next(iter(bot_cfg.items()))
+        config = commented2basic(config)
+        if bot_id is None:
+            bot_id = _get_bot_id(bot_class, config)
+        if IS_PROCESS_MODE:
+            event_parent, event_child = Pipe()
+            async with bots_lock:
+                bots[bot_id] = meta = BotInstance(
+                    Process(
+                        target=api_process,
+                        args=(
+                            cls := get_bot_class(bot_class),
+                            bot_id,
+                            event_child,
+                            config,
+                            cfg.base64_buffer,
+                            cfg.lang,
+                            log_config,
+                        ),
+                        daemon=True,
+                    ),
+                    cls.platform,
+                    block_event,
+                    pipe=AsyncConnection(event_parent),
+                )
+            meta.instance.start()
+            create_task(monitor_processing_events(meta.pipe, bot_id))
+        elif IS_THREAD_MODE:
+            async with bots_lock:
+                bots[bot_id] = meta = BotInstance(
+                    obj := (cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event
+                )
+            meta.threading = Thread(target=run_with_uvloop, args=(_start_async_bot(obj, meta.server_ok),), daemon=True)
+            meta.threading.start()
+        else:
+            async with bots_lock:
+                bots[bot_id] = meta = BotInstance((cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event)
+            create_task(_start_async_bot(meta.instance, meta.server_ok))
+
+        async with bots_lock:
+            platform_bot_map[cls.platform].append(bot_id)
+            if cls.platform not in deduplicators:
+                deduplicators[cls.platform] = Deduplicator()
     except TypeError as e:
         raise ValueError(_("api.service.config_error")) from e
 
-    if IS_PROCESS_MODE:
-        bot.instance.start()
-        create_task(monitor_processing_events(bot.pipe, bot_id))
-    elif IS_THREAD_MODE:
-        bot.threading.start()
-    else:
-        create_task(_start_async_bot(bot.instance, bot.server_ok))
+    await meta.server_ok
 
-    with suppress(CancelledError):
-        await bot.server_ok.wait()
+    if bots[bot_id] and cfg.cache_conv:
+        await gather(_cache_group(bot_id, meta), _cache_user(bot_id, meta), return_exceptions=True)
 
-        if bots[bot_id] and cfg.cache_conv:
-            await gather(_cache_group(bot_id, bot), _cache_user(bot_id, bot), return_exceptions=True)
-
-    return bot_id, bot
+    return bot_id, meta
 
 
 def _del_bot(bot_id):
+    """非线程安全"""
     bots[bot_id] = None
     for lst in platform_bot_map.values():
         try:
@@ -229,42 +234,48 @@ def _del_bot(bot_id):
             continue
 
 
-def clean_bot(bot_id):
+async def clean_bot(bot_id):
     if not bots or not (meta := bots[bot_id]):
         return
     meta.server_ok.clear()
-    if cfg.cache_conv:
-        from .api import groups, friends
 
-        for l in groups[bots[bot_id].platform].values():
-            with suppress(ValueError):
-                l.remove(bot_id)
-        for l in friends[bots[bot_id].platform].values():
-            with suppress(ValueError):
-                l.remove(bot_id)
-    _del_bot(bot_id)
-    for c in meta.calls.values() if IS_PROCESS_MODE else meta.calls:
-        c.cancel()
+    if cfg.cache_conv:
+        async with group_conv_lock:
+            for l in groups[bots[bot_id].platform].values():
+                with suppress(ValueError):
+                    l.remove(bot_id)
+        async with friend_conv_lock:
+            for l in friends[bots[bot_id].platform].values():
+                with suppress(ValueError):
+                    l.remove(bot_id)
+    async with bots_lock:
+        _del_bot(bot_id)
+
+    async with meta.call_lock:
+        for c in meta.calls.values() if IS_PROCESS_MODE else meta.calls:
+            c.cancel()
     meta.server_ok.set()  # 让启动流程通过
 
 
-async def clean_bots():
-    # global bots, platform_bot_map
+async def close_bots():
+    """给 aha.py 用的"""
+    async with bots_lock:
+        bots_copy = tuple(bots)
     with suppress(RuntimeError):
-        await gather(*[call_api("close", bot=bot) for bot in bots], return_exceptions=True)
+        await gather(*[call_api("close", bot=bot) for bot in bots_copy], return_exceptions=True)
 
     if IS_PROCESS_MODE:
-        for p in bots.values():
-            if p:
-                p.instance.join()
-                p.instance.close()
+        async with bots_lock:
+            for p in bots.values():
+                if p:
+                    p.instance.join()
+                    p.instance.close()
 
     if IS_THREAD_MODE:
-        for p in bots.values():
-            if p:
-                p.threading.join()
-
-    # bots = platform_bot_map = None
+        async with bots_lock:
+            for p in bots.values():
+                if p:
+                    p.threading.join()
 
 
 # endregion
@@ -314,17 +325,16 @@ async def event_route(bot_id, event_type, payload):
                 bot.server_ok.clear()
             create_task(process_meta(payload))
         case EventCategory.CHAT:
-            if deduplicators[payload.platform].is_duplicate(payload):
+            if await deduplicators[payload.platform].is_duplicate(payload):
                 return
             create_task(process_message(payload))
         case EventCategory.NOTICE:
             # 会话列表维护
             if cfg.cache_conv and payload.event_type is NoticeEventType.FRIEND_ADD:
-                from .api import friends
+                async with friend_conv_lock:
+                    friends[payload.platform][payload.user_id].append(payload.bot_id)
 
-                friends[payload.platform][payload.user_id].append(payload.bot_id)
-
-            if deduplicators[payload.platform].is_duplicate(payload):
+            if await deduplicators[payload.platform].is_duplicate(payload):
                 return
             create_task(process_notice(payload))
         case EventCategory.REQUEST:
@@ -332,7 +342,7 @@ async def event_route(bot_id, event_type, payload):
             if cfg.cache_conv and payload.event_type is RequestEventType.GROUP and payload.sub_type is RequestSubType.INVITE:
                 _flag_mapping[payload.flag] = payload.group_id
 
-            if deduplicators[payload.platform].is_duplicate(payload):
+            if await deduplicators[payload.platform].is_duplicate(payload):
                 return
             create_task(process_request(payload))
         case EventCategory.EXTERNAL:
@@ -353,7 +363,7 @@ async def monitor_processing_events(pipe: AsyncConnection, bot_id):
         try:
             await event_route(bot_id, *await pipe.recv())
         except (EOFError, BrokenPipeError) as e:
-            clean_bot(bot_id)
+            await clean_bot(bot_id)
             break
         except Exception as e:
             _logger.error(_("router.listen_event.error") % e)
@@ -394,14 +404,15 @@ async def call_api(method: str, *args, bot: int, **kwargs):
     try:
         # 等待服务状态
         if not is_close:
-            if IS_PROCESS_MODE:
-                calls[call_id] = future = get_running_loop().create_future()
-            else:
-                calls.add(current_task())
+            async with meta.call_lock:
+                if IS_PROCESS_MODE:
+                    calls[call_id] = future = get_running_loop().create_future()
+                else:
+                    calls.add(current_task())
             if not meta.server_ok.is_set():
                 if len(calls) >= MAX_WAITING_TASKS:
                     raise MemoryError(_("router.many_wating"))
-                await meta.server_ok.wait()
+                await meta.server_ok
 
         # 请求
         if IS_PROCESS_MODE:
@@ -419,12 +430,11 @@ async def call_api(method: str, *args, bot: int, **kwargs):
                 and args[1] is True
                 and (gid := _flag_mapping.get(args[0]))
             ):
-                from .api import groups
-
-                groups[meta.platform][gid].append(bot)
+                async with group_conv_lock:
+                    groups[meta.platform][gid].append(bot)
 
             # 缓存
-            if (cacher := api_result_caches.get(method)) is not None and isinstance(cacher, Cache):
+            if (cacher := api_result_caches.get(method)) is not None:
                 cacher[cache_key or hash(hashkey(bot, *args, **kwargs))] = (
                     result.model_copy(deep=True) if isinstance(result, BaseModel) else deepcopy(result)
                 )
@@ -437,9 +447,11 @@ async def call_api(method: str, *args, bot: int, **kwargs):
         pass
     finally:
         if IS_PROCESS_MODE:
-            del calls[call_id]
+            async with meta.call_lock:
+                del calls[call_id]
         else:
-            calls.discard(current_task())
+            async with meta.call_lock:
+                calls.discard(current_task())
 
 
 # endregion

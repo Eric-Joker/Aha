@@ -1,5 +1,5 @@
 import logging
-from asyncio import Event, create_task
+from asyncio import create_task
 from collections.abc import AsyncIterable, Buffer
 from contextlib import suppress
 
@@ -7,7 +7,7 @@ from tenacity import before_sleep_log, retry, retry_if_exception_type, wait_expo
 from websockets import State, connect
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
-from utils.misc import get_arg_names
+from utils.func import get_arg_names
 from utils.network import local_srv
 
 from ..i18n import _
@@ -15,7 +15,7 @@ from .base import ClientTransport, FastAPITransport
 
 
 class WebSocketClient(ClientTransport):
-    __slots__ = ("websocket", "uri", "_closed_event", "_connect_args", "_local_srv")
+    __slots__ = ("websocket", "uri", "_closed", "_connect_args", "_local_srv")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -32,14 +32,15 @@ class WebSocketClient(ClientTransport):
             _retry_args |= retry_config
         self._connect = retry(**_retry_args)(self._connect)
         kwargs["additional_headers"] = extra_headers or {}
-        self._connect_args = {k: v for k, v in kwargs.items() if k in get_arg_names(connect.__init__)}
+        args = set(get_arg_names(connect.__init__))
+        self._connect_args = {k: v for k, v in kwargs.items() if k in args}
         self.uri = uri
-        self._closed_event = Event()
+        self._closed = False
 
         await self._connect()
 
     async def _connect(self):
-        if self._closed_event.is_set():
+        if self._closed:
             return
         self.websocket = await connect(self.uri, **self._connect_args)
         create_task(self._connect_cb())
@@ -53,7 +54,7 @@ class WebSocketClient(ClientTransport):
             try:
                 yield await self.websocket.recv(decode=False)
             except ConnectionClosed:
-                if self._closed_event.is_set():
+                if self._closed:
                     break
 
                 self._logger.warning(_("api.transport.conn_close_retry"))
@@ -70,13 +71,13 @@ class WebSocketClient(ClientTransport):
                 self._logger.exception(_("api.transport.unknown_error") % e)
 
     async def invoke(self, data: Buffer | AsyncIterable[Buffer]):
-        if self._closed_event.is_set():
+        if self._closed:
             raise RuntimeError(_("api.transport.conn_close"))
         await self.websocket.send(data, text=True)
 
     async def _close_impl(self):
         with suppress(AttributeError):
-            self._closed_event.set()
+            self._closed = True
 
         if (w := getattr(self, "websocket", None)) and w.state is State.OPEN:
             await self.websocket.close()

@@ -14,7 +14,7 @@ from utils.sqlalchemy import upsert
 
 from .database import Status
 
-__all__ = "reload_or_restart"
+__all__ = ("reload_or_restart",)
 
 
 async def reload_or_restart():
@@ -37,7 +37,7 @@ async def post_msg():
                     group_id=row.group_id or None,
                     msg=_("reloaded"),
                     reply=row.message_id,
-                    bot=row.bot_id or select_bot(SS.GROUP, platform=row.platform, conv_id=row.group_id),
+                    bot=row.bot_id or await select_bot(SS.GROUP, platform=row.platform, conv_id=row.group_id),
                 )
             await session.commit()
 

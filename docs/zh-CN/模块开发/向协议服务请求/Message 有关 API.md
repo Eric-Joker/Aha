@@ -14,7 +14,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | msg | str \| Sequence[[MsgSeg](../../数据结构/消息序列与消息段.md#msgseg) \| str] \| [MsgSeg](../../数据结构/消息序列与消息段.md#msgseg) \| None | 消息内容。不支持 [InlineStr](../内置轮子与最佳实践/零碎%20utils.md#inlinestr)。 |
 | at | str \| int \| None | 若有值视为平台用户 ID，自动在消息内容前部添加 [At](../../数据结构/消息序列与消息段.md#at) 。 |
@@ -33,7 +33,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | data | Any | 目标协议消息内容数据格式。 |
 
@@ -49,7 +49,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | image | str \| Path | 接受路径或 URL。 |
 
@@ -65,7 +65,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | file | str \| Path | 接受路径或 URL。 |
 
@@ -81,7 +81,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | value | int | 骰子点数。默认为 1。 |
 
@@ -97,7 +97,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | value | int | 猜拳点数。默认为 1。 |
 
@@ -113,7 +113,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | file | str \| Path | 接受路径或 URL。 |
 | name | str \| None | 文件名，为空时自动从路径提取。默认为 `None`。 |
@@ -130,7 +130,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | url | str | 卡片跳转链接。 |
 | audio | str \| None | 媒体链接。 |
@@ -150,7 +150,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | messages | Sequence[str \| int] | 消息 ID 序列。 |
 
@@ -166,7 +166,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 
 ## get_msg

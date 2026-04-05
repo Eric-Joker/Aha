@@ -1,6 +1,7 @@
-from asyncio import Future, Lock, get_running_loop, wait_for
+from asyncio import Lock, create_task, wait_for
 from base64 import b64decode
 from binascii import Error
+from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
 from logging import getLogger
@@ -14,6 +15,7 @@ from core.i18n import _
 from core.transports import Transport
 from models.api import External, LifecycleSubType, MetaEvent, MetaEventType
 from models.core import EventCategory
+from utils.aio import AsyncResult
 
 from ..base import BaseBot, BaseBotSingletonMeta
 
@@ -208,27 +210,29 @@ class FastAPIConnection(Transport):
 class FastAPI(BaseBot, metaclass=BaseBotSingletonMeta):
     platform = "Web"
     transport_class = FastAPIConnection
-    _calls: dict[str, Future] = None
+    _calls: defaultdict[str, AsyncResult] = None
 
     @staticmethod
     def _get_transport_kwargs(config):
         return {"config": config}
 
     def __init__(self, *args, **kwargs):
-        FastAPI._calls = {}
+        FastAPI._calls = defaultdict(AsyncResult)
         super().__init__(*args, **kwargs)
 
     @classmethod
     async def post(cls, key, data=None, lang=None):
+        """上报事件"""
         await cls().event_post(EventCategory.EXTERNAL, External(key=key, data=data, lang=lang))
 
     @classmethod
     async def get(cls, key, data=None, lang=None, timeout=64800):
-        cls._calls[key] = future = get_running_loop().create_future()
-        await cls.post(key, data, lang)
-        return await wait_for(future, timeout)
+        """上报事件并等待结果"""
+        create_task(cls.post(key, data, lang))
+        return await wait_for(cls._calls[key], timeout)
 
     async def set_result(self, _, key, data):
+        """API: 设置结果"""
         self._calls[key].set_result(data)
 
     async def send_msg(self, _, *, user_id, msg, **__):

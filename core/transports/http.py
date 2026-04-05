@@ -1,12 +1,12 @@
 import logging
-from asyncio import Event, create_task
+from asyncio import create_task
 from contextlib import suppress
 
 from httpx import AsyncClient, RequestError, StreamClosed, TimeoutException
-from orjson import loads
+from ssrjson import loads
 from tenacity import before_sleep_log, retry, retry_if_exception_type, wait_exponential
 
-from utils.misc import get_arg_names
+from utils.func import get_arg_names
 from utils.network import local_srv
 
 from ..i18n import _
@@ -23,10 +23,10 @@ class _HttpMixin(ClientTransport):
 
     async def open(self, *, api_connect_config: dict, api_client_config: dict, **kwargs):
         await super().open(**kwargs)
-        self._http_config = {k: v for k, v in api_connect_config.items() if k in get_arg_names(AsyncClient.request)}
-        self._http_client = AsyncClient(
-            **{k: v for k, v in api_client_config.items() if k in get_arg_names(AsyncClient.__init__)}
-        )
+        args = set(get_arg_names(AsyncClient.request))
+        self._http_config = {k: v for k, v in api_connect_config.items() if k in args}
+        args = set(get_arg_names(AsyncClient.__init__))
+        self._http_client = AsyncClient(**{k: v for k, v in api_client_config.items() if k in args})
 
     async def invoke(self, **kwargs):
         response = await self._http_client.request(**kwargs)
@@ -60,7 +60,8 @@ class _SseMixin(ClientTransport):
         from httpx_sse import aconnect_sse
 
         await super().open(**kwargs)
-        self._sse_config = {k: v for k, v in sse_connect_config.items() if k in get_arg_names(aconnect_sse)}
+        args = set(get_arg_names(aconnect_sse))
+        self._sse_config = {k: v for k, v in sse_connect_config.items() if k in args}
         _retry_args = {
             "wait": wait_exponential(multiplier=1, max=30),
             "retry": retry_if_exception_type((RequestError, TimeoutException, ConnectionError)),
@@ -70,15 +71,14 @@ class _SseMixin(ClientTransport):
         if retry_config:
             _retry_args |= retry_config
         self._connect = retry(**_retry_args)(self._connect)
-        self._sse_client = AsyncClient(
-            **{k: v for k, v in sse_client_config.items() if k in get_arg_names(AsyncClient.__init__)}
-        )
-        self._closed_event = Event()
+        args = set(get_arg_names(AsyncClient.__init__))
+        self._sse_client = AsyncClient(**{k: v for k, v in sse_client_config.items() if k in args})
+        self._closed = False
 
         await self._connect()
 
     async def _connect(self):
-        if self._closed_event.is_set():
+        if self._closed:
             return
 
         from httpx_sse import aconnect_sse
@@ -95,7 +95,7 @@ class _SseMixin(ClientTransport):
                 async for sse_event in self.sse_connect.aiter_sse():
                     yield sse_event.data
             except StreamClosed:
-                if self._closed_event.is_set():
+                if self._closed:
                     break
 
                 self._logger.warning(msg=_("api.transport.conn_close_retry"))
@@ -114,7 +114,7 @@ class _SseMixin(ClientTransport):
 
     async def _close_impl(self):
         with suppress(AttributeError):
-            self._closed_event.set()
+            self._closed = True
         if self._sse_client:
             await self._sse_client.aclose()
 
@@ -127,7 +127,7 @@ class _SseMixin(ClientTransport):
 
 
 class HttpSse(_HttpMixin, _SseMixin):
-    __slots__ = ("_local_srv", "_http_client", "_http_config", "_sse_client", "_sse_config", "sse_connect", "_closed_event")
+    __slots__ = ("_local_srv", "_http_client", "_http_config", "_sse_client", "_sse_config", "sse_connect", "_closed")
 
     async def open(
         self,

@@ -1,5 +1,6 @@
 import os
-from asyncio import Future, get_running_loop, wait_for
+from asyncio import wait_for
+from collections import defaultdict
 from collections.abc import Iterable
 from contextlib import suppress
 from datetime import datetime
@@ -38,7 +39,8 @@ from models.msg import (
     Video,
 )
 from utils.aha import aha_code2dict_list, parse_aha_code
-from utils.typekit import AsyncBase64Encoder, stream_async_json
+from utils.aio import AsyncResult
+from utils.misc import AsyncBase64Encoder, stream_async_json
 
 # from websockets import State
 
@@ -148,15 +150,14 @@ _poke_flag = object()
 class Utils(BaseAPI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._call_handlers: dict[str, Future] = {}
+        self._calls = defaultdict(AsyncResult)
         if TYPE_CHECKING:
             self.transport: WebSocketClient
 
     async def _call_api(self, echo, action, params=None, timeout=300) -> Any:
-        future = self._call_handlers[echo] = get_running_loop().create_future()
         await self.transport.invoke(stream_async_json({"action": action, "params": params or {}, "echo": echo}))
         try:
-            data: dict = await wait_for(future, timeout)
+            data: dict = await wait_for(self._calls[echo], timeout)
             if (retcode := data["retcode"]) == 0:
                 return data.get("data")
             raise APIException(data["message"], retcode)
@@ -164,7 +165,7 @@ class Utils(BaseAPI):
             # if self.transport.websocket.state is not State.CLOSING and self.transport.websocket.state is not State.CLOSED:
             raise APITimeoutError()
         finally:
-            del self._call_handlers[echo]
+            del self._calls[echo]
 
     async def _msg_event_processor(self, data: dict):
         if "raw" in data:

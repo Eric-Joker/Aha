@@ -24,7 +24,7 @@ async def mapper(event: Message, localizer):
     )
 
 
-@on_message(_("command") % (a := at_or_str(), a), Pprefix == True)
+@on_message(_("command") % (a := at_or_str(), a), Pprefix == True, threadable=False)
 async def linker(event: Message, match_: Match, localizer):
     if uid := match_[2]:
         if (platform := match_[1]) not in platform_bot_map:

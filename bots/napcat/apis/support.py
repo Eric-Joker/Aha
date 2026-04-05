@@ -15,8 +15,8 @@ class SupportAPI(Utils, BaseSupportAPI):
             for item in await self._call_api(call_id, "get_ai_characters", {"group_id": group_id, "chat_type": chat_type})
         )
 
-    async def get_ai_record(self, call_id, group_id: str | int, character_id: str, text: str):
-        return await self._call_api(call_id, "get_ai_record", {"group_id": group_id, "character": character_id, "text": text})
+    def get_ai_record(self, call_id, group_id: str | int, character_id: str, text: str):
+        return self._call_api(call_id, "get_ai_record", {"group_id": group_id, "character": character_id, "text": text})
 
     # endregion
 

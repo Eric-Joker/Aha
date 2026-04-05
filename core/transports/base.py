@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from asyncio import Task, current_task, gather
 from collections.abc import AsyncGenerator, Callable
 from logging import Logger, getLogger
@@ -6,11 +6,11 @@ from types import CoroutineType
 from typing import TYPE_CHECKING, Any
 from weakref import ReferenceType, ref
 
-from utils.aio import async_run_func
+from utils.aio import ThreadSafeAsyncMeta, async_run_func
 
 
-class Transport(ABC):
-    __slots__ = ("_logger", "_listen_tasks", "_disconnect_cb", "_connect_cb")
+class Transport(metaclass=ThreadSafeAsyncMeta):
+    __slots__ = ("_logger", "_listen_tasks", "_disconnect_cb", "_connect_cb", "__weakref__")
     
     def __init__(
         self,

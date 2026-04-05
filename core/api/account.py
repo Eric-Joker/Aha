@@ -42,7 +42,7 @@ class AccountAPI:
         """
 
     @staticmethod
-    async def get_friends(*, bot: int = None) -> frozenset[Friend]:
+    async def get_friends(*, bot: int = None) -> list[Friend]:
         pass
 
     @staticmethod

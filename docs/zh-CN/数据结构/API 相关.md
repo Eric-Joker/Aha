@@ -112,7 +112,7 @@
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
 | group_id | str | 群号 |
-| user_id | str | 用户平台 ID |
+| user_id | str | 平台用户 ID |
 | nickname | str \| None | 用户昵称 |
 | card | str \| None | 群昵称 |
 | sex | [Sex](#modelsapisex) | 性别 |
@@ -132,11 +132,11 @@
 
 ### GroupMembers.is_admin()
 
-判断指定用户平台 ID 是否为管理员或群主。
+判断指定平台用户 ID 是否为管理员或群主。
 
 | 参数 | 类型 | 概述 |
 | --- | --- | --- |
-| user_id | str | 用户平台 ID |
+| user_id | str | 平台用户 ID |
 
 **返回**：bool
 
@@ -146,8 +146,8 @@
 
 | 参数 | 类型 | 概述 |
 | --- | --- | --- |
-| manager | str | 管理者用户平台 ID |
-| subordinate | str | 下属用户平台 ID |
+| manager | str | 管理者平台用户 ID |
+| subordinate | str | 下属平台用户 ID |
 
 **返回**：bool
 
@@ -204,7 +204,7 @@
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
-| user_id | str | 好友用户平台 ID |
+| user_id | str | 好友平台用户 ID |
 | nickname | str | 好友昵称 |
 | remark | str \| None | 好友备注 |
 | sex | str \| None | 性别 |
@@ -247,7 +247,7 @@
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
-| user_id | str | 用户平台 ID |
+| user_id | str | 平台用户 ID |
 | nickname | str | 昵称 |
 | sex | str | 性别 |
 | age | int \| None | 年龄 |

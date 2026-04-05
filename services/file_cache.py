@@ -1,14 +1,14 @@
 import os
-from asyncio import Lock
-from collections import defaultdict
 from collections.abc import AsyncIterable, Iterable
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from secrets import token_hex
 from time import time
 from typing import BinaryIO
+from weakref import WeakValueDictionary
 
 from aiofiles import open
+from aiologic import Lock
 from anyio import Path
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import Column, Integer, select, update
@@ -19,7 +19,7 @@ from core.database import db_sessionmaker, dbBase
 from core.i18n import _
 from models.sqlalchemy import Path as sqlPath
 from services.apscheduler import sched
-from utils.misc import AHA_MODULE_PATTERN, caller_aha_module
+from utils.aha import AHA_MODULE_PATTERN, caller_aha_module
 from utils.sqlalchemy import upsert
 
 __all__ = "cache_file_sessionmaker"
@@ -30,7 +30,7 @@ CFGS = cfg.register(
     _("file_cache.cfg_comment"),
     module="cache",
 )
-CACHE_DIR = CFGS["dir"]
+CACHE_DIR: Path = CFGS["dir"]
 
 
 class CacheFile(dbBase):
@@ -43,7 +43,7 @@ class CacheFile(dbBase):
 class CacheFileSession:
     __slots__ = ("db_session", "transaction", "dir", "filename", "fileext", "path", "locks")
 
-    LOCKED: defaultdict[Path, Lock] = defaultdict(Lock)
+    LOCKED = WeakValueDictionary()
 
     def __init__(self, dir: Path, name: str, ext: str):
         self.dir = dir
@@ -64,9 +64,11 @@ class CacheFileSession:
         return self
 
     async def _acquire_lock(self, path):
-        self.locks[path] = lock = self.LOCKED[path]
-        await lock.acquire()
-        await self.db_session.execute(select(CacheFile).where(CacheFile.file_path == path).with_for_update())
+        if lock := self.LOCKED.get(path):
+            self.locks[path] = lock
+        else:
+            self.locks[path] = self.LOCKED[path] = lock = Lock()
+        await lock.async_acquire()
 
     async def get_and_refresh(self, ttl: timedelta | int):
         if self.filename and await self.path.exists():
@@ -189,7 +191,7 @@ class CacheFileSession:
 
         # 写入
         if (actual_hash := await self._write_content(content, self.path, is_tmp)) and is_tmp:
-            self._acquire_lock(actual_path := self.dir / (actual_hash if self.fileext else actual_hash + self.fileext))
+            await self._acquire_lock(actual_path := self.dir / (actual_hash + self.fileext if self.fileext else actual_hash))
             # 长效化临时
             if await actual_path.exists():
                 await self.path.unlink(True)
@@ -203,8 +205,7 @@ class CacheFileSession:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.transaction.__aexit__(exc_type, exc_val, exc_tb)
         for k, v in self.locks.items():
-            v.release()
-            del self.LOCKED[k]
+            v.async_release()
         await self.db_session.__aexit__(exc_type, exc_val, exc_tb)
 
 

@@ -141,13 +141,13 @@ class GroupAPI(Utils, BaseGroupAPI):
         d["group_id"] = group_id
         return (await self._call_api(call_id, "send_group_forward_msg", d))["message_id"]
 
-    async def group_poke(self, call_id, group_id, user_id):
-        return await self._call_api(call_id, "group_poke", {"group_id": group_id, "user_id": user_id})
+    def group_poke(self, call_id, group_id, user_id):
+        return self._call_api(call_id, "group_poke", {"group_id": group_id, "user_id": user_id})
 
     # endregion
     # region 群成员管理
-    async def group_kick_members(self, call_id, group_id, user_ids, reject_add_request=False):
-        return await self._call_api(
+    def group_kick_members(self, call_id, group_id, user_ids, reject_add_request=False):
+        return self._call_api(
             call_id,
             "set_group_kick_members",
             {"group_id": group_id, "user_id": user_ids, "reject_add_request": reject_add_request},
@@ -217,17 +217,17 @@ class GroupAPI(Utils, BaseGroupAPI):
 
         return False
 
-    async def set_group_whole_ban(self, call_id, group_id, enable):
-        return await self._call_api(call_id, "set_group_whole_ban", {"group_id": group_id, "enable": enable})
+    def set_group_whole_ban(self, call_id, group_id, enable):
+        return self._call_api(call_id, "set_group_whole_ban", {"group_id": group_id, "enable": enable})
 
-    async def set_group_admin(self, call_id, group_id, user_id, enable):
-        return await self._call_api(call_id, "set_group_admin", {"group_id": group_id, "user_id": user_id, "enable": enable})
+    def set_group_admin(self, call_id, group_id, user_id, enable):
+        return self._call_api(call_id, "set_group_admin", {"group_id": group_id, "user_id": user_id, "enable": enable})
 
-    async def group_leave(self, call_id, group_id, is_dismiss=False):
-        return await self._call_api(call_id, "set_group_leave", {"group_id": group_id, "is_dismiss": is_dismiss})
+    def group_leave(self, call_id, group_id, is_dismiss=False):
+        return self._call_api(call_id, "set_group_leave", {"group_id": group_id, "is_dismiss": is_dismiss})
 
-    async def set_group_special_title(self, call_id, group_id, user_id, special_title=""):
-        return await self._call_api(
+    def set_group_special_title(self, call_id, group_id, user_id, special_title=""):
+        return self._call_api(
             call_id, "set_group_special_title", {"group_id": group_id, "user_id": user_id, "special_title": special_title}
         )
 
@@ -237,8 +237,8 @@ class GroupAPI(Utils, BaseGroupAPI):
         else:
             return await self._call_api(call_id, "set_group_add_request", {"flag": flag, "approve": approve, "reason": reason})
 
-    async def set_group_card(self, call_id, group_id, user_id, card=""):
-        return await self._call_api(call_id, "set_group_card", {"group_id": group_id, "user_id": user_id, "card": card})
+    def set_group_card(self, call_id, group_id, user_id, card=""):
+        return self._call_api(call_id, "set_group_card", {"group_id": group_id, "user_id": user_id, "card": card})
 
     async def get_card(self, call_id, group_id, user_id):
         return card if (card := (data := await self.get_group_member_info(call_id, group_id, user_id)).card) else data.nickname
@@ -249,21 +249,22 @@ class GroupAPI(Utils, BaseGroupAPI):
     # endregion
 
     # region 群消息管理
-    async def get_group_msg_history(self: NapCat, call_id, group_id, message_id, count=20, reverse=False):
-        return [
-            RetrievedMessage.model_validate(await self._msg_event_processor(data["message"]))
-            for data in await self._call_api(
-                call_id,
-                "get_group_msg_history",
-                {"group_id": group_id, "message_seq": message_id, "number": count, "reverseOrder": reverse},
+    async def get_group_msg_history(self: NapCat, call_id, group_id, message_id=None, count=20):
+        result = []
+        for data in (
+            await self._call_api(
+                call_id, "get_group_msg_history", {"group_id": group_id, "message_seq": message_id or 0, "number": count}
             )
-        ]
+        )["messages"]:
+            result.append(data := RetrievedMessage.model_validate(await self._msg_event_processor(data)))
+            data.bot_id, data.platform, data.adapter = self.bot_id, self.platform, self.__class__.__name__
+        return result
 
-    async def set_essence_msg(self, call_id, message_id):
-        return await self._call_api(call_id, "set_essence_msg", {"message_id": message_id})
+    def set_essence_msg(self, call_id, message_id):
+        return self._call_api(call_id, "set_essence_msg", {"message_id": message_id})
 
-    async def delete_essence_msg(self, call_id, message_id):
-        return await self._call_api(call_id, "delete_essence_msg", {"message_id": message_id})
+    def delete_essence_msg(self, call_id, message_id):
+        return self._call_api(call_id, "delete_essence_msg", {"message_id": message_id})
 
     async def get_essence_msg_list(self: NapCat, call_id, group_id):
         result = []
@@ -275,8 +276,8 @@ class GroupAPI(Utils, BaseGroupAPI):
     # endregion
 
     # region 群文件
-    async def move_group_file(self, call_id, group_id, file_id, current_parent_directory, target_parent_directory):
-        return await self._call_api(
+    def move_group_file(self, call_id, group_id, file_id, current_parent_directory, target_parent_directory):
+        return self._call_api(
             call_id,
             "move_group_file",
             {
@@ -287,30 +288,28 @@ class GroupAPI(Utils, BaseGroupAPI):
             },
         )
 
-    async def trans_group_file(self, call_id, group_id, file_id):
-        return await self._call_api(call_id, "trans_group_file", {"group_id": group_id, "file_id": file_id})
+    def trans_group_file(self, call_id, group_id, file_id):
+        return self._call_api(call_id, "trans_group_file", {"group_id": group_id, "file_id": file_id})
 
-    async def rename_group_file(self, call_id, group_id, file_id, new_name):
-        return await self._call_api(
-            call_id, "rename_group_file", {"group_id": group_id, "file_id": file_id, "new_name": new_name}
-        )
+    def rename_group_file(self, call_id, group_id, file_id, new_name):
+        return self._call_api(call_id, "rename_group_file", {"group_id": group_id, "file_id": file_id, "new_name": new_name})
 
-    async def upload_group_file(self, call_id, group_id, file, name, folder):
-        return await self._call_api(
+    def upload_group_file(self, call_id, group_id, file, name, folder):
+        return self._call_api(
             call_id, "upload_group_file", {"group_id": group_id, "file": file, "name": name, "folder": folder}
         )
 
-    async def create_group_file_folder(self, call_id, group_id, folder_name):
-        return await self._call_api(call_id, "create_group_file_folder", {"group_id": group_id, "folder_name": folder_name})
+    def create_group_file_folder(self, call_id, group_id, folder_name):
+        return self._call_api(call_id, "create_group_file_folder", {"group_id": group_id, "folder_name": folder_name})
 
-    async def group_file_folder_makedir(self, call_id, group_id, path):
-        await super().group_file_folder_makedir(call_id, group_id, path)
+    def group_file_folder_makedir(self, call_id, group_id, path):
+        return super().group_file_folder_makedir(call_id, group_id, path)
 
-    async def delete_group_file(self, call_id, group_id, file_id):
-        return await self._call_api(call_id, "delete_group_file", {"group_id": group_id, "file_id": file_id})
+    def delete_group_file(self, call_id, group_id, file_id):
+        return self._call_api(call_id, "delete_group_file", {"group_id": group_id, "file_id": file_id})
 
-    async def delete_group_folder(self, call_id, group_id, folder_id):
-        return await self._call_api(call_id, "delete_group_folder", {"group_id": group_id, "folder_id": folder_id})
+    def delete_group_folder(self, call_id, group_id, folder_id):
+        return self._call_api(call_id, "delete_group_folder", {"group_id": group_id, "folder_id": folder_id})
 
     async def get_group_root_files(self, call_id, group_id, file_count=50):
         return GroupFiles.model_validate(
@@ -339,7 +338,7 @@ class GroupAPI(Utils, BaseGroupAPI):
         return GroupInfo.model_validate(await self._call_api(call_id, "get_group_info", {"group_id": group_id}))
 
     async def get_group_info_raw(self, call_id, group_id):
-        return await self._call_api(call_id, "get_group_info_ex", {"group_id": group_id})["extInfo"]
+        return (await self._call_api(call_id, "get_group_info_ex", {"group_id": group_id}))["extInfo"]
 
     async def get_group_member_info(self, call_id, group_id, user_id):
         data: dict = await self._call_api(call_id, "get_group_member_info", {"group_id": group_id, "user_id": user_id})
@@ -368,14 +367,14 @@ class GroupAPI(Utils, BaseGroupAPI):
                 i["activity_level"] = level
         return GroupMembers(data)
 
-    async def set_group_remark(self, call_id, group_id, remark):
-        return await self._call_api(call_id, "set_group_remark", {"group_id": group_id, "remark": remark})
+    def set_group_remark(self, call_id, group_id, remark):
+        return self._call_api(call_id, "set_group_remark", {"group_id": group_id, "remark": remark})
 
-    async def set_group_sign(self, call_id, group_id):
-        return await self._call_api(call_id, "set_group_sign", {"group_id": group_id})
+    def set_group_sign(self, call_id, group_id):
+        return self._call_api(call_id, "set_group_sign", {"group_id": group_id})
 
-    async def send_group_sign(self, call_id, group_id):
-        return await self._call_api(call_id, "send_group_sign", {"group_id": group_id})
+    def send_group_sign(self, call_id, group_id):
+        return self._call_api(call_id, "send_group_sign", {"group_id": group_id})
 
     # endregion
 
@@ -385,14 +384,14 @@ class GroupAPI(Utils, BaseGroupAPI):
             return await self._call_api(call_id, "set_group_portrait", {"group_id": group_id, "file": file})
         raise NotImplementedError("远端 NapCat 暂不支持 set_group_avatar API。")
 
-    async def set_group_name(self, call_id, group_id, name):
-        return await self._call_api(call_id, "set_group_name", {"group_id": group_id, "group_name": name})
+    def set_group_name(self, call_id, group_id, name):
+        return self._call_api(call_id, "set_group_name", {"group_id": group_id, "group_name": name})
 
-    async def _send_group_notice(
+    def _send_group_notice(
         self, call_id, group_id, content, confirm_required=False, image=None, is_show_edit_card=False, pinned=False
     ):
         # TODO: 测试
-        return await self._call_api(
+        return self._call_api(
             call_id,
             "send_group_notice",
             {

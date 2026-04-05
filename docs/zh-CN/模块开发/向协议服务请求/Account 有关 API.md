@@ -65,7 +65,7 @@
 
 获取好友列表。
 
-**返回**: frozenset[[Friend](../../数据结构/API%20相关.md#modelsapifriend)]
+**返回**: list[[Friend](../../数据结构/API%20相关.md#modelsapifriend)]
 
 ## get_user_by_friend
 
@@ -73,7 +73,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 **返回**: [Friend](../../数据结构/API%20相关.md#modelsapifriend) | None
 
@@ -83,7 +83,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | block | bool | 是否同时拉黑。默认为 `False`。 |
 | both | bool | 是否双向删除。默认为 `True`。 |
 
@@ -93,7 +93,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | remark | str | 备注名称。 |
 
 ## get_last_msg_per_conv
@@ -116,7 +116,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 ## mark_all_as_read
 
@@ -128,7 +128,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 **返回**: [Stranger](../../数据结构/API%20相关.md#stranger)
 
@@ -138,7 +138,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | group_id | str \| int \| None | 若提供，优先从该群获取群名片。 |
 | force_return_card | bool | 若为 `True`，返回元组 `(card, nickname)`；否则返回 `card or nickname`。默认为 `False`。 |
 
@@ -150,7 +150,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 **返回**: str
 
@@ -170,6 +170,6 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 **返回**: [UserStatus](../../数据结构/API%20相关.md#userstatus)

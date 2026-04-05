@@ -69,26 +69,20 @@ class MessageAPI(Utils, BaseMessageAPI):
         raise NotImplementedError("NapCat 的 fetch_emoji_like 参数有点诡异，暂不支持。")
         return [
             EmojiLike.model_validate(item)
-            for item in (
-                await self._call_api(
-                    call_id, "fetch_emoji_like", {"message_id": message_id, "emoji_id": emoji_id}
-                )
-            )["emojiLikesList"]
+            for item in (await self._call_api(call_id, "fetch_emoji_like", {"message_id": message_id, "emoji_id": emoji_id}))[
+                "emojiLikesList"
+            ]
         ]
 
     # endregion
-    async def set_reaction(self, call_id, message_id, emoji_id, set=True):
-        return await self._call_api(
-            call_id, "set_msg_emoji_like", {"message_id": message_id, "emoji_id": int(emoji_id), "set": set}
-        )
+    def set_reaction(self, call_id, message_id, emoji_id, set=True):
+        return self._call_api(call_id, "set_msg_emoji_like", {"message_id": message_id, "emoji_id": int(emoji_id), "set": set})
 
     async def delete_msg(self: NapCat, call_id, message_id):
         msg = await self.get_msg(self.gen_id(), message_id)
         self_id = (await self.get_login_info(self.gen_id())).user_id
         if not (
-            (await self.get_group_members(call_id, msg.group_id)).is_manager_of(self_id, msg.user_id)
-            if msg.group_id
-            else False
+            (await self.get_group_members(call_id, msg.group_id)).is_manager_of(self_id, msg.user_id) if msg.group_id else False
         ):
             if msg.user_id != self_id:
                 raise APIException("无权撤回该消息。")
@@ -97,5 +91,5 @@ class MessageAPI(Utils, BaseMessageAPI):
 
         return await self._call_api(call_id, "delete_msg", {"message_id": message_id})
 
-    async def set_input_status(self, call_id, status):
-        return await self._call_api(call_id, "set_input_status", {"status": status})
+    def set_input_status(self, call_id, status):
+        return self._call_api(call_id, "set_input_status", {"status": status})

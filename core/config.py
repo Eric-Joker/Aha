@@ -1,42 +1,3 @@
-from ruamel.yaml.emitter import Emitter
-
-
-def choose_scalar_style(self: Emitter):
-    if not self.event.value and self.event.ctag.handle == "!!":
-        return None
-    if self.analysis is None:
-        self.analysis = self.analyze_scalar(self.event.value)
-    if self.event.style == '"' or self.canonical:
-        return '"'
-    if (self.event.implicit[0] or not self.event.implicit[2]) and (
-        (not self.event.style or self.event.style == "?")
-        and not (self.simple_key_context and (self.analysis.empty or self.analysis.multiline))
-        and (self.flow_level and self.analysis.allow_flow_plain or (not self.flow_level and self.analysis.allow_block_plain))
-        or self.event.style == "-"
-    ):
-        return ""
-    self.analysis.allow_block = True
-    if not self.flow_level and not self.simple_key_context:
-        if self.event.style and self.event.style in "|>":
-            return self.event.style
-        elif self.analysis.multiline:
-            return "|"
-    if not self.event.style:
-        if self.analysis.allow_double_quoted and "'" in self.event.value:
-            return '"'
-        return "'"
-    if (
-        self.event.style == "'"
-        and self.analysis.allow_single_quoted
-        and not (self.simple_key_context and self.analysis.multiline)
-    ):
-        return "'"
-    return '"'
-
-
-Emitter.choose_scalar_style = choose_scalar_style
-
-
 import os
 from collections import defaultdict
 from collections.abc import Hashable, Iterable, Mapping, Sequence, Set
@@ -44,11 +5,12 @@ from copy import deepcopy
 from dataclasses import fields as dc_fields
 from dataclasses import is_dataclass
 from datetime import date
+from functools import wraps
 from io import StringIO
 from logging import getLevelNamesMapping, getLogger
 from multiprocessing import current_process
 from pathlib import Path
-from sys import exit
+from sys import exit, _is_gil_enabled
 from typing import TYPE_CHECKING, Any, Literal, SupportsIndex, overload
 
 from aiofiles import open as aioopen
@@ -59,14 +21,16 @@ from attrs import has
 from pydantic import BaseModel
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedBase, CommentedMap, CommentedSeq, CommentedSet, comment_attrib
+from ruamel.yaml.emitter import Emitter
 from ruamel.yaml.representer import RoundTripRepresenter
 from tenacity import _unset
 
 from models.core import Group, User
-from models.metas import SingletonMeta
 
-# from utils.misc import AHA_MODULE_PATTERN
-from utils.misc import caller_aha_module, get_item_by_index
+from utils.aha import caller_aha_module  # , AHA_MODULE_PATTERN
+from utils.aio import ThreadSafeMeta
+from utils.container import SetList
+from utils.misc import SingletonMeta
 
 from .bot_register import get_bot_class
 from .i18n import _
@@ -125,9 +89,9 @@ class IndexedBotGroup(IndexedBase):
 class Option:
     """选项对象，用于处理带有选项注释的配置值"""
 
-    options: list = field(
-        factory=list,
-        converter=lambda x: list(dict.fromkeys(x)) if isinstance(x, Iterable) and not isinstance(x, str) else (x,),
+    options: Sequence = field(
+        factory=SetList,
+        converter=lambda x: SetList(x if isinstance(x, Iterable) and not isinstance(x, str) else (x,)),
     )
     value: str | int = None
 
@@ -178,13 +142,54 @@ class OptionCommentedSeq(CommentedSeq):
         return value.value if isinstance(value := super().__getitem__(index), Option) else value
 
 
+@wraps(Emitter.choose_scalar_style)
+def choose_scalar_style(self: Emitter):
+    if not self.event.value and self.event.ctag.handle == "!!":
+        return None
+    if self.analysis is None:
+        self.analysis = self.analyze_scalar(self.event.value)
+    if self.event.style == '"' or self.canonical:
+        return '"'
+    if (self.event.implicit[0] or not self.event.implicit[2]) and (
+        (not self.event.style or self.event.style == "?")
+        and not (self.simple_key_context and (self.analysis.empty or self.analysis.multiline))
+        and (self.flow_level and self.analysis.allow_flow_plain or (not self.flow_level and self.analysis.allow_block_plain))
+        or self.event.style == "-"
+    ):
+        return ""
+    self.analysis.allow_block = True
+    if not self.flow_level and not self.simple_key_context:
+        if self.event.style and self.event.style in "|>":
+            return self.event.style
+        elif self.analysis.multiline:
+            return "|"
+    if not self.event.style:
+        if self.analysis.allow_double_quoted and "'" in self.event.value:
+            return '"'
+        return "'"
+    if (
+        self.event.style == "'"
+        and self.analysis.allow_single_quoted
+        and not (self.simple_key_context and self.analysis.multiline)
+    ):
+        return "'"
+    return '"'
+
+
+Emitter.choose_scalar_style = choose_scalar_style
+
+
+class ConfigMeta(ThreadSafeMeta, SingletonMeta):
+    pass
+
+
 class Config[
     TypeObj: type
     | type[Option]
     | tuple[type, type | tuple]
     | tuple[type, list[type | tuple]]
     | tuple[type, dict[Hashable, tuple[type | tuple, type | tuple]]]
-](metaclass=SingletonMeta):
+](metaclass=ConfigMeta):
     BASE_TYPES = (str, int, float, type(None), date)
 
     __slots__ = (
@@ -192,12 +197,19 @@ class Config[
         "_safe_yaml",
         "_data",
         "_old_data",
-        "_lock",
         "_config_file",
-        "_loaded",
         "_default_types",
         "_default_used",
         "_modified",
+        "_msg_prefix",
+        "_group_blacklist",
+        "_user_blacklist",
+        "_group_whitelist",
+        "_user_whitelist",
+    )
+    __thread_guarded_attrs__ = (
+        "_data",
+        "_default_types",
         "_msg_prefix",
         "_group_blacklist",
         "_user_blacklist",
@@ -212,9 +224,7 @@ class Config[
         self._yaml.representer.add_representer(OptionCommentedSeq, RoundTripRepresenter.represent_list)
         self._old_data = {}
         self._data = CommentedMap()
-        # self._lock = Lock()
         self._config_file = aioPath(f"config.{os.getenv("BOT_ENV", "dev")}.yml")
-        self._loaded = False
         self._default_types = defaultdict(dict)
         self._default_used = False  # 初始化过值
         self._modified = []
@@ -226,29 +236,32 @@ class Config[
         self._group_whitelist = {}
         self._user_whitelist = {}
 
-        self.bots  # 先把这个写了
+        self.bots  # 放到配置文件最前
 
+    @ThreadSafeMeta.allow_non_main
     def __getitem__(self, key):
-        return self.register(key, noneable=True, module=caller_aha_module())
+        return self.register(key, noneable=True, module=caller_aha_module() or "aha")
 
     def __setitem__(self, key: str, value):
-        self.set(key, value, module=caller_aha_module())
+        self.set(key, value, module=caller_aha_module(3))
 
+    @ThreadSafeMeta.allow_non_main
     def get(self, key, default=None, module=None):
         try:
             return self.register(key, noneable=True, module=module or caller_aha_module())
         except KeyError:
             return default
 
+    @ThreadSafeMeta.allow_non_main
     def __getattr__(self, key: str):
         if key.startswith("_"):
             raise AttributeError(key)
-        return self.register(key, noneable=True, module=caller_aha_module())
+        return self.register(key, noneable=True, module=caller_aha_module() or "aha")
 
     def __setattr__(self, key: str, value):
         if key.startswith("_"):
             return super().__setattr__(key, value)
-        self.set(key, value, module=caller_aha_module())
+        self.set(key, value, module=caller_aha_module(3))
 
     # region 读取文件
     @classmethod
@@ -363,6 +376,7 @@ class Config[
             # self.adjust_comments(self._old_data)
             self._data = self._convert_to_commented_containers(deepcopy(self._old_data))
 
+    @ThreadSafeMeta.version_increment
     async def load(self):
         if not await self._config_file.exists():
             return
@@ -403,8 +417,9 @@ class Config[
     """
 
     # region 数据类型处理
+    @ThreadSafeMeta.allow_non_main
     @classmethod
-    def _type2registed(cls, obj, ca_obj: CommentedBase | Any, type_obj: TypeObj, index, noneable=True):
+    def _type2registed(cls, obj, ca_obj: CommentedBase | Option | Any, type_obj: TypeObj, index, noneable=True):
         """
         Args:
             ca_obj: 内容与 `obj` 相等，但若为可注释类型则比 `obj` 多注释信息。用于恢复注释。
@@ -415,7 +430,9 @@ class Config[
                 return
             raise ValueError(f"Config value for index '{index}' cannot be null.")
         if type_obj is Option:
-            return obj
+            if not ca_obj or obj in ca_obj.options:
+                return obj
+            raise ValueError(f"Config value for index '{index}' must be one of {ca_obj.options}.")
         try:
             if isinstance(type_obj, type):  # 基础类型和非唯一类型的 set
                 return type_obj(obj)
@@ -443,7 +460,7 @@ class Config[
                     for i, v in enumerate(obj)
                 )
             # 映射与数据类
-            unique_item_type_obj = get_item_by_index(type_map, 0)[1] if len(type_map) == 1 else None
+            unique_item_type_obj = next(iter(type_map.items()))[1] if len(type_map) == 1 else None
             new_obj = (obj_type if (is_mapping := issubclass(obj_type := type_obj[0], Mapping)) else dict)()
             for k, v in obj.items():
                 items_type_obj = unique_item_type_obj or type_map[k]
@@ -463,6 +480,7 @@ class Config[
         except TypeError as e:
             raise ValueError(f"Failed to convert the config value for index '{index}' to the required type.") from e
 
+    @ThreadSafeMeta.allow_non_main
     @classmethod
     def _type2yaml(cls, obj, as_key=False, index=None, parent: CommentedBase = None) -> tuple[Any, TypeObj]:
         """
@@ -549,6 +567,7 @@ class Config[
 
     # endregion
     # region 设置项值
+    @ThreadSafeMeta.version_increment
     def _set_value(self, key, value, module):
         # 存值
         self._data[module][key] = value
@@ -567,11 +586,11 @@ class Config[
 
         return value.value if isinstance(value, Option) else value
 
-    def set[T: Any | Option](self, key: str, value: T, module: str = None) -> T:
+    def set(self, key: str, value, module: str = None):
         """设置配置值"""
         # self._check_permission(module, caller)
         if not module:
-            module = caller_aha_module()
+            module = caller_aha_module(3)
         self._set_value(key, self._register(self._type2yaml(key, True)[0], value, module), module)
 
     # endregion
@@ -584,9 +603,11 @@ class Config[
             comment_list[1] = []
         data.yaml_set_comment_before_after_key(key, value, 0 if value == "\n" else 2)
 
+    @ThreadSafeMeta.allow_non_main
     def _is_registered(self, key: str, module: str = None):
         return key in self._default_types[module]
 
+    @ThreadSafeMeta.version_increment
     def _register(self, key, default, module, comment=None):
         if not (mod_data := self._data.get(module)):
             self._data[module] = mod_data = OptionCommentedMap()
@@ -599,17 +620,6 @@ class Config[
 
         result, self._default_types[module][key] = self._type2yaml(default, index=key, parent=mod_data)
         return result
-
-    """
-    async def register_async[T: Any | Option](self, key: str, default: T = None, comment: str = None, module: str = None) -> T:
-        async with self._lock:
-            return self.register(key, default, comment, module=module)
-
-    def register[T: Any | Option](self, key: str, default: T = None, comment: str = None, module: str = None) -> T:
-        if get_running_loop():
-            raise RuntimeError(_("config.green_in_aio"))
-        return self._register(key, default, comment, module=module)
-    """
 
     if TYPE_CHECKING:
 
@@ -628,6 +638,7 @@ class Config[
             self, key: str, default: T = _unset, *, noneable: Literal[True], module=None
         ) -> T | None: ...
 
+    @ThreadSafeMeta.allow_non_main
     def register(self, key, default=_unset, comment=None, noneable=False, module=None):
         """获取配置值，如果键值不存在则使用默认值初始化
 
@@ -637,7 +648,7 @@ class Config[
         """
         # if (storage_module := module or caller) is None:
         if (storage_module := module or caller_aha_module()) is None:
-            return
+            raise RuntimeError(_("cannot_get_caller_aha_module"))
 
         # 获取配置
         key, value = self._type2yaml(key, True)[0], _unset
@@ -706,12 +717,14 @@ class Config[
             exit(78)
         self._old_data = None
 
+    """
     def clean(self):
-        self._yaml = self._safe_yaml = self._old_data = self._data = self._config_file = self._default_types = self._loaded = (
+        self._yaml = self._safe_yaml = self._old_data = self._data = self._config_file = self._default_types = (
             self._default_used
         ) = self._modified = self._msg_prefix = self._group_blacklist = self._user_blacklist = self._group_whitelist = (
             self._user_whitelist
         ) = None
+    """
 
     # region 公共属性
     @property
@@ -722,6 +735,7 @@ class Config[
     def global_msg_prefix(self) -> str | None:
         return self.get("global_msg_prefix", module="aha")
 
+    @ThreadSafeMeta.allow_non_main
     def get_msg_prefix(self, module: str = None) -> str | None:
         """若只有单特殊字符则返回半角"""
         if not module:
@@ -772,7 +786,7 @@ class Config[
         return self.get("cache_conv", module="aha")
 
     @property
-    def execution_mode(self) -> Literal["async", "process"]:
+    def execution_mode(self) -> Literal["async", "thread", "process"]:
         return self.get("execution_mode", module="aha")
 
     @property
@@ -810,6 +824,7 @@ class Config[
     _USER_LIST_KEYS = {"user_list_mode", "user_list"}
     _GROUP_LIST_KEYS = {"group_list_mode", "group_list"}
 
+    @ThreadSafeMeta.allow_non_main
     def get_group_blacklist(self, module=None) -> frozenset[Group]:
         if not module:
             module = caller_aha_module()
@@ -832,6 +847,7 @@ class Config[
         self._group_blacklist[module] = data
         return data
 
+    @ThreadSafeMeta.allow_non_main
     def get_group_whitelist(self, module=None) -> frozenset[Group]:
         if not module:
             module = caller_aha_module()
@@ -848,6 +864,13 @@ class Config[
         self._group_whitelist[module] = data
         return data
 
+    @ThreadSafeMeta.allow_non_main
+    def is_group_enabled(self, platform: str, group_id: str, module=None):
+        if l := cfg.get_group_blacklist(module or caller_aha_module()):
+            return Group(platform, group_id) not in l
+        return Group(platform, group_id) in cfg.get_group_whitelist(module or caller_aha_module())
+
+    @ThreadSafeMeta.allow_non_main
     def get_user_blacklist(self, module=None) -> frozenset[User]:
         if not module:
             module = caller_aha_module()
@@ -861,7 +884,7 @@ class Config[
         if (mode := (data := self._data.get(module, {})).get("user_list_mode")) is None:
             data = self._default_user_list if self._default_user_list_mode == "blacklist" else frozenset()
         elif mode == "blacklist":
-            data = {User(**i) for i in data["group_list"]}
+            data = {User(**i) for i in data["user_list"]}
             if self._default_user_list_mode == "blacklist":
                 data.update(self._default_user_list)
                 data = frozenset(data)
@@ -870,6 +893,7 @@ class Config[
         self._user_blacklist[module] = data
         return data
 
+    @ThreadSafeMeta.allow_non_main
     def get_user_whitelist(self, module=None) -> frozenset[User]:
         if not module:
             module = caller_aha_module()
@@ -882,9 +906,15 @@ class Config[
         if (mode := (data := self._data.get(module, {})).get("user_list_mode")) is None:
             data = self._default_user_list if self._default_user_list_mode == "whitelist" else frozenset()
         else:
-            data = frozenset(User(**i) for i in data["group_list"]) if mode == "whitelist" else frozenset()
+            data = frozenset(User(**i) for i in data["user_list"]) if mode == "whitelist" else frozenset()
         self._user_whitelist[module] = data
         return data
+
+    @ThreadSafeMeta.allow_non_main
+    def is_user_enabled(self, platform: str, user_id: str, module=None):
+        if l := cfg.get_user_blacklist(module or caller_aha_module()):
+            return User(platform, user_id) not in l
+        return User(platform, user_id) in cfg.get_user_whitelist(module or caller_aha_module())
 
     @property
     def bots(self) -> Sequence[Mapping[str, Mapping]]:
@@ -941,17 +971,12 @@ if current_process().name == "MainProcess":
     cfg.bots
     cfg.register(
         "execution_mode",
-        # Option(("async", "process") if sys._is_gil_enabled() else ("async", "thread", "process")),
-        Option(("async", "process"), "process"),
-        """Defines the execution mode for API services and module callbacks in the framework.
-- 'async': All API services and module callbacks share a single thread.
-- 'process': Each API service runs in its own process, all module callbacks share a single thread.""",
+        Option(("async", "process") if _is_gil_enabled() else ("async", "thread", "process"), "process"),
+        f"""Defines the execution mode for adapters and module callbacks in the framework.
+- 'async': All adapters and module callbacks share a single thread.{"" if _is_gil_enabled() else "\n- 'thread': Module callbacks use an asynchronous loop pool, while adapters decide their own execution mode. (free threading only)"}
+- 'process': Each adapters runs in its own process, all module callbacks share a single thread.""",
         module="aha",
     )
-    """
-    - 'thread': Each API service runs in its own thread, module callbacks use an asynchronous loop pool. (no-gil only)
-    - 'thread-pool': Both API services and module callbacks use an asynchronous loop pool. (no-gil only)
-    """
     cfg.register("lang", os.environ.get("LANG", "en_US").split(".")[0], "Default language.", module="aha")
     cfg.register("console_level", Option(getLevelNamesMapping(), "INFO"), "Console log level.", module="log")
     cfg.register("file_level", Option(getLevelNamesMapping(), "AHA_DEBUG"), "File log level.", module="log")

@@ -1,27 +1,26 @@
 aiofiles >= 25
 aiologic >= 0.15
-alembic >= 1
+alembic >= 1.12
 anyio >= 4
-apscheduler >= 4.0.0a1
+apscheduler >= 4.0.0a6
 attrs >= 25
 cachetools >= 7
-cachetools-async
 colorama >= 0.4
 cryptography >= 46
 FastAPI
-httptools >= 0.6.3
+git+https://github.com/MagicStack/httptools
 uvicorn
-httpx[http2,brotli,socks,zstd]
+httpx[http2,socks,zstd]
+# httpx[http2,socks,zstd,brotli]
 httpx-sse
-lxml >= 6
-orjson >= 3
+# lxml
+ssrjson
 playwright >= 1
 pydantic > 2
-pympler
-ruamel.yaml[libyaml]
-SQLAlchemy[asyncio, aiosqlite, postgresql-psycopgbinary] >= 2
+ruamel.yaml
+# ruamel.yaml[libyaml]
+SQLAlchemy[asyncio, aiosqlite, postgresql-psycopg] >= 2.1.0b1
 tenacity >= 9
 uvloop; sys_platform == 'linux'
 websockets >= 15
-wrapt >= 2
 xxhash >= 3

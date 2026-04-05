@@ -5,9 +5,9 @@ from types import FunctionType
 from typing import TYPE_CHECKING, Literal, _overload_dummy, _overload_registry, overload
 
 from models.api import BaseEvent
-from utils.misc import get_arg_names, get_kwonlyarg_count
+from utils.func import get_arg_names, get_kwonlyarg_count
 
-from ..api_service import call_api, friends, groups
+from ..api_service import bots, bots_lock, call_api, deduplicators, platform_bot_map
 from ..config import cfg
 from ..dispatcher import current_event
 from ..i18n import _
@@ -16,6 +16,9 @@ from .group import GroupAPI
 from .message import MessageAPI
 from .private import PrivateAPI
 from .support import SupportAPI
+
+if cfg.cache_conv:
+    from ..api_service import friend_conv_lock, friends, group_conv_lock, groups
 
 __all__ = ("API", "SS", "select_bot")
 
@@ -59,14 +62,14 @@ class APIMeta(type):
 
             setattr(new_class, attr_name, partial(cls._warpper, _name=attr_name))
 
-    def __new__(cls, name, bases, namespace, **kwargs):
-        new_class = super().__new__(cls, name, bases, namespace, **kwargs)
+    def __new__(mcs, name, bases, namespace, **kwargs):
+        new_class = super().__new__(mcs, name, bases, namespace, **kwargs)
 
         methods_to_wrap = set()
         for attr_name, attr_value in namespace.items():
             if not attr_name.startswith("__") and attr_value.__class__ is FunctionType:
                 methods_to_wrap.add(attr_name)
-                cls._warp_method(new_class, attr_name, attr_value, (base.__module__, f"{base.__qualname__}.{attr_name}"))
+                mcs._warp_method(new_class, attr_name, attr_value, (base.__module__, f"{base.__qualname__}.{attr_name}"))
 
         # 父类
         for base in bases:
@@ -77,7 +80,7 @@ class APIMeta(type):
                     and attr_name not in methods_to_wrap
                 ):
                     methods_to_wrap.add(attr_name)
-                    cls._warp_method(new_class, attr_name, attr_value, (base.__module__, f"{base.__qualname__}.{attr_name}"))
+                    mcs._warp_method(new_class, attr_name, attr_value, (base.__module__, f"{base.__qualname__}.{attr_name}"))
 
         return new_class
 
@@ -142,20 +145,20 @@ cfg.register(
 if TYPE_CHECKING:
 
     @overload
-    def select_bot(
-        strategy: Literal[SS.PREFS, SS.NTH, SS.UNORDERED_NTH], event: BaseEvent = None, *, index: int = 0
+    async def select_bot(
+        strategy: Literal[SS.PREFS, SS.NTH, SS.UNORDERED_NTH] = SS.PREFS, event: BaseEvent = None, *, index: int = 0
     ) -> int: ...
 
     @overload
-    def select_bot(strategy: Literal[SS.PLATFORM_RANDOM], event: BaseEvent = None, *, platform: str = None) -> int: ...
+    async def select_bot(strategy: Literal[SS.PLATFORM_RANDOM], event: BaseEvent = None, *, platform: str = None) -> int: ...
 
     @overload
-    def select_bot(
+    async def select_bot(
         strategy: Literal[SS.PLATFORM, SS.PLATFORM_NTH], event: BaseEvent = None, *, platform: str = None, index: int = 0
     ) -> int: ...
 
     @overload
-    def select_bot(
+    async def select_bot(
         strategy: Literal[SS.FRIEND, SS.GROUP, SS.FRIEND_NTH, SS.GROUP_NTH],
         event: BaseEvent = None,
         *,
@@ -165,7 +168,7 @@ if TYPE_CHECKING:
     ) -> int: ...
 
     @overload
-    def select_bot(
+    async def select_bot(
         strategy: Literal[SS.FRIEND_RANDOM, SS.GROUP_RANDOM],
         event: BaseEvent = None,
         *,
@@ -174,13 +177,13 @@ if TYPE_CHECKING:
     ) -> int: ...
 
     @overload
-    def select_bot(strategy: Literal[SS.NTH_ANY], *, index: int = 0) -> int: ...
+    async def select_bot(strategy: Literal[SS.NTH_ANY], *, index: int = 0) -> int: ...
 
     @overload
-    def select_bot(strategy: Literal[SS.PREFS_ANY, SS.RANDOM, SS.RANDOM_ANY]) -> int: ...
+    async def select_bot(strategy: Literal[SS.PREFS_ANY, SS.RANDOM, SS.RANDOM_ANY]) -> int: ...
 
 
-def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id=None):
+async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id=None):
     """依据策略选择 bot 实例
 
     Args:
@@ -197,35 +200,38 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
         except AttributeError as e:
             raise RuntimeError(_("no_event_found_in_context")) from e
 
-    from ..api_service import bots, deduplicators, platform_bot_map
-
     match strategy:
         case SS.PREFS:
             if not (prefs := cfg.bot_prefs):
-                return choice(deduplicators[event.platform].services_of(event))
-            if (result := bots.key_at(prefs if prefs < 0 else prefs - 1)) not in deduplicators[event.platform].cache[event]:
-                result = deduplicators[event.platform].services_of(event)[index]
+                return choice(await deduplicators[event.platform].services_of(event))
+            async with bots_lock:
+                result = bots.key_at(prefs if prefs < 0 else prefs - 1)
+            if result not in deduplicators[event.platform].cache[event]:
+                result = await deduplicators[event.platform].services_of(event)[index]
         case SS.NTH:
             try:
-                lst = deduplicators[event.platform].services_of(event)
+                lst = await deduplicators[event.platform].services_of(event)
             except IndexError:
                 raise RuntimeError(_("router.select_bot.event404"))
-            lst.sort(key={value: idx for idx, value in enumerate(bots)}.get)
+            async with bots_lock:
+                sorter = {value: idx for idx, value in enumerate(bots)}.get
+            lst.sort(key=sorter)
             result = lst[index]
         case SS.UNORDERED_NTH:
             try:
-                return deduplicators[event.platform].services_of(event)[index]
+                return await deduplicators[event.platform].services_of(event)[index]
             except IndexError:
                 raise RuntimeError(_("router.select_bot.event404"))
         case SS.RANDOM:
             try:
-                return choice(deduplicators[event.platform].services_of(event))
+                return choice(await deduplicators[event.platform].services_of(event))
             except IndexError:
                 raise RuntimeError(_("router.select_bot.event404"))
         case SS.PLATFORM:
             if not (prefs := cfg.bot_prefs):
                 return choice(platform_bot_map[platform or event.platform])
-            k, v = bots.item_at(prefs if prefs < 0 else prefs - 1)
+            async with bots_lock:
+                k, v = bots.item_at(prefs if prefs < 0 else prefs - 1)
             return (
                 k if v and v.platform == (platform or event.platform) else platform_bot_map[platform or event.platform][index]
             )
@@ -234,13 +240,17 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
         case SS.PLATFORM_RANDOM:
             return choice(platform_bot_map[platform or event.platform])
         case SS.PREFS_ANY:
-            if not (prefs := cfg.bot_prefs):
-                return choice(tuple(filter(None.__ne__, bots)))
-            result = bots.key_at(prefs if prefs < 0 else prefs - 1)
+            async with bots_lock:
+                if not (prefs := cfg.bot_prefs):
+                    return choice(tuple(filter(None.__ne__, bots)))
+                result = bots.key_at(prefs if prefs < 0 else prefs - 1)
         case SS.NTH_ANY:
-            result = bots.key_at(index)
+            async with bots_lock:
+                result = bots.key_at(index)
         case SS.RANDOM_ANY:
-            return choice(tuple(filter(None.__ne__, bots)))
+            async with bots_lock:
+                container = tuple(filter(None.__ne__, bots))
+            return choice(container)
         case SS.FRIEND:
             if not cfg.cache_conv:
                 raise RuntimeError(_("router.select_bot.403"))
@@ -249,10 +259,12 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
             if not platform:
                 platform = event.platform
             try:
-                if not (prefs := cfg.bot_prefs):
-                    return choice(friends[platform][conv_id])
-                result = bots.key_at(prefs if prefs < 0 else prefs - 1)
-                return result if result in friends[platform][conv_id] else friends[platform][conv_id][index]
+                async with friend_conv_lock:
+                    if not (prefs := cfg.bot_prefs):
+                        return choice(friends[platform][conv_id])
+                    async with bots_lock:
+                        result = bots.key_at(prefs if prefs < 0 else prefs - 1)
+                    return result if result in friends[platform][conv_id] else friends[platform][conv_id][index]
             except KeyError as e:
                 raise KeyError(_("router.select_bot.user404") % {"platform": platform, "conv_id": conv_id})
         case SS.FRIEND_NTH:
@@ -263,7 +275,8 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
             if not platform:
                 platform = event.platform
             try:
-                return friends[platform][conv_id][index]
+                async with friend_conv_lock:
+                    return friends[platform][conv_id][index]
             except KeyError as e:
                 raise KeyError(_("router.select_bot.user404") % {"platform": platform, "conv_id": conv_id})
         case SS.FRIEND_RANDOM:
@@ -273,7 +286,8 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
                 if not platform:
                     platform = event.platform
                 try:
-                    return choice(friends[platform][conv_id])
+                    async with friend_conv_lock:
+                        return choice(friends[platform][conv_id])
                 except KeyError as e:
                     raise KeyError(_("router.select_bot.user404") % {"platform": platform, "conv_id": conv_id})
             raise RuntimeError(_("router.select_bot.403"))
@@ -285,10 +299,12 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
             if not platform:
                 platform = event.platform
             try:
-                if not (prefs := cfg.bot_prefs):
-                    return choice(groups[platform][conv_id])
-                result = bots.key_at(prefs if prefs < 0 else prefs - 1)
-                return result if result in groups[platform][conv_id] else groups[platform][conv_id][index]
+                async with group_conv_lock:
+                    if not (prefs := cfg.bot_prefs):
+                        return choice(groups[platform][conv_id])
+                    async with bots_lock:
+                        result = bots.key_at(prefs if prefs < 0 else prefs - 1)
+                    return result if result in groups[platform][conv_id] else groups[platform][conv_id][index]
             except KeyError as e:
                 raise KeyError(_("router.select_bot.group404") % {"platform": platform, "conv_id": conv_id})
         case SS.GROUP_NTH:
@@ -299,7 +315,8 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
             if not platform:
                 platform = event.platform
             try:
-                return groups[platform][conv_id][index]
+                async with group_conv_lock:
+                    return groups[platform][conv_id][index]
             except KeyError as e:
                 raise KeyError(_("router.select_bot.group404") % {"platform": platform, "conv_id": conv_id})
         case SS.GROUP_RANDOM:
@@ -309,13 +326,15 @@ def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, conv_id
                 if not platform:
                     platform = event.platform
                 try:
-                    return groups[platform][conv_id][index]
+                    async with group_conv_lock:
+                        return groups[platform][conv_id][index]
                 except KeyError as e:
                     raise KeyError(_("router.select_bot.group404") % {"platform": platform, "conv_id": conv_id})
             raise RuntimeError(_("router.select_bot.403"))
 
-    if bots[result] is None:
-        raise RuntimeError(_("router.api_closed"))
+    async with bots_lock:
+        if bots[result] is None:
+            raise RuntimeError(_("router.api_closed"))
     return result
 
 

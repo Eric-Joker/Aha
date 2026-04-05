@@ -13,16 +13,14 @@ from urllib.parse import urlparse
 from aiofiles import open
 from anyio import Path
 from httpx import HTTPStatusError
-from lxml.etree import XML, _Element
-from orjson import loads
+# from lxml.etree import XML, _Element
 from pydantic import BeforeValidator, Field, GetCoreSchemaHandler, field_serializer, field_validator, model_validator
 from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_core import core_schema
+from ssrjson import loads
 from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 from xxhash import xxh3_64_intdigest
 
-from core.i18n import _
-from utils.aio import AsyncTee
 from utils.network import get_httpx_client
 
 from .api.utils import AudioFormat
@@ -48,6 +46,8 @@ class MsgSegMeta(ModelMetaclass):
         if issubclass(cls, Text):
             return r"(?P<text>[^\[]+)"
         if issubclass(cls, (Forward, Node)):
+            from core.i18n import _
+
             raise NotImplementedError(_("models.msg.cls2pattern.forward501"))
         return rf"\[Aha:{cls.__name__.lower()}{"".join(rf"(?:,{n}=(?P<{n}>[\s\S]*?))?" for n, i in cls.model_fields.items() if not i.exclude)}\]"
 
@@ -55,6 +55,8 @@ class MsgSegMeta(ModelMetaclass):
         if issubclass(cls, Text):
             return rf"(?P<{prefix}text>[^\[]+)"
         if issubclass(cls, (Forward, Node)):
+            from core.i18n import _
+
             raise NotImplementedError(_("models.msg.cls2pattern.forward501"))
         return rf"\[Aha:{cls.__name__.lower()}{"".join(rf"(?:,{n}=(?P<{prefix}{n}>[\s\S]*?))?" for n, i in cls.model_fields.items() if not i.exclude)}\]"
 
@@ -172,14 +174,11 @@ class MessageChain[T: MsgSeg](list[T]):
         self.extend(iterable)
         return self
 
-    def __radd__(self, other: MessageChain):
-        return self.__add__(other)
+    def __radd__(self, other):
+        return MessageChain(other.__add__(self), bot_id=self.bot_id)
 
     def __mul__(self, value: SupportsIndex):
         return MessageChain(super().__mul__(value), bot_id=self.bot_id)
-
-    def __rmul__(self, value: SupportsIndex):
-        return MessageChain(super().__rmul__(value), bot_id=self.bot_id)
 
     def copy(self):
         return MessageChain(super().copy(), bot_id=self.bot_id)
@@ -414,6 +413,8 @@ class Downloadable(MsgSeg):
                     else:
                         return await session.register(cfg.file_msg_ttl, content_iter() if fix_ext else response.aiter_bytes())
             except HTTPStatusError as e:
+                from core.i18n import _
+
                 raise DownloadFileMsgError(_("models.msg.downloadable.http_error") % e) from None
 
     if TYPE_CHECKING:
@@ -465,6 +466,8 @@ class Downloadable(MsgSeg):
                     return
 
             # 下载远程文件
+            from utils.aio import AsyncTee
+
             try:
                 async with self._http_request() as response:
                     response.raise_for_status()
@@ -475,6 +478,8 @@ class Downloadable(MsgSeg):
                         yield chunk
                     await task
             except HTTPStatusError as e:
+                from core.i18n import _
+
                 raise DownloadFileMsgError(_("models.msg.downloadable.http_error") % e) from None
 
     @asynccontextmanager
@@ -607,8 +612,8 @@ class Record(Downloadable):
             self, size=8192, record_format: AudioFormat = AudioFormat.MP3, bot_id: int = None
         ) -> AsyncGenerator[bytes, Any, None]: ...
 
-    async def download(self, dir_=None, name=None, record_format=AudioFormat.MP3, bot_id=None):
-        return await super().download(
+    def download(self, dir_=None, name=None, record_format=AudioFormat.MP3, bot_id=None):
+        return super().download(
             dir_, f"{os.path.splitext(name or self.name)[0]}.{record_format.value}", record_format=record_format, bot_id=bot_id
         )
 
@@ -796,14 +801,14 @@ class Json(MsgSeg):
     data: Annotated[dict | list, BeforeValidator(loads)]
 
 
-class Xml(MsgSeg):
-    """Xml消息段"""
-
-    data: Annotated[_Element, BeforeValidator(XML)]
-
-    @field_serializer("data")
-    def serialize(self, value: _Element, _):
-        return value.tostring()
+# class Xml(MsgSeg):
+#    """Xml消息段"""
+#
+#    data: Annotated[_Element, BeforeValidator(XML)]
+#
+#    @field_serializer("data")
+#    def serialize(self, value: _Element, _):
+#        return value.tostring()
 
 
 class Markdown(MsgSeg):

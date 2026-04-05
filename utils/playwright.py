@@ -6,30 +6,33 @@ from anyio import Path
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from services.playwright import browser
+from services.playwright import browser_mgr
 from services.file_cache import cache_file_sessionmaker
+
+if TYPE_CHECKING:
+    from _typeshed import StrPath
 
 logger = getLogger(__name__)
 
 
 if TYPE_CHECKING:
+
     @overload
     async def capture_element(
         url: str,
         selector: str,
         return_bytes: Literal[True],
-        save=None,
+        save: StrPath | Literal[False] = None,
         wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
         **kwargs,
     ) -> bytes | None: ...
-
 
     @overload
     async def capture_element(
         url: str,
         selector: str,
         return_bytes: Literal[False] = False,
-        save=None,
+        save: StrPath | Literal[False] = None,
         wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
         **kwargs,
     ) -> Path | None: ...
@@ -57,14 +60,16 @@ async def capture_element(url, selector, return_bytes=False, save=None, wait_unt
         async with cache_file_sessionmaker(_level=3) as session:
             save = await session.register(timedelta(minutes=10))
 
-    async with browser.acquire_page() as page:
+    async with browser_mgr.acquire_page() as page:
         try:
             await page.goto(url, timeout=300000, wait_until=wait_until)
             if not (element := await page.query_selector(selector)):
                 return None
             if not await element.is_visible():
                 return None
-            await element.evaluate('el => { el.style.webkitFontSmoothing = "antialiased"; el.style.textRendering = "optimizeLegibility"; }')
+            await element.evaluate(
+                'el => { el.style.webkitFontSmoothing = "antialiased"; el.style.textRendering = "optimizeLegibility"; }'
+            )
             if return_bytes:
                 return await element.screenshot(
                     type="jpeg", path=save or None, animations="disabled", scale="css", omit_background=True, **kwargs

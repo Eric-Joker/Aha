@@ -2,22 +2,25 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
+from functools import wraps
 from logging.handlers import BaseRotatingHandler
 from multiprocessing import Process
 from multiprocessing import Queue as PQueue
 from operator import itemgetter
 from pathlib import Path
 from queue import Empty
-from queue import Queue as TQueue
 from re import compile
 from threading import Thread
 from time import localtime, mktime, strftime, strptime, time
 from traceback import print_exception, print_stack
 from typing import TYPE_CHECKING
 
+from aiologic import QueueEmpty
+from aiologic import SimpleQueue as TQueue
 from colorama import Back, Fore, Style, init
 
-from utils.misc import AHA_MODULE_PATTERN, caller_aha_module, is_subsequence
+from utils.aha import AHA_MODULE_PATTERN, caller_aha_module
+from utils.container import is_subsequence
 from utils.unit import parse_size
 
 if TYPE_CHECKING:
@@ -213,11 +216,12 @@ class QueueHandler(logging.Handler):
         self._file_level = file_level
         self._console_formatter: logging.Formatter = console_formatter
         self._console_level = console_level
+        self.is_threaded = isinstance(queue, TQueue)
 
     def emit(self, record):
         record.name = REDIRECT_LOGGER.get(record.name, record.name)
         try:
-            self.queue.put(
+            (self.queue.put if self.is_threaded else self.queue.put)(
                 (
                     self._file_formatter.format(record) if record.levelno >= self._file_level else None,
                     self._console_formatter.format(record) if record.levelno >= self._console_level else None,
@@ -246,11 +250,12 @@ def _logger_worker(queue: TQueue | PQueue, file, file_kwargs, console, console_k
     log_buffer = []
     file: AhaHandlerMixin | logging.Handler = file(**file_kwargs)
     console: AhaHandlerMixin | logging.Handler = console(**console_kwargs)
+    threaded = isinstance(queue, TQueue)
 
     running = True
     while running:
         try:
-            if (record := queue.get()) is None:
+            if (record := (queue.green_get() if threaded else queue.get())) is None:
                 running = False
                 continue
 
@@ -261,14 +266,14 @@ def _logger_worker(queue: TQueue | PQueue, file, file_kwargs, console, console_k
 
             while len(log_buffer) < 64:
                 try:
-                    if (record := queue.get(timeout=0.1)) is None:
+                    if (record := (queue.green_get(timeout=0.1) if threaded else queue.get(timeout=0.1))) is None:
                         running = False
                         break
                     if msg := record[1]:
                         console.emit(msg)
                     if record[0] is not None:
                         log_buffer.append(record[0])
-                except Empty:
+                except Empty, QueueEmpty:
                     break
 
         except KeyboardInterrupt:
@@ -347,10 +352,13 @@ def setup_logging(handler: HandlerConfig = None):
 def shutdown_logging():
     global _log_queue, _log_instance
     if _log_queue and _log_instance:
-        _log_queue.put(None)
-        _log_instance.join()
         if _IS_PROCESS_MODE:
+            _log_queue.put(None)
+            _log_instance.join()
             _log_instance.close()
+        else:
+            _log_queue.put(None)
+            _log_instance.join()
     # _log_queue = _log_instance = None
     getLogger().removeHandler(_log_handler)
 
@@ -361,6 +369,7 @@ logging.setLoggerClass(AhaLogger)
 _original_getLogger = logging.getLogger
 
 
+@wraps(logging.getLogger)
 def getLogger(name: str = None):
     if not (module := caller_aha_module(pattern=AHA_MODULE_PATTERN)):
         return _original_getLogger(name)

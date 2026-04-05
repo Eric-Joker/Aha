@@ -22,7 +22,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
 
 `core.api.API` 的每个静态方法均有一个 `bot` 关键字参数，接受适配器实例的 ID。若未传入，则自动从事件上下文中获取当前的适配器实例。
 
-在 `core.api` 中提供了一个 `select_bot` 方法，通过其可以实现依据特定策略选择适配器实例并返回 ID。
+在 `core.api` 中提供了一个 `select_bot` 异步方法，通过其可以实现依据特定策略选择适配器实例并返回 ID。该方法线程安全。
 
 ### 选择策略
 
@@ -152,7 +152,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>FRIEND</td>
-    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定好友的可用实例。若指向的实例有指定好友且仍可用则采用，否则采用 <code>FRIEND_NTH</code>。</td>
+    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定好友的可用实例。若指向的实例有指定好友且仍可用则采用，否则采用 <code>FRIEND_NTH</code>。</td>
     <td>
       <table>
         <tr>
@@ -172,7 +172,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>FRIEND_NTH</td>
-    <td>指定平台的有指定好友的第n个实例。</td>
+    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。指定平台的有指定好友的第n个实例。</td>
     <td>
       <table>
         <tr>
@@ -192,7 +192,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>FRIEND_RANDOM</td>
-    <td>指定平台的有指定好友的随机实例。</td>
+    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。指定平台的有指定好友的随机实例。</td>
     <td>
       <table>
         <tr>
@@ -208,7 +208,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>GROUP</td>
-    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定群组的可用实例。若指向的实例有指定群组且仍可用则采用，否则采用 <code>GROUP_NTH</code>。</td>
+    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定群组的可用实例。若指向的实例有指定群组且仍可用则采用，否则采用 <code>GROUP_NTH</code>。</td>
     <td>
       <table>
         <tr>
@@ -217,7 +217,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
         </tr>
         <tr>
           <td>conv_id</td>
-          <td>指定的群组平台 ID。</td>
+          <td>指定的平台群组 ID。</td>
         </tr>
         <tr>
           <td>index</td>
@@ -228,7 +228,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>GROUP_NTH</td>
-    <td>指定平台的有指定群组的第n个实例。</td>
+    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。指定平台的有指定群组的第n个实例。</td>
     <td>
       <table>
         <tr>
@@ -237,7 +237,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
         </tr>
         <tr>
           <td>conv_id</td>
-          <td>指定的群组平台 ID。</td>
+          <td>指定的平台群组 ID。</td>
         </tr>
         <tr>
           <td>index</td>
@@ -248,7 +248,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>GROUP_RANDOM</td>
-    <td>指定平台的有指定群组的随机实例。</td>
+    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。指定平台的有指定群组的随机实例。</td>
     <td>
       <table>
         <tr>
@@ -257,7 +257,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
         </tr>
         <tr>
           <td>conv_id</td>
-          <td>指定的群组平台 ID。</td>
+          <td>指定的平台群组 ID。</td>
         </tr>
       </table>
     </td>

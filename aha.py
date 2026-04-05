@@ -32,12 +32,13 @@ if __name__ == "__main__":
         import core.status
         from core.database import db_engine, db_init
         from services.apscheduler import aps_log_warn, sched
-        from services.playwright import browser
+        from services.playwright import browser_mgr
         from services.file_cache import start_file_cache_service
         from services.data_store import clean_data_store, initialize_all_stores
         from core.expr import redirect_extractors
         from core.dispatcher import clear_handlers, process_clean, process_start
-        from core.api_service import clean_bots, start_bots
+        from core.api_service import close_bots, start_bots
+        from utils.aio import AsyncLoopExecutor, ThreadSafeAsyncMeta
         from utils.network import _httpx_client
 
         # import core.identity 由 core.expr 引用
@@ -49,17 +50,19 @@ if __name__ == "__main__":
 
         try:
             logger.info(_("main.start_api_services"))
+            ThreadSafeAsyncMeta.init_instance(ThreadSafeAsyncMeta)
+            core.status.async_loop_executor = AsyncLoopExecutor()
             await start_bots()
             logger.info(_("main.start_extra_services"))
             await initialize_all_stores()
-            await browser.start()
+            await browser_mgr.start()
             await sched.start()
             with aps_log_warn():
                 await start_file_cache_service()
+            core.status.all_ready.set()
             logger.info(_("main.run_start_callback"))
             await process_start()
             logger.info(_("main.started"))
-            core.status.all_ready.set()
             await get_running_loop().create_future()
         except Exception:
             raise
@@ -81,8 +84,14 @@ if __name__ == "__main__":
                 await _httpx_client.aclose()
             # clear_all_cache()
             await clean_data_store()
-            await gather(browser.close(), db_engine.dispose(), cfg.reload_and_save(), clean_bots())
-            await sleep(0.001)  # 让日志打印出来
+            await gather(
+                browser_mgr.close(),
+                db_engine.dispose(),
+                cfg.reload_and_save(),
+                close_bots(),
+                core.status.async_loop_executor.shutdown(),
+            )
+            await sleep(0)  # 让日志打印出来
             # cfg.clean()
             # loaded_i10n.clear()
             shutdown_logging()

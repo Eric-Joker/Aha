@@ -1,3 +1,4 @@
+import sys
 from asyncio import create_task
 from collections.abc import Sequence
 from re import compile
@@ -117,4 +118,12 @@ async def post_msg_to_supers(msg: str | Sequence[MsgSeg | str] | MsgSeg | None =
     from core.config import cfg
 
     for s in cfg.super:
-        create_task(API.send_private_msg(s.user_id, msg, bot=select_bot(SS.PLATFORM_NTH, platform=s.platform)))
+        create_task(API.send_private_msg(s.user_id, msg, bot=await select_bot(SS.PLATFORM_NTH, platform=s.platform)))
+
+
+AHA_MODULE_PATTERN = compile(r"^[^.]*modules\.([^.]+)")
+FULL_AHA_MODULE_PATTERN = compile(r"^([^.]*modules\.[^.]+)")
+
+
+def caller_aha_module(level: int = 2, pattern=FULL_AHA_MODULE_PATTERN) -> str | None:
+    return match[1] if (match := pattern.match(sys._getframe(level).f_globals.get("__name__", ""))) else None

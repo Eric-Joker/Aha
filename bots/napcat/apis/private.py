@@ -134,19 +134,20 @@ class PrivateAPI(Utils, BasePrivateAPI):
         d["user_id"] = user_id
         return (await self._call_api(call_id, "send_private_forward_msg", d))["message_id"]
 
-    async def friend_poke(self, call_id, user_id):
-        return await self._call_api(call_id, "friend_poke", {"user_id": user_id})
+    def friend_poke(self, call_id, user_id):
+        return self._call_api(call_id, "friend_poke", {"user_id": user_id})
 
     # endregion
-    async def get_private_msg_history(self, call_id, user_id, message_id, count=20, reverse=False):
-        return [
-            RetrievedMessage.model_validate(data)
-            for data in await self._call_api(
-                call_id,
-                "get_friend_msg_history",
-                {"user_id": user_id, "message_seq": message_id, "number": count, "reverseOrder": reverse},
+    async def get_private_msg_history(self, call_id, user_id, message_id=None, count=20):
+        result = []
+        for data in (
+            await self._call_api(
+                call_id, "get_friend_msg_history", {"user_id": user_id, "message_seq": message_id or 0, "number": count}
             )
-        ]
+        )["messages"]:
+            result.append(data := RetrievedMessage.model_validate(await self._msg_event_processor(data)))
+            data.bot_id, data.platform, data.adapter = self.bot_id, self.platform, self.__class__.__name__
+        return result
 
-    async def upload_private_file(self, call_id, user_id, file, name):
-        return await self._call_api(call_id, "upload_private_file", {"user_id": user_id, "file": file, "name": name})
+    def upload_private_file(self, call_id, user_id, file, name):
+        return self._call_api(call_id, "upload_private_file", {"user_id": user_id, "file": file, "name": name})

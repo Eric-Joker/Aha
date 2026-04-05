@@ -1,11 +1,12 @@
 from asyncio import sleep
-from collections import deque
 from datetime import datetime
+from threading import current_thread, main_thread
 from time import time
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
-from orjson import loads
+from aiologic.lowlevel import lazydeque
+from ssrjson import loads
 
 import core.status
 from core.transports import WebSocketClient
@@ -50,7 +51,7 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
         self._sent_connect = False
         if limit_config := self.config.pop("limit_group_increase", None):
             self._gi_window = limit_config[0]
-            self._gi_deque = deque(maxlen=limit_config[1])
+            self._gi_deque = lazydeque(maxlen=limit_config[1])
         else:
             self._gi_deque = None
 
@@ -65,7 +66,17 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
             config["retry_config"] = cls.parse_retry_config(d)
         return config
 
-    async def _listen_callback(self, data):
+    def _listen_callback(self, data):
+        if current_thread() is main_thread():
+            self._listen_callback = self._process_event
+        else:
+            self._listen_callback = self._event_into_thread
+        return self._listen_callback(data)
+
+    def _event_into_thread(self, data):
+        return core.status.async_loop_executor.submit(self._process_event, data)
+
+    async def _process_event(self, data):
         self.logger.debug(f"Raw received: {data}")
 
         if (echo := (data := loads(data)).get("echo")) is None:
@@ -90,7 +101,7 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
                                 self.logger.error(
                                     f"疑似QQ发癫啦！{self._gi_window}秒钟收到了{self._gi_deque.maxlen}次入群消息！强制退出！"
                                 )
-                                core.status.main_task.cancel()
+                                await self.close()
                             self._gi_deque.append(now)
                     case "request":
                         cat, data = EventCategory.REQUEST, Request.model_validate(data)
@@ -103,12 +114,12 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
                         cat, data = EventCategory.SENT, MessageSent.model_validate(data)
                 await self.event_post(cat, data)
                 self.logger.aha_debug(f"Event received: {data}")
-                return
             else:
                 self.logger.error(f"预期外的 API 上报且视为 FATAL:\n{data}")
                 await self.close()
+            return
 
-        if (future := self._call_handlers.get(echo)) is not None and not future.done():
+        if (future := self._calls.get(echo)) is not None:
             future.set_result(data)
 
     async def _disconnect_cb(self):

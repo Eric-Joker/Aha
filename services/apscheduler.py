@@ -10,11 +10,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID
 
-from apscheduler import AsyncScheduler, CoalescePolicy, ConflictPolicy, JobOutcome, JobReleased, JobResult
+from apscheduler import AsyncScheduler, CoalescePolicy, ConflictPolicy, JobOutcome, JobResult
 from apscheduler._exceptions import DeserializationError
 from apscheduler._marshalling import callable_from_ref
 from apscheduler._schedulers.async_ import TaskType
-from apscheduler._structures import Job, MetadataType, Schedule, Task
+from apscheduler._structures import Job, MetadataType
 from apscheduler._utils import UnsetValue, unset
 from apscheduler.abc import Serializer, Trigger
 from apscheduler.datastores.sqlalchemy import SQLAlchemyDataStore
@@ -25,7 +25,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from core.database import db_engine
-from models.metas import SingletonMeta
+from utils.aio import SingletonThreadSafeAsyncMeta
 
 # from wrapt import when_imported
 
@@ -99,7 +99,7 @@ Job.unmarshal = unmarshal
 # endregion
 
 
-class Scheduler(metaclass=SingletonMeta):
+class Scheduler(metaclass=SingletonThreadSafeAsyncMeta):
     """所有方法存在两个版本，一个用于持久任务或其调度器，一个用于程序生命周期内的瞬态任务或其调度器"""
 
     __slots__ = ("persistent_scheduler", "transient_scheduler", "_exit_stack")
@@ -130,13 +130,13 @@ class Scheduler(metaclass=SingletonMeta):
 
     async def persist_sched_configure_task(
         self,
-        func: Callable[..., Any] | UnsetValue,
+        func: Callable | UnsetValue,
         *,
         job_executor: str | UnsetValue = unset,
         misfire_grace_time: float | timedelta | None | UnsetValue = unset,
         max_running_jobs: int | None | UnsetValue = unset,
         metadata: MetadataType | UnsetValue = unset,
-    ) -> Task:
+    ):
         """
         Add or update a :ref:`task <task>` definition.
 
@@ -169,7 +169,7 @@ class Scheduler(metaclass=SingletonMeta):
             metadata=metadata,
         )
 
-    async def persist_sched_get_tasks(self, *, id: str = None, func: Callable[..., Any] = None, metadata: MetadataType = None):
+    async def persist_sched_get_tasks(self, *, id: str = None, func: Callable = None, metadata: MetadataType = None):
         """
         Retrieve currently defined tasks.
 
@@ -202,7 +202,7 @@ class Scheduler(metaclass=SingletonMeta):
         max_jitter: float | timedelta | None = None,
         job_result_expiration_time: float | timedelta = 0,
         conflict_policy: ConflictPolicy = ConflictPolicy.do_nothing,
-    ) -> str:
+    ):
         """
         Schedule a task to be run one or more times in the future.
 
@@ -246,7 +246,7 @@ class Scheduler(metaclass=SingletonMeta):
             conflict_policy=conflict_policy,
         )
 
-    async def get_persist_schedule(self, id: str) -> Schedule:
+    async def get_persist_schedule(self, id: str):
         """
         Retrieve a schedule from the data store.
 
@@ -273,7 +273,7 @@ class Scheduler(metaclass=SingletonMeta):
             s for s in ss if (not hi or s.id == id) and (not ht or s.task_id == task_id) and (not hm or s.metadata == metadata)
         ]
 
-    async def remove_persist_schedule(self, id: str) -> None:
+    async def remove_persist_schedule(self, id: str):
         """
         Remove the given schedule from the data store.
 
@@ -291,11 +291,11 @@ class Scheduler(metaclass=SingletonMeta):
         #    core.status.main_task.cancel()
         return len(schedules)
 
-    async def pause_persist_schedule(self, id: str) -> None:
+    async def pause_persist_schedule(self, id: str):
         """Pause the specified schedule."""
         return await self.persistent_scheduler.pause_schedule(id)
 
-    async def unpause_persist_schedule(self, id: str, *, resume_from: datetime | Literal["now"] | None = None) -> None:
+    async def unpause_persist_schedule(self, id: str, *, resume_from: datetime | Literal["now"] | None = None):
         """
         Unpause the specified schedule.
 
@@ -316,7 +316,7 @@ class Scheduler(metaclass=SingletonMeta):
         job_executor: str | UnsetValue = unset,
         metadata: MetadataType | UnsetValue = unset,
         result_expiration_time: timedelta | float = 0,
-    ) -> UUID:
+    ):
         """
         Add a job to the data store.
 
@@ -363,7 +363,7 @@ class Scheduler(metaclass=SingletonMeta):
             and (not has_metadata or j.metadata == metadata)
         ]
 
-    async def get_persist_job_result(self, job_id: UUID, *, wait: bool = True) -> JobResult | None:
+    async def get_persist_job_result(self, job_id: UUID, *, wait: bool = True):
         """
         Retrieve the result of a job.
 
@@ -382,13 +382,13 @@ class Scheduler(metaclass=SingletonMeta):
 
     async def run_persist_job(
         self,
-        func_or_task_id: str | Callable[..., Any],
+        func_or_task_id: str | Callable,
         *,
         args: Iterable[Any] | None = None,
         kwargs: Mapping[str, Any] | None = None,
         job_executor: str | UnsetValue = unset,
         metadata: MetadataType | UnsetValue = unset,
-    ) -> Any:
+    ):
         """
         Convenience method to add a job and then return its result.
 
@@ -433,12 +433,12 @@ class Scheduler(metaclass=SingletonMeta):
         self,
         func_or_task_id: TaskType,
         *,
-        func: Callable[..., Any] | UnsetValue = unset,
+        func: Callable | UnsetValue = unset,
         job_executor: str | UnsetValue = unset,
         misfire_grace_time: float | timedelta | None | UnsetValue = unset,
         max_running_jobs: int | None | UnsetValue = unset,
         metadata: MetadataType | UnsetValue = unset,
-    ) -> Task:
+    ):
         """
         Add or update a :ref:`task <task>` definition.
 
@@ -472,7 +472,7 @@ class Scheduler(metaclass=SingletonMeta):
             metadata=metadata,
         )
 
-    async def get_tasks(self, *, id: str = None, func: Callable[..., Any] = None, metadata: MetadataType = None):
+    async def get_tasks(self, *, id: str = None, func: Callable = None, metadata: MetadataType = None):
         """
         Retrieve currently defined tasks.
 
@@ -505,7 +505,7 @@ class Scheduler(metaclass=SingletonMeta):
         max_jitter: float | timedelta | None = None,
         job_result_expiration_time: float | timedelta = 0,
         conflict_policy: ConflictPolicy = ConflictPolicy.do_nothing,
-    ) -> str:
+    ):
         """
         Schedule a task to be run one or more times in the future.
 
@@ -549,7 +549,7 @@ class Scheduler(metaclass=SingletonMeta):
             conflict_policy=conflict_policy,
         )
 
-    async def get_schedule(self, id: str) -> Schedule:
+    async def get_schedule(self, id: str):
         """
         Retrieve a schedule from the data store.
 
@@ -576,7 +576,7 @@ class Scheduler(metaclass=SingletonMeta):
             s for s in ss if (not hi or s.id == id) and (not ht or s.task_id == task_id) and (not hm or s.metadata == metadata)
         ]
 
-    async def remove_schedule(self, id: str) -> None:
+    async def remove_schedule(self, id: str):
         """
         Remove the given schedule from the data store.
 
@@ -594,11 +594,11 @@ class Scheduler(metaclass=SingletonMeta):
         #    core.status.main_task.cancel()
         return len(schedules)
 
-    async def pause_schedule(self, id: str) -> None:
+    async def pause_schedule(self, id: str):
         """Pause the specified schedule."""
         return await self.transient_scheduler.pause_schedule(id)
 
-    async def unpause_schedule(self, id: str, *, resume_from: datetime | Literal["now"] | None = None) -> None:
+    async def unpause_schedule(self, id: str, *, resume_from: datetime | Literal["now"] = None):
         """
         Unpause the specified schedule.
 
@@ -619,7 +619,7 @@ class Scheduler(metaclass=SingletonMeta):
         job_executor: str | UnsetValue = unset,
         metadata: MetadataType | UnsetValue = unset,
         result_expiration_time: timedelta | float = 0,
-    ) -> UUID:
+    ):
         """
         Add a job to the data store.
 
@@ -664,7 +664,7 @@ class Scheduler(metaclass=SingletonMeta):
             and (not has_metadata or j.metadata == metadata)
         ]
 
-    async def get_job_result(self, job_id: UUID, *, wait: bool = True) -> JobResult | None:
+    async def get_job_result(self, job_id: UUID, *, wait=True):
         """
         Retrieve the result of a job.
 
@@ -683,13 +683,13 @@ class Scheduler(metaclass=SingletonMeta):
 
     async def run_job(
         self,
-        func_or_task_id: str | Callable[..., Any],
+        func_or_task_id: str | Callable,
         *,
         args: Iterable[Any] | None = None,
         kwargs: Mapping[str, Any] | None = None,
         job_executor: str | UnsetValue = unset,
         metadata: MetadataType | UnsetValue = unset,
-    ) -> Any:
+    ):
         """
         Convenience method to add a job and then return its result.
 

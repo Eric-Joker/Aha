@@ -74,7 +74,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | times | int | 点赞次数，默认为 1。 |
 
 **返回**: dict[str, Any]（平台原始响应）
@@ -89,7 +89,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int \| None | 目标的平台用户 ID。 |
+| user_id | str \| int \| None | 平台用户 ID。 |
 | group_id | str \| int \| None | 目标的平台群组 ID。为 `None` 时发送私聊消息。 |
 | platform | Literal["qq", "163"] | 音乐平台枚举。 |
 | id | str \| int | 音乐 ID。 |
@@ -114,7 +114,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标的平台用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | platform | Literal["qq", "163"] | 音乐平台枚举。 |
 | id | str \| int | 音乐 ID。 |
 

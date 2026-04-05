@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
 from re import compile
 from shutil import which
@@ -17,7 +18,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from core.arg_parser import parser
 from models.exc import DatabaseBackupError
-from utils.misc import AHA_MODULE_PATTERN, caller_aha_module
+from utils.aha import AHA_MODULE_PATTERN, caller_aha_module
 
 from .config import cfg
 from .i18n import _
@@ -28,6 +29,7 @@ MODULE_AUTHOR_PATTERN = compile(r"^modules\.([^.]+)")
 DATABASEPATHS = {"database", "database.py"}
 
 database_initialized = False
+_logger = logging.getLogger("AHA (database)")
 
 
 class CustomDeclarativeMeta(DeclarativeMeta):
@@ -52,26 +54,6 @@ db_engine = create_async_engine(cfg.database["uri"])
 dbBase: DeclarativeBase = declarative_base(metaclass=CustomDeclarativeMeta)
 metadata = dbBase.metadata
 db_sessionmaker = async_sessionmaker(bind=db_engine)
-
-_discard_log = {"Context impl SQLiteImpl.", "Will assume non-transactional DDL."}
-logging.getLogger("alembic.runtime.migration").addFilter(
-    lambda record: record.levelno != logging.INFO or record.getMessage() not in _discard_log
-)
-logging.getLogger("alembic.runtime.plugins").addFilter(
-    lambda record: record.levelno != logging.INFO or not record.getMessage().startswith("set")
-)
-
-from alembic import command
-from alembic.autogenerate import compare_metadata
-from alembic.config import Config
-from alembic.migration import MigrationContext
-from alembic.util.sqla_compat import _table_for_constraint
-
-alembic_cfg = Config("alembic.ini")
-alembic_cfg.set_main_option("script_location", "alembic")
-alembic_cfg.set_main_option("sqlalchemy.url", cfg.database["green"])
-
-_logger = logging.getLogger("AHA (database)")
 
 
 def db_init():
@@ -116,6 +98,26 @@ def db_init():
         del sys.modules[name]
 
 
+# region alembic
+_discard_log = {"Context impl SQLiteImpl.", "Will assume non-transactional DDL."}
+logging.getLogger("alembic.runtime.migration").addFilter(
+    lambda record: record.levelno != logging.INFO or record.getMessage() not in _discard_log
+)
+logging.getLogger("alembic.runtime.plugins").addFilter(
+    lambda record: record.levelno != logging.INFO or not record.getMessage().startswith("set")
+)
+
+from alembic import command
+from alembic.autogenerate import compare_metadata
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.util.sqla_compat import _table_for_constraint
+
+alembic_cfg = Config("alembic.ini")
+alembic_cfg.set_main_option("script_location", "alembic")
+alembic_cfg.set_main_option("sqlalchemy.url", cfg.database["green"])
+
+
 def check_migrations_needed():
     from services.apscheduler import sched
 
@@ -147,11 +149,10 @@ def check_migrations_needed():
     return diff
 
 
-# region 用于版本生成
 tables_to_exclude = set()
 
 
-def compare_type(_, __, ___, inspected_type, metadata_type):
+def compare_type(_, __, ___, inspected_type, metadata_type):  # sqlite
     if isinstance(inspected_type, NUMERIC) and isinstance(metadata_type, BINARY):
         return False
 
@@ -213,9 +214,22 @@ def backup_database():
 
 
 # region monkey patch
+# region 神秘
+match dialect_name := db_engine.dialect.name:
+    case "postgresql":
+        import sqlalchemy.dialects.postgresql as dialect
+    case "sqlite":
+        import sqlalchemy.dialects.sqlite as dialect
+
+for i in dialect.__all__:
+    setattr(sqlalchemy, i, getattr(dialect, i))
+
+
+# endregion
 _otableinit = sqlalchemy.sql.schema.Table.__init__
 
 
+@wraps(sqlalchemy.sql.schema.Table.__init__)
 def __init__(self, name, *args, **kwargs):
     if mod := caller_aha_module(pattern=AHA_MODULE_PATTERN):
         name = f"{name}__{mod}"

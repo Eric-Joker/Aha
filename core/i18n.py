@@ -14,7 +14,7 @@ from ruamel.yaml import YAML
 from tenacity import _unset
 
 import core.status
-from utils.misc import caller_aha_module
+from utils.aha import caller_aha_module
 
 __all__ = ("create_translator", "gettext", "_")
 
@@ -106,8 +106,8 @@ class LocalizedString(str):
 def get_translation(key: str, module: str = None, lang_code: str = None):
     """获取翻译"""
     for lang in _get_fallback_chain(lang_code):
-        if ((i18ns := loaded_i10n[module].get(lang)) or (i18ns := loaded_i10n[None].get(lang))) and key in i18ns:
-            return i18ns[key]
+        if ((i18ns := loaded_i10n[module].get(lang)) or (i18ns := loaded_i10n[None].get(lang))) and (i18ns := i18ns.get(key)) is not None:
+            return i18ns
     return key
 
 

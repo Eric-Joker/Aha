@@ -11,6 +11,7 @@ from time import localtime, strftime, time
 from types import CoroutineType, GenericAlias, UnionType
 from typing import TYPE_CHECKING, Any, Hashable, NoReturn, TypedDict, Unpack, _Final, _UnionGenericAlias
 
+from aiologic.meta import copies
 from cachetools import Cache
 from pydantic import TypeAdapter
 from pydantic_core._pydantic_core import ValidationError
@@ -36,7 +37,8 @@ from models.core import EventCategory, Group, User
 from models.exc import AhaExprFieldDuplicate
 from models.msg import At, MessageChain, MsgSeg, Text
 from utils.aio import async_all, async_any, async_run_func
-from utils.misc import AHA_MODULE_PATTERN, caller_aha_module, find_first_instance, is_prefix, is_suffix
+from utils.container import find_first_instance, is_prefix, is_suffix
+from utils.aha import AHA_MODULE_PATTERN, caller_aha_module
 from utils.string import halfwidth
 
 from .cache import LRUCache, async_cached
@@ -126,7 +128,7 @@ _logger = getLogger("AHA Expr")
 class Expr[Result]:
     """表达式基类"""
 
-    __slots__ = ("_exp",)
+    __slots__ = "_exp"
 
     def __init__(self):
         self._exp = None
@@ -369,6 +371,12 @@ if DEBUG and not TYPE_CHECKING:
             super().__init__()
 
 
+async def _get_field_value(field: FieldClause, event: BaseEvent):
+    if field.field.extractor is None and field.field._requires_extractor:
+        return True
+    return await async_run_func(field.field.extractor, event)
+
+
 class FieldClause[Result](Expr[Result]):
     """字段访问表达式"""
 
@@ -394,8 +402,9 @@ class FieldClause[Result](Expr[Result]):
                 else:
                     _registed_operand_types[types] = partial(operand, self)
 
-    async def evaluate(self, event) -> Result:
-        return await _get_field_value(self, event)
+    @copies(_get_field_value)
+    def evaluate(self, event) -> CoroutineType[Any, Any, Result]:
+        return _get_field_value(self, event)
 
     def __hash__(self):
         return hash(self.name)
@@ -444,7 +453,7 @@ fields: dict[str, Field] = {}
 
 
 class PatternMatcherMeta(type):
-    def __new__(cls, name, bases, namespace: dict):
+    def __new__(mcs, name, bases, namespace: dict):
         for k, v in tuple(namespace.items()):
             if isinstance(v, Field):
                 if v._redirect:  # 重定向
@@ -453,7 +462,7 @@ class PatternMatcherMeta(type):
                 else:
                     namespace[k] = FieldClause(k, v)
 
-        return super().__new__(cls, name, bases, namespace)
+        return super().__new__(mcs, name, bases, namespace)
 
 
 class AlwaysTrue:
@@ -504,8 +513,8 @@ class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
             self.priority = self.left.priority
             self._cache_config: CacheConfig = self.left.field.cache
             if self._cache_config:
-                self._cached_evaluate: Callable[..., CoroutineType[Any, Any, tuple[bool, dict[ContextVar, Any]]]] = (
-                    async_cached(self._cache_config.cache, ignore=self._cache_config.ignore_cache, func=self._evaluate_wrapper)
+                self._cached_evaluate = async_cached(
+                    self._cache_config.cache, ignore=self._cache_config.ignore_cache, func=self._evaluate_wrapper
                 )
         else:
             self.priority = 0
@@ -522,14 +531,13 @@ class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
         if self.left.__class__ is FieldClause and (result := self.left.field.overrides) and (result := result.get(self.right)):
             return result if self.negate is None else result ^ self.negate
         # 缓存
-        if self._cache_config and (
-            not self._cache_config.skip_cache or not self._cache_config.skip_cache(self.__class__, self.right, event)
-        ):
+        if self._cache_config:
             result, contextvars = await self._cached_evaluate(
                 left=self.left,
                 right=self.right,
                 event=event,
                 cache_key=lambda *_, **__: self._cache_config.key_func(self.__class__, self.right, event),
+                no_cache=self._cache_config.skip_cache and self._cache_config.skip_cache(self.__class__, self.right, event),
             )
             for obj, value in contextvars.items():
                 obj.set(value)
@@ -573,14 +581,13 @@ if DEBUG and not TYPE_CHECKING:
             ):
                 debug["right"] = self.right
 
-            elif self._cache_config and (
-                not self._cache_config.skip_cache or not self._cache_config.skip_cache(self.__class__, self.right, event)
-            ):
+            elif self._cache_config:
                 result, contextvars = await self._cached_evaluate(
                     left=self.left,
                     right=self.right,
                     event=event,
                     cache_key=lambda *_, **__: self._cache_config.key_func(self.__class__.__name__, self.right, event),
+                    no_cache=self._cache_config.skip_cache and self._cache_config.skip_cache(self.__class__, self.right, event),
                 )
                 for obj, value in contextvars.items():
                     obj.set(value)
@@ -900,8 +907,8 @@ class Call(BinaryExpr[Callable, tuple[tuple, dict], Any]):
             return f"{self.left!r} {self.__class__.__name__} {self.args} {self.kwargs}(exp={strftime("%Y-%m-%d %H:%M:%S", localtime(self._exp))}, PRI={self.priority})"
         return f"{self.left!r} {self.__class__.__name__} {self.args} {self.kwargs}(PRI={self.priority})"
 
-    async def _evaluate_logic(self):
-        return await async_run_func(self._left_val, *self._right_val[0], **self._right_val[1])
+    def _evaluate_logic(self):
+        return async_run_func(self._left_val, *self._right_val[0], **self._right_val[1])
 
 
 # endregion
@@ -1056,15 +1063,17 @@ class MsgLimit(dbBase):
     last_time = Column(Float)
 
 
-async def _check_rate_limit(msg: BaseEvent):
+async def _check_rate_limit(event: BaseEvent):
     """被限速 => False，正常状态 => True"""
-    if not cfg.limit or not hasattr(msg, "user_id") or await _is_admin(msg):
+    if not cfg.limit or not hasattr(event, "user_id") or await _is_admin(event):
         return True
     current_time = time()
     async with db_sessionmaker() as session:
         result = await session.execute(
             update(MsgLimit)
-            .where(MsgLimit.platform == msg.platform, MsgLimit.user_id == msg.user_id, MsgLimit.last_time <= current_time - 60)
+            .where(
+                MsgLimit.platform == event.platform, MsgLimit.user_id == event.user_id, MsgLimit.last_time <= current_time - 60
+            )
             .values(count=1, last_time=current_time)
             .returning(MsgLimit.count)
         )
@@ -1072,19 +1081,17 @@ async def _check_rate_limit(msg: BaseEvent):
             await session.commit()
             return True
 
-        result = await session.execute(
-            update(MsgLimit)
-            .where(MsgLimit.platform == msg.platform, MsgLimit.user_id == msg.user_id)
-            .values(count=MsgLimit.count + 1, last_time=current_time)
+        updated_count = await session.scalar(
+            insert(MsgLimit)
+            .values(platform=event.platform, user_id=event.user_id, count=1, last_time=current_time)
+            .on_conflict_do_update(
+                index_elements=(MsgLimit.platform, MsgLimit.user_id),
+                set_={MsgLimit.count: MsgLimit.count + 1, MsgLimit.last_time: current_time},
+            )
             .returning(MsgLimit.count)
         )
-        if (updated_count := result.scalar_one_or_none()) is not None:
-            await session.commit()
-            return updated_count <= cfg.get("limit", module="aha")
-
-        await session.execute(insert(MsgLimit).values(platform=msg.platform, user_id=msg.user_id, last_time=current_time))
         await session.commit()
-        return True
+        return updated_count <= cfg.get("limit", module="aha")
 
 
 # endregion
@@ -1296,12 +1303,6 @@ def _collect_used_fields(expr):
         used.extend(_collect_used_fields(expr.left))
         used.extend(_collect_used_fields(expr.right))
     return used
-
-
-async def _get_field_value(field: FieldClause, event: BaseEvent):
-    if field.field.extractor is None and field.field._requires_extractor:
-        return True
-    return await async_run_func(field.field.extractor, event)
 
 
 def _adjust_binary_field(left, right) -> tuple[FieldClause | Expr | Any, FieldClause | Expr | Any]:
@@ -1590,7 +1591,6 @@ def redirect_extractors():
 
 
 # endregion
-# @async_cached(expr_cache, key=hash_evaluate)
 if DEBUG:
     from pprint import pprint
 

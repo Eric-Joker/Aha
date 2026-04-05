@@ -23,7 +23,7 @@ async def init_load_mod():
 
     await load_locales(*modules)
 
-    _logger.info(_("fastapi_module.import"), "bots.fastapi")
+    _logger.info(_("fastapi_module.import", "bots.fastapi"))
     loaded = 0
     for mod, shorter in modules.items():
         try:
@@ -31,4 +31,4 @@ async def init_load_mod():
             loaded += 1
         except Exception:
             _logger.warning(_("fastapi_module.import.error", "bots.fastapi") % shorter, exc_info=True)
-    _logger.info(_("fastapi_module.import.done", "bots.fastapi") % loaded)
+    # _logger.info(_("fastapi_module.import.done", "bots.fastapi") % loaded)

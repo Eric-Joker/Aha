@@ -10,7 +10,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | msg | str \| Sequence[[MsgSeg](../../数据结构/消息序列与消息段.md#msgseg) \| str] \| [MsgSeg](../../数据结构/消息序列与消息段.md#msgseg) \| None | 消息内容。不支持 [InlineStr](../内置轮子与最佳实践/零碎%20utils.md#inlinestr)。 |
 | at | str \| int \| None | 若有值视为平台用户 ID，自动在消息内容前部添加 [At](../../数据结构/消息序列与消息段.md#at) 。 |
 | reply | str \| int \| None | 若有值视为消息 ID，自动在消息内容前部添加 [Reply](../../数据结构/消息序列与消息段.md#reply) 。 |
@@ -24,7 +24,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | data | Any | 目标协议消息内容数据格式。 |
 
 **返回**: 消息 ID (str)
@@ -35,7 +35,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | image | str \| Path | 接受路径或 URL。 |
 
 **返回**: 消息 ID (str)
@@ -46,7 +46,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file | str \| Path | 接受路径或 URL。 |
 
 **返回**: 消息 ID (str)
@@ -57,7 +57,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | value | int | 骰子点数。默认为 1。 |
 
 **返回**: 消息 ID (str)
@@ -68,7 +68,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | value | int | 猜拳点数。默认为 1。 |
 
 **返回**: 消息 ID (str)-->
@@ -79,7 +79,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file | str \| Path | 接受路径或 URL。 |
 | name | str \| None | 文件名，未传递时自动从路径提取。 |
 
@@ -91,7 +91,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | url | str | 卡片跳转链接。 |
 | audio | str \| None | 媒体链接。 |
 | title | str \| None | 音乐标题。 |
@@ -106,7 +106,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | messages | Sequence[str \| int] | 消息 ID 序列。 |
 
 **返回**: 消息 ID (str)
@@ -117,8 +117,8 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| user_id | str \| int | 目标用户 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 ## group_kick_members
 
@@ -126,7 +126,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | user_ids | Sequence[str \| int] | 用户 ID 列表。 |
 | reject_add_request | bool | 是否拒绝再次加群请求。默认为 `False`。 |
 
@@ -136,8 +136,8 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| user_id | str \| int | 目标用户 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | reject_add_request | bool | 是否拒绝再次加群请求。默认为 `False`。 |
 
 ## group_ban
@@ -146,8 +146,8 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| user_id | str \| int | 目标用户 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | duration | int | 禁言秒数。默认为 0（解除禁言）。 |
 
 **返回**: 操作是否成功 (bool)
@@ -158,7 +158,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | enable | bool | 是否开启全员禁言。 |
 
 ## set_group_admin
@@ -167,8 +167,8 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| user_id | str \| int | 目标用户 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | enable | bool | 是否设置为管理员。 |
 
 ## group_leave
@@ -177,7 +177,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | is_dismiss | bool | 是否解散群（仅群主可用）。默认为 `False`。 |
 
 ## set_group_special_title
@@ -186,8 +186,8 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| user_id | str \| int | 目标用户 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | special_title | str | 专属头衔，空字符串表示取消。 |
 
 ## process_group_join_request
@@ -206,8 +206,8 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| user_id | str \| int | 目标用户 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 | card | str | 新群昵称，空字符串表示清除。 |
 
 ## get_card
@@ -216,8 +216,8 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| user_id | str \| int | 目标用户 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 **返回**: 群名片或昵称 (str)，若成员不存在返回 `None`。
 
@@ -227,21 +227,20 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| user_id | str \| int | 目标用户 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 **返回**: bool
 
 ## get_group_msg_history
 
-获取群消息历史，默认从旧到新排序。
+获取指定群聊从指定消息开始的新消息历史，包含指定消息。从旧到新排序。
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| message_id | str \| int | 起始消息序列号或消息 ID。 |
-| count | int | 获取数量，默认为 20。 |
-| reverse | bool | 是否倒序，默认为 `False`。 |
+| group_id | str \| int | 平台群组 ID。 |
+| message_id | str \| int \| None | 起始消息 ID。未提供时获取最新的一些消息。 |
+| count | int | 预期获取数量，实际数量小于等于此。默认为 20。 |
 
 **返回**: list[[RetrievedMessage](../../数据结构/消息序列与消息段.md#message)]
 
@@ -267,7 +266,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 
 **返回**: list[[EssenceMessage](../../数据结构/API%20相关.md#modelsapiessencemessage)]
 
@@ -277,7 +276,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file_id | str | 文件 ID。 |
 | current_parent_directory | str | 当前父目录 ID。 |
 | target_parent_directory | str | 目标父目录 ID。 |
@@ -288,7 +287,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file_id | str | 文件 ID。 |
 
 ## rename_group_file
@@ -297,7 +296,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file_id | str | 文件 ID。 |
 | new_name | str | 新文件名。 |
 
@@ -307,7 +306,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file | str | 本地文件路径。 |
 | name | str | 文件名。 |
 | folder | str | 目标文件夹 ID。 |
@@ -318,7 +317,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | folder_name | str | 文件夹名称。 |
 
 ## group_file_folder_makedir
@@ -327,7 +326,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | path | str | 文件夹路径（如 `/foo/bar/`）。 |
 
 **返回**: str（创建的文件夹 ID）
@@ -338,7 +337,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file_id | str | 文件 ID。 |
 
 ## delete_group_folder
@@ -347,7 +346,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | folder_id | str | 文件夹 ID。 |
 
 ## get_group_root_files
@@ -356,7 +355,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file_count | int | 返回的文件数量上限，默认为 50。 |
 
 **返回**: [GroupFiles](../../数据结构/API%20相关.md#modelsapigroupfiles)
@@ -367,7 +366,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | folder_id | str | 文件夹 ID。 |
 | file_count | int | 返回的文件数量上限，默认为 50。 |
 
@@ -379,7 +378,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file_id | str | 文件 ID。 |
 
 **返回**: str（文件下载 URL）
@@ -390,7 +389,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 
 **返回**: [GroupInfo](../../数据结构/API%20相关.md#modelsapigroupinfo)
 
@@ -400,7 +399,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 
 **返回**: 协议框架原始数据
 
@@ -410,8 +409,8 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
-| user_id | str \| int | 目标用户 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 **返回**: [GroupMemberInfo](../../数据结构/API%20相关.md#modelsapigroupmemberinfo)
 
@@ -421,7 +420,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 
 **返回**: [GroupMembers](../../数据结构/API%20相关.md#modelsapigroupmembers)
 
@@ -437,7 +436,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| user_id | str \| int | 目标用户 ID。 |
+| user_id | str \| int | 平台用户 ID。 |
 
 **返回**: [GroupMemberInfo](../../数据结构/群组.md#groupmemberinfo) | None
 
@@ -447,7 +446,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 
 **返回**: [GroupMembers](../../数据结构/群组.md#groupmembers)
 
@@ -457,7 +456,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | remark | str | 备注名称。 |
 
 ## set_group_sign
@@ -466,7 +465,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 
 ## set_group_avatar
 
@@ -474,7 +473,7 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | file | str | 图片 URL。 |
 
 ## set_group_name
@@ -483,5 +482,5 @@
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| group_id | str \| int | 群组 ID。 |
+| group_id | str \| int | 平台群组 ID。 |
 | name | str | 新群名。 |

@@ -1,9 +1,10 @@
 import signal
 import sys
 from abc import abstractmethod
-from asyncio import CancelledError, create_task, sleep
+from asyncio import CancelledError, create_task, get_running_loop, sleep
 from contextlib import suppress
 from logging import getLogger
+from threading import current_thread, main_thread
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from tenacity.stop import stop_base
@@ -15,11 +16,13 @@ from core.log import AhaLogger, setup_logging
 from core.transports import ClientTransport, Transport
 from models.api import BaseEvent, LifecycleSubType, MetaEvent, MetaEventType
 from models.core import EventCategory
-from models.metas import PerProcessSingletonMeta
 from utils.aio import AsyncConnection, run_with_uvloop
-from utils.typekit import make_exc_picklable
+from utils.misc import PerProcessSingletonMeta, make_exc_picklable
 
 from .apis import BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, BaseSupportAPI
+
+if TYPE_CHECKING:
+    from core.api_service import event_route
 
 RetryConfigKey = Literal[
     "stop_any",
@@ -49,32 +52,30 @@ def api_process(bot_class: type[BaseBot], bot_id, pipe, config, base64_buffer, l
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
     with suppress(KeyboardInterrupt):
-        run_with_uvloop(_run(bot_class(bot_id, config, AsyncConnection(pipe)).start()))
-
-
-async def _run(coroutine):
-    core.status.main_task = create_task(coroutine)
-    await core.status.main_task
+        run_with_uvloop(bot_class(bot_id, config, AsyncConnection(pipe)).start())
 
 
 class BaseBotMeta(type):
     """注册所有API子类"""
 
-    def __new__(cls, name, *args):
+    def __new__(mcs, name, *args):
         from core.bot_register import register
 
-        register(cls)
-        (new_class := super().__new__(cls, name, *args)).logger = getLogger(name)
-        return new_class
+        cls = super().__new__(mcs, name, *args)
+        if name != "BaseBot":
+            cls.logger = getLogger(name)
+            register(cls)
+        return cls
 
 
 class BaseBotSingletonMeta(BaseBotMeta, PerProcessSingletonMeta): ...
 
 
 class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, BaseSupportAPI, metaclass=BaseBotMeta):
+    platform: str
+    transport_class: type[Transport]
+
     if TYPE_CHECKING:
-        platform: str
-        transport_class: type[Transport]
         logger: AhaLogger
 
     def __init__(self, bot_id, config: dict, pipe: AsyncConnection = None):
@@ -95,7 +96,12 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
     async def start(self):
         if self.is_process_mode:
             await load_locales()
-            self._request_listen = create_task(self._handle_requests())
+            self.main_task = create_task(self._handle_requests())
+        else:
+            from core.api_service import event_route
+
+            globals()["event_route"] = event_route
+            self.main_task = get_running_loop().create_future()
 
         await load_locales(self.__class__.__module__)
         with suppress(NotImplementedError):
@@ -109,20 +115,18 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
         self.logger.info(_("api.service.init.success"))
         create_task(self.transport.listen(self._listen_callback)).add_done_callback(lambda _: create_task(self.close()))
 
-        if self.is_process_mode:
-            with suppress(CancelledError):
-                await self._request_listen
+        with suppress(CancelledError):
+            await self.main_task
         return True
 
-    async def event_post(self, catrgory, data: BaseEvent):
-        data.bot_id, data.platform, data.adapter = self.bot_id, self.platform, self.__class__.__name__
+    async def event_post(self, category, data: BaseEvent):
+        if category is not EventCategory.SERVICE_REQUEST:
+            data.bot_id, data.platform, data.adapter = self.bot_id, self.platform, self.__class__.__name__
         if self.is_process_mode:
             with suppress(BrokenPipeError, EOFError):
-                await self.pipe.send((catrgory, data))
+                await self.pipe.send((category, data))
         else:
-            from core.api_service import event_route
-
-            await event_route(self.bot_id, catrgory, data)
+            await event_route(self.bot_id, category, data)
 
     async def _handle_requests(self):
         """仅多进程模式"""
@@ -134,19 +138,20 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
                 pass
             except Exception as e:
                 create_task(self.pipe.send((EventCategory.RESPONSE, (call_id, make_exc_picklable(e)))))
-            await sleep(0.001)
+            await sleep(0)
 
     async def close(self, _=None):  # 参数为 call_id
         if not self._closing:
+            self._closing = True
             await self.transport.close()
             if self.is_process_mode:
-                self._request_listen.cancel()
                 self.pipe.close()
             else:
                 # TODO: 重写这里超越界限的逻辑
                 from core.api_service import clean_bot
 
-                clean_bot(self.bot_id)
+                await clean_bot(self.bot_id)
+            self.main_task.cancel()
 
     @classmethod
     def parse_retry_config(cls, config: dict[RetryConfigKey, int | float | list[dict[RetryConfigKey, Any] | Any]]):

@@ -15,6 +15,7 @@ sequenceDiagram
     participant Module as 模块（回调函数）
 
     %% 启动阶段
+    Core->>Core: 启动主线程异步事件循环
     Core->>Core: 初始化配置
     Core->>Loader: 扫描并加载模块
     Loader->>Module: 导入模块，装饰器收集回调
@@ -50,3 +51,5 @@ sequenceDiagram
 - **就绪**：框架完成全部启动流程，调用通过 `core.dispatcher.on_start` 注册的回调函数。
 - **运行**：事件触发模块的回调，模块通过 API 与平台交互。
 - **卸载**：框架收到终止运行请求时，调用通过 `core.dispatcher.on_cleanup` 注册的回调函数。
+
+上述两注册回调装饰器非线程安全。

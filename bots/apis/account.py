@@ -46,7 +46,7 @@ class BaseAccountAPI(BaseAPI):
         """
         raise NotImplementedError
 
-    async def get_friends(self, call_id) -> frozenset[Friend]:
+    async def get_friends(self, call_id) -> list[Friend]:
         raise NotImplementedError
 
     async def get_user_by_friend(self, call_id, user_id: str | int) -> Friend:
@@ -100,13 +100,13 @@ class BaseAccountAPI(BaseAPI):
     async def get_card_by_search(
         self: BaseBot, call_id, user_id: str | int, group_id: str | int = None, force_return_card=False
     ) -> tuple[str | None, str] | str | None:
-        """获取群成员名片，不存在该成员时从陌生人、好友渠道获取昵称
+        """获取群成员名片，不存在该成员时从陌生人、好友渠道获取昵称，找不到用户则返回 user_id
 
         Args:
-            force_return_card: 返回Tuple[群名片, 昵称]。
+            force_return_card: 返回 Tuple[群名片, 昵称/user_id]。
         """
         if (result := await self._get_user_by_search(None, user_id, group_id)) is None:
-            return None
+            return (None, user_id) if force_return_card else user_id
         card = getattr(result, "card", None)
         nickname = result.nickname.strip() or user_id
         return (card, nickname) if force_return_card else (card or nickname)

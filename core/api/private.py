@@ -116,7 +116,7 @@ class PrivateAPI:
 
     @staticmethod
     async def get_private_msg_history(
-        user_id: str | int, message_id: str | int, count=20, reverse=False, *, bot: int = None
+        user_id: str | int, message_id: str | int = None, count=20, *, bot: int = None
     ) -> list[RetrievedMessage]:
         """获取私聊消息历史，默认从旧到新排序。"""
 

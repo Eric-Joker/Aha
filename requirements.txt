@@ -1,18 +1,16 @@
 aiofiles >= 25
 aiologic >= 0.15
-alembic >= 1
+alembic >= 1.12
 anyio >= 4
-apscheduler >= 4.0.0a1
+apscheduler >= 4.0.0a6
 attrs >= 25
 cachetools >= 7
 colorama >= 0.4
 httpx
-lxml >= 6
-orjson >= 3
+# git+https://github.com/scoder/lxml.git@ft_python
+ssrjson
 pydantic > 2
-pympler
 ruamel.yaml
-SQLAlchemy[asyncio] >= 2
+SQLAlchemy[asyncio] >= 2.1.0b1
 tenacity >= 9
-wrapt >= 2
 xxhash >= 3

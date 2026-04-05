@@ -172,7 +172,7 @@ class GroupAPI:
     # region 群消息管理
     @staticmethod
     async def get_group_msg_history(
-        group_id: str | int, message_id: str | int, count=20, reverse=False, *, bot: int = None
+        group_id: str | int, message_id: str | int = None, count=20, *, bot: int = None
     ) -> list[RetrievedMessage]:
         """获取群消息历史，默认从旧到新排序。"""
 

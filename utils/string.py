@@ -17,6 +17,10 @@ try:
 except ImportError:
     np = None
 
+if TYPE_CHECKING:
+    from _typeshed import ReadableBuffer
+
+
 if IS_MAINPROC := current_process().name == "MainProcess":
     from core.config import cfg
 
@@ -356,7 +360,6 @@ class InlineStr[T](str):
         cls.current_cp.set(None)
 
     if TYPE_CHECKING:
-        from _typeshed import ReadableBuffer
 
         @overload
         def __new__(cls, object: object = "") -> Self: ...

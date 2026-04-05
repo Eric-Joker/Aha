@@ -58,7 +58,7 @@ async def _(body: Annotated[str, Body(..., media_type="text/plain")]):
 | --- | --- |
 | Timestamp | 秒级时间戳的大端字节序 base64 |
 | Nonce | 16 字节随机 base64 挑战值 |
-| Signature | 对由 `|` 分割的上述两请求头值的字符串进行签名的 base64 |
+| Signature | 对由 `\|` 分割的上述两请求头值的字符串进行签名的 base64 |
 
 ### curl 示例
 

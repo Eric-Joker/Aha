@@ -11,6 +11,6 @@ httpx
 ssrjson
 pydantic > 2
 ruamel.yaml
-SQLAlchemy[asyncio] >= 2.1.0b1
+SQLAlchemy[asyncio, aiosqlite] >= 2.1.0b1
 tenacity >= 9
 xxhash >= 3

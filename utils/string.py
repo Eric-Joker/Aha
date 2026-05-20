@@ -20,7 +20,6 @@ except ImportError:
 if TYPE_CHECKING:
     from _typeshed import ReadableBuffer
 
-
 if IS_MAINPROC := current_process().name == "MainProcess":
     from core.config import cfg
 

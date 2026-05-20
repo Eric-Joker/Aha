@@ -12,7 +12,6 @@ class Reactions(FrozenBaseModel):
 
 
 class RetrievedMessage(Message):
-    time: datetime
     reactions: list[Reactions] | None = None
 
 

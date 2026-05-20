@@ -1,6 +1,6 @@
 import os
 from base64 import b64decode
-from time import time
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from models.api import AudioFormat, RetrievedMessage
@@ -35,8 +35,11 @@ class MessageAPI(Utils, BaseMessageAPI):
         return RetrievedMessage.model_validate(result)
 
     async def get_forward_msg(self: NapCat, call_id, message_id, raw_list=False):
-        if raw := await self._call_api(call_id, "get_forward_msg", {"message_id": message_id}):
-            return raw["messages"] if raw_list else await self.content2forward(message_id, raw["messages"])
+        try:
+            if raw := await self._call_api(call_id, "get_forward_msg", {"message_id": message_id}):
+                return raw["messages"] if raw_list else await self.content2forward(message_id, raw["messages"])
+        except APIException as e:
+            raise APIException(f"无法获取合并转发 {message_id} 的内容。请尝试更新 NapCat 或打开“上报解析合并消息”。") from e
 
     async def get_file_src(self, call_id, msg_seg: Downloadable, record_format=AudioFormat.MP3):
         if isinstance(msg_seg, Sticker):
@@ -86,7 +89,7 @@ class MessageAPI(Utils, BaseMessageAPI):
         ):
             if msg.user_id != self_id:
                 raise APIException("无权撤回该消息。")
-            if msg.time <= time() - 120:
+            if msg.time <= datetime.now().astimezone() - 120:
                 raise APIException("消息已超过2分钟，无法撤回。")
 
         return await self._call_api(call_id, "delete_msg", {"message_id": message_id})

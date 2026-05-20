@@ -129,7 +129,7 @@ class GroupAPI(Utils, BaseGroupAPI):
         )["message_id"]
 
     async def send_group_forward_msg(self, call_id, group_id, forward: Forward):
-        (d := await self.forward2dict(forward))["group_id"] = group_id
+        (d := await self.serialize_forward(forward))["group_id"] = group_id
         return (await self._call_api(call_id, "send_group_forward_msg", d))["message_id"]
 
     async def send_group_forward_msg_by_id(self: NapCat, call_id, group_id, messages):

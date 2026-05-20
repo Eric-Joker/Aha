@@ -240,7 +240,7 @@ def on_message(*conditions, exp=None, threadable=True, debug=False, pre_hook=Non
             if (
                 (ann := get_type_hints(get_true_func(func)).get("event"))
                 and (ann := getattr(ann, "__pydantic_generic_metadata__", None))
-                and ann.get("args")
+                and (ann := ann.get("args"))
             ):
                 (conditions := And(conditions, PM.msg_chain.validateby(TypeAdapter(MessageChain[ann[0]]))))._exp = exp
             conditions = conditions.modify(PM.limit == None)
@@ -314,7 +314,7 @@ def on_notice(*conditions, exp=None, threadable=True, debug=False, callback=None
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
 
         if not field_exists(conditions := build_cond(conditions, EventCategory.NOTICE, exp, debug), (PM.type_, PM.sub_type)):
-            conditions.modify(PM.limit == None)
+            conditions = conditions.modify(PM.limit == None)
             if cfg.debug:
                 conditions._debug = debug
 
@@ -365,7 +365,7 @@ def on_request(*conditions, exp=None, threadable=True, debug=False, callback=Non
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
 
         if not field_exists(conditions := build_cond(conditions, EventCategory.REQUEST, exp, debug), (PM.type_, PM.sub_type)):
-            conditions.modify(PM.limit == None)
+            conditions = conditions.modify(PM.limit == None)
             if cfg.debug:
                 conditions._debug = debug
 
@@ -492,7 +492,7 @@ def on_cleanup(func: Callable = None):
 
 # endregion
 # region event processers
-_waiting_event_calls = 0
+_waiting_event_calls = 0  # all_ready 永远不会再被 clear，所以该变量只增不减。
 
 
 def _processer[T](func: T = None) -> T:

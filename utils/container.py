@@ -141,7 +141,7 @@ class SetArray[_T](SetSeqMixin[_T], array[_T]):
         return self.__class__(self.typecode, self)
 
     def __deepcopy__(self, unused, /):
-        return self.__class__(self.typecode, self.__deepcopy__(unused))
+        return self.__class__(self.typecode, super(array, self).__deepcopy__(unused))
 
 
 class SetList[_T](SetSeqMixin[_T], list[_T]):

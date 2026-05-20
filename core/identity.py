@@ -101,7 +101,7 @@ async def aha_id2user(aha_id: int) -> list[User]:
     """根据 Aha ID 反向查找用户"""
     async with db_sessionmaker() as session:
         async with CACHER_LOCK:
-            if result := CACHER.get(aha_id):
+            if result := CACHER.get((User, aha_id)):
                 return result
 
         result = [
@@ -183,7 +183,7 @@ async def aha_id2group(aha_id: int) -> list[Group]:
     """根据 Aha ID 反向查找群组"""
     async with db_sessionmaker() as session:
         async with CACHER_LOCK:
-            if result := CACHER.get(aha_id):
+            if result := CACHER.get((Group, aha_id)):
                 return result
 
         result = [

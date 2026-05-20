@@ -83,8 +83,7 @@ def parse_size(size, binary=False):
 # endregion
 # region chs2sec
 NUM_PATTERN = re.compile(
-    r"(?:([\d\u4e00-\u9fa5a-zA-Z]*?)\s*)"
-    r"(?:$|个?(小时|分钟|秒钟|[年个月周天日时分秒刻]|years?|y|mon(?:th)?s?|weeks?|w|days?|d|hours?|h|min(?:ute)?s?|m|sec(?:ond)?s?|s|qtr))",
+    r"([\d\u4e00-\u9fa5a-zA-Z]*?)\s*(?:$|个?(小时|分钟|秒钟|[年个月周天日时分秒刻]|years?|y|mon(?:th)?s?|weeks?|w|days?|d|hours?|h|min(?:ute)?s?|m|sec(?:ond)?s?|s|qtr))",
     re.IGNORECASE,
 )
 

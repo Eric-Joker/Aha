@@ -1,11 +1,11 @@
 # 本文件修改自 https://github.com/liyihao1110/ncatbot
 import logging
 import os
+import re
 from asyncio import create_task, to_thread
 from collections.abc import AsyncGenerator, AsyncIterable, Iterable
 from contextlib import asynccontextmanager
 from logging import getLogger
-from re import escape
 from types import NoneType
 from typing import TYPE_CHECKING, Annotated, Any, BinaryIO, ClassVar, Literal, SupportsIndex, dataclass_transform, overload
 from urllib.parse import urlparse
@@ -13,7 +13,13 @@ from urllib.parse import urlparse
 from aiofiles import open
 from anyio import Path
 from httpx import HTTPStatusError
+
 # from lxml.etree import XML, _Element
+from mistune import create_markdown
+from mistune.markdown import Markdown
+from mistune.plugins.table import table
+from mistune.plugins.task_lists import task_lists
+from mistune.plugins.formatting import strikethrough, mark, insert, superscript, subscript
 from pydantic import BeforeValidator, Field, GetCoreSchemaHandler, field_serializer, field_validator, model_validator
 from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_core import core_schema
@@ -49,7 +55,7 @@ class MsgSegMeta(ModelMetaclass):
             from core.i18n import _
 
             raise NotImplementedError(_("models.msg.cls2pattern.forward501"))
-        return rf"\[Aha:{cls.__name__.lower()}{"".join(rf"(?:,{n}=(?P<{n}>[\s\S]*?))?" for n, i in cls.model_fields.items() if not i.exclude)}\]"
+        return rf"\[Aha:{cls.__name__.lower()}{"".join(rf"(?:,{n}=(?P<{n}>[^,\]]*))?" for n, i in cls.model_fields.items() if not i.exclude)}\]"
 
     def prefixed_re_group(cls: type, prefix):
         if issubclass(cls, Text):
@@ -58,7 +64,7 @@ class MsgSegMeta(ModelMetaclass):
             from core.i18n import _
 
             raise NotImplementedError(_("models.msg.cls2pattern.forward501"))
-        return rf"\[Aha:{cls.__name__.lower()}{"".join(rf"(?:,{n}=(?P<{prefix}{n}>[\s\S]*?))?" for n, i in cls.model_fields.items() if not i.exclude)}\]"
+        return rf"\[Aha:{cls.__name__.lower()}{"".join(rf"(?:,{n}=(?P<{prefix}{n}>[^,\]]*))?" for n, i in cls.model_fields.items() if not i.exclude)}\]"
 
 
 class MsgSeg(BaseModel, metaclass=MsgSegMeta):
@@ -88,7 +94,7 @@ class MsgSeg(BaseModel, metaclass=MsgSegMeta):
 
     @property
     def pattern(self):
-        return escape(str(self))
+        return re.escape(str(self))
 
     def __repr__(self):
         return self.__str__()
@@ -513,7 +519,11 @@ class Downloadable(MsgSeg):
 class Text(MsgSeg):
     """纯文本消息段"""
 
-    text: str
+    text: str = Field(validation_alias="content")
+
+    @property
+    def content(self):
+        return self.text
 
     def __str__(self):
         from utils.aha import escape_aha
@@ -811,7 +821,119 @@ class Json(MsgSeg):
 #        return value.tostring()
 
 
-class Markdown(MsgSeg):
+class Markdown(Text):
     """Markdown消息段"""
 
-    content: str
+    _MD_parser: ClassVar[Markdown] = create_markdown(
+        renderer=None, plugins=[table, task_lists, strikethrough, mark, insert, superscript, subscript]
+    )
+    _HTML_TAG_RE: ClassVar[re.Pattern] = re.compile(r"<[^>]+>")
+
+    def __str__(self):
+        from utils.aha import escape_aha
+
+        return "".join(
+            str(item) if item.__class__ is Image else escape_aha(item)
+            for item in self._render_blocks(self._MD_parser(self.text))
+        ).strip()
+
+    @classmethod
+    def _render_inline(cls, tokens):
+        out = []
+        for tok in tokens:
+            match tok["type"]:
+                case "emphasis" | "strong" | "link":
+                    out.extend(cls._render_inline(tok["children"]))
+                case "image":
+                    out.append(
+                        Image(
+                            file=tok["attrs"]["url"],
+                            summary="".join(p for p in cls._render_inline(tok["children"]) if p.__class__ is str),
+                        )
+                    )
+                case "linebreak" | "softbreak":
+                    out.append("\n")
+                case _:
+                    if "children" in tok:
+                        # strikethrough 等扩展内联 token
+                        out.extend(cls._render_inline(tok["children"]))
+                    elif "raw" in tok:  # "text" | "codespan"
+                        out.append(tok["raw"])
+                    # inline_html
+        return out
+
+    @classmethod
+    def _render_blocks(cls, tokens: list[dict], depth=0):
+        out = []
+        for tok in tokens:
+            match tok["type"]:
+                case "paragraph" | "block_text" | "heading":
+                    out.extend(cls._render_inline(tok["children"]))
+                    out.append("\n")
+                case "block_quote":
+                    out.extend(cls._render_blocks(tok["children"], depth))
+                case "block_code":
+                    out.extend((tok["raw"], "\n"))
+                case "block_html":
+                    if text := cls._HTML_TAG_RE.sub("", tok["raw"]).strip():
+                        out.append(text + "\n")
+                case "list":
+                    attrs = tok.get("attrs", {})
+                    out.extend(
+                        cls._render_list(
+                            tok["children"],
+                            attrs.get("depth", depth),
+                            attrs.get("ordered", False),
+                            attrs.get("start", 1),
+                        )
+                    )
+                case "table":
+                    out.extend(cls._render_table(tok))
+                    # thematic_break、blank_line、ref_link → 忽略
+        return out
+
+    @classmethod
+    def _render_list(cls, items: list[dict], depth, ordered, counter):
+        out, indent = [], "  " * depth
+        for item in items:
+            if item["type"] == "task_list_item":
+                prefix = indent + ("✅️" if item.get("attrs", {}).get("checked", False) else "☐") + " "
+            elif ordered:
+                prefix = f"{indent}{counter}. "
+                counter += 1
+            else:
+                prefix = f"{indent}• "
+
+            # 子块以 depth+1 渲染
+            if inner := cls._render_blocks(item["children"], depth + 1):
+                if (first := inner[0]).__class__ is str:
+                    inner[0] = prefix + first
+                else:
+                    inner.insert(0, prefix)
+            out.extend(inner)
+        return out
+
+    @classmethod
+    def _render_table(cls, tok):
+        """列1 | 列2 | 列3\n"""
+        out = []
+        for child in tok["children"]:
+            match child["type"]:
+                case "table_head":
+                    out.append(
+                        " | ".join(
+                            "".join(p for p in cls._render_inline(cell["children"]) if p.__class__ is str).replace("|", r"\|")
+                            for cell in child["children"]
+                        )
+                        + "\n"
+                    )
+                case "table_body":
+                    out.extend(
+                        " | ".join(
+                            "".join(p for p in cls._render_inline(cell["children"]) if p.__class__ is str).replace("|", r"\|")
+                            for cell in row["children"]
+                        )
+                        + "\n"
+                        for row in child["children"]
+                    )
+        return out

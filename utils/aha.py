@@ -16,7 +16,7 @@ def at_or_str(pattern: str = None):
         pattern: 用于匹配 user_id 的正则表达式，不传参则为任意字符。
     """
 
-    return fr"(?:\[Aha:at,user_id=)?({pattern or r"\S+?"})(?:\])?\s*?"
+    return fr"(?:\[Aha:at,user_id=)?({pattern or r"\S+?"})\]?"
 
 
 # endregion

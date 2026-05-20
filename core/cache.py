@@ -194,8 +194,8 @@ def async_cached(cache: Cache, key=None, lock=None, ignore=None, func=None):
                         cache_key = await async_run_func(key, *args, **kwargs)
                     else:
                         cache_key = hashkey(*args, **kwargs)
-                        if result := cache.get(cache_key):
-                            return result
+                    if result := cache.get(cache_key):
+                        return result
 
                 result = await __func(*args, **kwargs)
                 if not ignore or not await async_run_func(ignore, result, *args, **kwargs):

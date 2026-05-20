@@ -204,8 +204,8 @@ class CacheFileSession:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.transaction.__aexit__(exc_type, exc_val, exc_tb)
-        for k, v in self.locks.items():
-            v.async_release()
+        for v in self.locks.values():
+            v.async_release()  # 是的，这是同步方法。
         await self.db_session.__aexit__(exc_type, exc_val, exc_tb)
 
 

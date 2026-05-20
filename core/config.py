@@ -1,3 +1,4 @@
+import locale
 import os
 from collections import defaultdict
 from collections.abc import Hashable, Iterable, Mapping, Sequence, Set
@@ -7,6 +8,7 @@ from dataclasses import is_dataclass
 from datetime import date
 from functools import wraps
 from io import StringIO
+from itertools import islice
 from logging import getLevelNamesMapping, getLogger
 from multiprocessing import current_process
 from pathlib import Path
@@ -34,6 +36,11 @@ from utils.misc import SingletonMeta
 
 from .bot_register import get_bot_class
 from .i18n import _
+
+try:
+    from ctypes import windll
+except ImportError:
+    windll = None
 
 __all__ = ("IndexedBotUser", "IndexedBotGroup", "Option", "cfg")
 
@@ -398,6 +405,8 @@ class Config[
                     self._old_data[module] = module_data
         self._old_data = self._convert_to_commented_containers(self._old_data)
         self._transfer_comments(self._data, self._old_data)
+        for k in islice(self._old_data, 1, None):
+            self._comment_update(self._old_data, k, "\n")
         self._data = deepcopy(self._old_data)
         self._modified.clear()
 
@@ -604,7 +613,7 @@ class Config[
         data.yaml_set_comment_before_after_key(key, value, 0 if value == "\n" else 2)
 
     @ThreadSafeMeta.allow_non_main
-    def _is_registered(self, key: str, module: str = None):
+    def _is_registered(self, key, module=None):
         return key in self._default_types[module]
 
     @ThreadSafeMeta.version_increment
@@ -620,6 +629,13 @@ class Config[
 
         result, self._default_types[module][key] = self._type2yaml(default, index=key, parent=mod_data)
         return result
+
+    @ThreadSafeMeta.version_increment
+    def set_comment(self, key: str, comment="", module: str = None):
+        if not module:
+            module = caller_aha_module(3)
+        self._comment_update(self._data[module], key, comment)
+        self._comment_update(self._data, module, "\n")
 
     if TYPE_CHECKING:
 
@@ -684,20 +700,20 @@ class Config[
 
     @classmethod
     def _has_new_keys(cls, new_data, old_data):
-        if (data_type := new_data.__class__) is not old_data.__class__:
+        if new_data.__class__ is not old_data.__class__:
             return True
 
-        if data_type is OptionCommentedMap:
+        if new_data.__class__ is OptionCommentedMap:
             for key in new_data:
-                if key in old_data:
+                if key not in old_data:
                     return True
                 if cls._has_new_keys(new_data[key], old_data[key]):
                     return True
 
-        if data_type is OptionCommentedSeq:
+        if new_data.__class__ is OptionCommentedSeq:
             if len(new_data) != len(old_data):
                 return True
-            for i in new_data:
+            for i in range(len(new_data)):
                 if cls._has_new_keys(new_data[i], old_data[i]):
                     return True
 
@@ -715,6 +731,7 @@ class Config[
             self._old_data = None
             logger.warning(_("config.new"))
             exit(78)
+
         self._old_data = None
 
     """
@@ -971,19 +988,35 @@ if current_process().name == "MainProcess":
     cfg.bots
     cfg.register(
         "execution_mode",
-        Option(("async", "process") if _is_gil_enabled() else ("async", "thread", "process"), "process"),
-        f"""Defines the execution mode for adapters and module callbacks in the framework.
-- 'async': All adapters and module callbacks share a single thread.{"" if _is_gil_enabled() else "\n- 'thread': Module callbacks use an asynchronous loop pool, while adapters decide their own execution mode. (free threading only)"}
-- 'process': Each adapters runs in its own process, all module callbacks share a single thread.""",
+        Option(("async", "process") if _is_gil_enabled() else ("async", "thread", "process"), "async"),
         module="aha",
     )
-    cfg.register("lang", os.environ.get("LANG", "en_US").split(".")[0], "Default language.", module="aha")
-    cfg.register("console_level", Option(getLevelNamesMapping(), "INFO"), "Console log level.", module="log")
-    cfg.register("file_level", Option(getLevelNamesMapping(), "AHA_DEBUG"), "File log level.", module="log")
-    cfg.register("max_files", 5, "Maximum number of log files.", module="log")
-    cfg.register("max_size", "16MiB", "Maximum size per log file.", module="log")
+    cfg.register(
+        "lang",
+        os.environ.get(
+            "LANG", locale.windows_locale[windll.kernel32.GetUserDefaultLCID()] if windll else locale.getlocale()[0]
+        ).split(".")[0],
+        module="aha",
+    )
+    cfg.register("console_level", Option(getLevelNamesMapping(), "INFO"), module="log")
+    cfg.register("file_level", Option(getLevelNamesMapping(), "AHA_DEBUG"), module="log")
+    cfg.register("max_files", 5, module="log")
+    cfg.register("max_size", "16MiB", module="log")
 
     def init_base_cfgs():
+        cfg.set_comment(
+            "execution_mode",
+            f"""{_("config.comment.execution_mode.title")}
+- 'async': {_("config.comment.execution_mode.async")}{"" if _is_gil_enabled() else f"\n- 'thread': {_("config.comment.execution_mode.thread")}"}
+- 'process': {_("config.comment.execution_mode.process")}""",
+            "aha",
+        )
+        cfg.set_comment("lang", _("config.comment.lang"), "aha")
+        cfg.set_comment("console_level", _("config.comment.log.console.level"), "log")
+        cfg.set_comment("file_level", _("config.comment.log.file.level"), "log")
+        cfg.set_comment("max_files", _("config.comment.log.file.max_files"), "log")
+        cfg.set_comment("max_size", _("config.comment.log.file.max_size"), "log")
+
         cfg.register("super", (User("QQ", "114514"),), "Super user ID.", module="aha")
         cfg.register("global_msg_prefix", "~", _("config.comment.global_msg_prefix"), True, "aha")
         database_def = CommentedMap(

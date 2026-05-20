@@ -163,9 +163,9 @@ class ThreadSafeAsyncMeta(type):
             task_flag.set(asyncio.create_task(cls._run_asyncgen(result_queue, func, args, kwargs), context=context))
 
     @staticmethod
-    async def _run_asyncgen(result_queue: aiologic.SimpleQueue, func, self, args, kwargs):
+    async def _run_asyncgen(result_queue: aiologic.SimpleQueue, func, args, kwargs):
         try:
-            async for item in func(self, *args, **kwargs):
+            async for item in func(*args, **kwargs):
                 result_queue.put(item)
         except Exception as e:
             e._TS__ = True
@@ -447,7 +447,8 @@ class AsyncTee[T]:
                                 del tee.buffer[:min_idx]
                                 for k in tee.consumer_indices:
                                     tee.consumer_indices[k] -= min_idx
-                                tee.not_full.notify()
+                                async with tee.not_full:
+                                    tee.not_full.notify()
                         return item
 
                     # 数据源已结束且读完

@@ -122,7 +122,7 @@ class PrivateAPI(Utils, BasePrivateAPI):
         )["message_id"]
 
     async def send_private_forward_msg(self, call_id, user_id, forward: Forward):
-        (d := await self.forward2dict(forward))["user_id"] = user_id
+        (d := await self.serialize_forward(forward))["user_id"] = user_id
         return (await self._call_api(call_id, "send_private_forward_msg", d))["message_id"]
 
     async def send_private_forward_msg_by_id(self: NapCat, call_id, user_id, messages):

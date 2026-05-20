@@ -8,6 +8,7 @@ cachetools >= 7
 colorama >= 0.4
 httpx
 # git+https://github.com/scoder/lxml.git@ft_python
+mistune >= 3
 ssrjson
 pydantic > 2
 ruamel.yaml

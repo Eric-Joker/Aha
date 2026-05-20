@@ -43,7 +43,7 @@ def check_single_true(raise_exc=True, *args, **kwargs):
         raise_exc: 如果为True，则在条件不满足时抛出异常；否则返回False。
     """
     all_values = args + tuple(kwargs.values())
-    if len(v for v in all_values if v) == 1:
+    if sum(bool(v) for v in all_values) == 1:
         return True
 
     if raise_exc:
@@ -81,7 +81,7 @@ def commented2basic(obj):
 def make_exc_picklable(exc: BaseException, logger: Logger = None):
     if is_pickleable(exc):
         return exc
-    
+
     exc_type = exc.__class__
     try:
         new_exc = exc_type(*exc.args)
@@ -110,7 +110,6 @@ def is_pickleable(obj):
         return True
     except pickle.PickleError, TypeError, AttributeError:
         return False
-
 
 
 # region stream dumps json
@@ -322,8 +321,8 @@ class AsyncBase64Encoder:
     def close(self):
         self._running = False
         self._producer_task.cancel()
-        
-        
+
+
 def slots_extend(slots, *items):
     if slots.__class__ is str:
         return (slots, *items)
@@ -336,7 +335,7 @@ def slots_extend(slots, *items):
     else:
         (slots := [s for s in slots if s not in items]).extend(items)
         return slots
-        
+
 
 class PerProcessSingletonMeta(type):
     """进程内单例元类"""
@@ -399,7 +398,7 @@ if os.name == "nt":
     _winapi.CreateProcess = CreateProcess
 
     _original_create_subprocess_shell = asyncio.subprocess.create_subprocess_shell
-    SET_PATTERN = re.compile(r'(?:^|\s+)set\s+(?:/.\s+)*(("?).+?)=.+?(?:("?)|&|\||\)|>|<|$)', re.IGNORECASE)
+    SET_PATTERN = re.compile(r'(?:^|\s+)set\s+(?:/.\s+)*(("?)[^=]+)=.+?(?:("?)|&|\||\)|>|<|$)', re.IGNORECASE)
 
     @wraps(asyncio.subprocess.create_subprocess_shell)
     async def create_subprocess_shell(cmd: str, *args, **kwargs):

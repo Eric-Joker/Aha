@@ -185,12 +185,14 @@ class Utils(BaseAPI):
         del data["message_format"]
         if data["sub_type"] == "group":
             data["sub_type"] == "temporary"
+        if data["message"] and data["message"][0]["type"] == "markdown":
+            del data["message"][1:]
         data["message"] = MsgSeq(
             [await self.build_msg_seg(item, data["user_id"], data.get("group_id")) for item in data["message"]]
         )
         return data
 
-    async def _string_msg_event_processor(self, data: dict[str, str | Any]):
+    async def _string_msg_event_processor(self, data: dict):
         del data["raw_message"]
         del data["message_seq"]
         del data["real_id"]
@@ -198,15 +200,12 @@ class Utils(BaseAPI):
         del data["message_format"]
         if data["sub_type"] == "group":
             data["sub_type"] == "temporary"
+        if isinstance(data["message"], str):
+            data["message"] = aha_code2dict_list(data["message"], CQ_CODE_PATTERN)
+        if data["message"] and data["message"][0]["type"] == "markdown":
+            del data["message"][1:]
         data["message"] = MsgSeq(
-            [
-                await self.build_msg_seg(item, data["user_id"], data.get("group_id"))
-                for item in (
-                    aha_code2dict_list(data["message"], CQ_CODE_PATTERN)
-                    if isinstance(data["message"], str)
-                    else data["message"]
-                )
-            ]
+            [await self.build_msg_seg(item, data["user_id"], data.get("group_id")) for item in data["message"]]
         )
         return data
 
@@ -216,11 +215,6 @@ class Utils(BaseAPI):
         data["file"] = data.pop("url", data["file"])
         (obj := type_.model_validate(data)).bot_id = self.bot_id
         return obj
-
-    async def parse_forward(self: NapCat, seg_data: dict[str, Any]):
-        if "content" not in seg_data:
-            with suppress(APIException):
-                seg_data["content"] = await self.get_forward_msg(self.gen_id(), seg_data["id"], True)
 
     async def build_msg_seg(self: NapCat, item: dict[str, Any | dict], uid=None, gid=None):
         """处理为消息段对象"""
@@ -272,12 +266,11 @@ class Utils(BaseAPI):
                 elif bizsrc := obj.data.get("app"):
                     match bizsrc:
                         case "com.tencent.multimsg":
-                            with suppress(APIException):
-                                return await self.get_forward_msg(self.gen_id(), obj.data["meta"]["detail"]["resid"])
+                            return await self.get_forward_msg(self.gen_id(), obj.data["meta"]["detail"]["resid"])
                 return obj
             case "forward":
                 if "content" not in (data := item["data"]):
-                    await self.parse_forward(data)
+                    data["content"] = await self.get_forward_msg(self.gen_id(), data["id"], True)
                 obj = await self.content2forward(**data)
                 obj.bot_id = self.bot_id
                 return obj
@@ -422,14 +415,14 @@ class Utils(BaseAPI):
             return ""
         return "[聊天记录]" if isinstance(msg, Forward) else "该消息不支持预览"
 
-    async def forward2dict(self: NapCat, forward: Forward, _is_root=True):
+    async def serialize_forward(self: NapCat, forward: Forward, _is_root=True):
         messages = []
         nicknames = []
         for node in forward.content:
             nicknames.append(node.nickname)
             if node.content:
                 if isinstance(sub_forward := node.content[0], Forward):
-                    msg_data = await self.forward2dict(sub_forward, False)
+                    msg_data = await self.serialize_forward(sub_forward, False)
                     msg_data["user_id"] = node.user_id
                     msg_data["nickname"] = node.nickname
                     messages.append({"type": "node", "data": msg_data})
@@ -473,17 +466,16 @@ class Utils(BaseAPI):
                 return "该消息不支持预览"
 
     @classmethod
-    def raw2forward_data(cls, content: list[dict], id=None):
-        if id:
-            return {
+    def raw2forward_data(cls, content: list[dict] | None, id):
+        return (
+            {"id": id, "content": None, "message_type": None}
+            if content is None
+            else {
                 "id": id,
                 "content": [cls.event2node_raw(e) for e in content],
-                "message_type": "group" if content[0].get("group_id") else "private",
+                "message_type": ("group" if content[0].get("group_id") else "private"),
             }
-        return {
-            "content": [cls.event2node_raw(e) for e in content],
-            "message_type": "group" if content[0].get("group_id") else "private",
-        }
+        )
 
     @classmethod
     def event2node_raw(cls, data: dict[str, list[dict[str, dict]]]):

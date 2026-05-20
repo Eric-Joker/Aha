@@ -13,7 +13,8 @@ uvicorn
 httpx[http2,socks,zstd]
 # httpx[http2,socks,zstd,brotli]
 httpx-sse
-# lxml
+# git+https://github.com/scoder/lxml.git@ft_python
+mistune >= 3
 ssrjson
 playwright >= 1
 pydantic > 2

@@ -1169,6 +1169,10 @@ modules.example:
 
 获取配置项的值，如果不存在则返回 `default`。
 
+#### `cfg.set_comment(key, comment)`
+
+设置键的注释。须确保键存在。
+
 #### `cfg.get_msg_prefix()`
 
 获取 `msg_prefix` 配置项的值，如果不存在则返回 `aha` 配置项的 `global_msg_prefix` 配置项的值。
@@ -1207,10 +1211,12 @@ modules.example:
 ```
 [Aha:小写消息段类型,属性=值,属性=值]
 ```
-将多个 Aha 码与普通字符串拼接在一起就能得到一个字符串形式的消息序列。其中 [Text](../数据结构/消息序列与消息段.md#text) 消息段不使用 Aha 码形式，例如：
+将多个 Aha 码与普通字符串拼接在一起就能得到一个字符串形式的消息序列。其中 [Text](../数据结构/消息序列与消息段.md#text) 与 [Markdown](../数据结构/消息序列与消息段.md#tmarkdown) 消息段不使用 Aha 码形式。如：
 ```
 [Aha:at,user_id=114514]早上好啊
 ```
+
+[Markdown 消息段](../数据结构/消息序列与消息段.md#tmarkdown)会将代码清洗为普通文本，其中图片会转为 [Image 消息段](../数据结构/消息序列与消息段.md#image)的 Aha 码。
 
 属性值为 `None` 时需省略属性值对。
 
@@ -1361,7 +1367,7 @@ async def _(event: Message[At]):
 ```
 
 <details>
-<summary>便捷方法</summary>
+<summary><strong style="font-size: 1.1em;">便捷方法</strong></summary>
 
 #### send()
 
@@ -1444,7 +1450,7 @@ async def _(event: Message[At]):
 | group | [Group](./平台个体.md#group) | 可用于[事件匹配表达式](../模块开发/事件匹配表达式.md)的 `PM.group` 字段。 |
 
 <details>
-<summary>便捷方法</summary>
+<summary><strong style="font-size: 1.1em;">便捷方法</strong></summary>
 
 #### process()
 
@@ -1575,7 +1581,7 @@ async def _(event: Message[At]):
 | user_id | str | `key` 的只读别名。 |
 
 <details>
-<summary>便捷方法</summary>
+<summary><strong style="font-size: 1.1em;">便捷方法</strong></summary>
 
 #### set_result()
 
@@ -1649,11 +1655,11 @@ msg = MsgSeq(segments) # 从可迭代对象创建
 
 - 消息段元类实现了 `__str__` 方法，返回匹配对应 Aha 码的正则表达式字符串，可通过 `Match[属性名]` 获取[**转义**](../模块开发/Aha%20码.md#转义)**后**的属性值字符串。类方法 `prefixed_re_group(prefix)` 生成的正则会为命名捕获组添加前缀。
   ```python
-  pattern = re.compile(str(At))  # \[Aha:at(?:,user_id=(?P<user_id>[\s\S]*?))?(?:,name=(?P<name>[\s\S]*?))?\]
+  pattern = re.compile(str(At))  # \[Aha:at(?:,user_id=(?P<user_id>[^,\]]*))?(?:,name=(?P<name>[^,\]]*))?\]
   match = pattern.match("[Aha:at,user_id=123456,name=小明]")
   match["user_id"]  # "123456"
 
-  re.compile(At.prefixed_re_group("at_"))  # \[Aha:at(?:,user_id=(?P<at_user_id>[\s\S]*?))?(?:,name=(?P<at_name>[\s\S]*?))?\]
+  re.compile(At.prefixed_re_group("at_"))  # \[Aha:at(?:,user_id=(?P<at_user_id>[^,\]]*))?(?:,name=(?P<at_name>[^,\]]*))?\]
   ```
 
 #### Text
@@ -1662,6 +1668,7 @@ msg = MsgSeq(segments) # 从可迭代对象创建
 | 属性 | 类型 | 说明 |
 | --- | --- | --- |
 | text | str | 文本内容。 |
+| content | str | 文本内容。 |
 
 **示例**：`Text(text="你好")`
 
@@ -1798,11 +1805,12 @@ Xml 卡片消息。**暂不支持。**
 | data | lxml.etree._Element | 解析后的 XML。 |
 
 #### Markdown
-Markdown 卡片消息。
+Markdown 卡片消息。是 Text 的子类。
 
 | 属性 | 类型 | 说明 |
 | --- | --- | --- |
-| content | str | Markdown 原文。 |
+| text | str | Markdown 源码。 |
+| content | str | Markdown 源码。 |
 
 #### 合并转发
 
@@ -1820,7 +1828,7 @@ Markdown 卡片消息。
 | message_type | "group" \| "private" | 自动推断，也可手动指定。 |
 
 <details>
-<summary>便捷方法</summary>
+<summary><strong style="font-size: 1.1em;">便捷方法</strong></summary>
 
 **`async get_content()`**：
 
@@ -2431,6 +2439,43 @@ curl -X POST "http://127.0.0.1:6550/test" \
 | image | str \| [Image](./数据结构/消息序列与消息段.md#image) \| [File](./数据结构/消息序列与消息段.md#file) |  |
 
 **返回**: list[dict[str, Any]]
+
+<details>
+<summary><strong style="font-size: 1.1em;">高级 API</strong></summary>
+
+#### build_msg_seg
+
+将 Onebot11 消息段转换为[对象](../数据结构/消息序列与消息段.md)。
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| item | dict[str, Any \| dict] |  |
+
+#### serialize_msg
+
+将消息对象转化为 OneBot11 数据格式。不处理 [Forward](../数据结构/消息序列与消息段.md#forward)。
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| data | Iterable[[MsgSeg](../数据结构/消息序列与消息段.md#msgseg) \| str] \| [MsgSeg](../数据结构/消息序列与消息段.md#msgseg) \| str |  |
+
+#### serialize_forward
+
+将 [Forward](../数据结构/消息序列与消息段.md#forward) 对象转化为 OneBot11 数据格式。
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| forward | [Forward](../数据结构/消息序列与消息段.md#forward) |  |
+
+#### shorter_or_forward
+
+若消息对象过长（大于4501字符或图片数大于20）则转化为 [Forward](../数据结构/消息序列与消息段.md#forward)，否则返回 None。
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| msg | Iterable[[MsgSeg](../数据结构/消息序列与消息段.md#msgseg) \| str] |  |
+
+</details>
 
 ### 独有数据结构
 

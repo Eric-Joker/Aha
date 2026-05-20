@@ -184,6 +184,43 @@
 
 **返回**: list[dict[str, Any]]
 
+<details>
+<summary><strong style="font-size: 1.1em;">高级 API</strong></summary>
+
+### build_msg_seg
+
+将 Onebot11 消息段转换为[对象](../数据结构/消息序列与消息段.md)。
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| item | dict[str, Any \| dict] |  |
+
+### serialize_msg
+
+将消息对象转化为 OneBot11 数据格式。不处理 [Forward](../数据结构/消息序列与消息段.md#forward)。
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| data | Iterable[[MsgSeg](../数据结构/消息序列与消息段.md#msgseg) \| str] \| [MsgSeg](../数据结构/消息序列与消息段.md#msgseg) \| str |  |
+
+### serialize_forward
+
+将 [Forward](../数据结构/消息序列与消息段.md#forward) 对象转化为 OneBot11 数据格式。
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| forward | [Forward](../数据结构/消息序列与消息段.md#forward) |  |
+
+### shorter_or_forward
+
+若消息对象过长（大于4501字符或图片数大于20）则转化为 [Forward](../数据结构/消息序列与消息段.md#forward)，否则返回 None。
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| msg | Iterable[[MsgSeg](../数据结构/消息序列与消息段.md#msgseg) \| str] |  |
+
+</details>
+
 ## 独有数据结构
 
 ### bots.napcat.GroupHonor

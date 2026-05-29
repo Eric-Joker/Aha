@@ -75,7 +75,7 @@ class CacheFileSession:
             await self.db_session.execute(
                 update(CacheFile)
                 .where(CacheFile.file_path == self.path)
-                .values(expires_at=time() + (ttl.seconds if isinstance(ttl, timedelta) else ttl))
+                .values(expires_at=time() + (ttl.total_seconds() if isinstance(ttl, timedelta) else ttl))
             )
             return self.path
 
@@ -166,7 +166,7 @@ class CacheFileSession:
             ttl: 至少有效期。配置中的 `file_cache.cleanup_cron` 触发时只会删除过期的文件。
             content: 文件内容。提供时会写入磁盘并返回路径，不提供时直接返回路径。
         """
-        ttl = ttl.seconds if isinstance(ttl, timedelta) else ttl
+        ttl = ttl.total_seconds() if isinstance(ttl, timedelta) else ttl
 
         # 无需写入
         if content is None:

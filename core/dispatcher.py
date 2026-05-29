@@ -408,16 +408,16 @@ def on_meta(*conditions, exp=None, threadable=True, debug=False, callback=None):
     """
 
     def decorator(func: Callable):
+        nonlocal conditions
         if module := FULL_AHA_MODULE_PATTERN.match(func.__module__):
             module = module[1]
         else:
             module = caller_aha_module()
         current_module.set(module)
         (args := [s for s in get_arg_names(func) if s in _other_args]).sort()
+        conditions = build_cond(conditions, EventCategory.META, exp, debug)
         cond_attach = ExprAttach(module, threadable, binary_expr_exists(conditions, (Apply, GetAttr, Call)))
-        token = _meta_handlers[args := frozenset(args)].add(
-            build_cond(conditions, EventCategory.META, exp, debug), func, cond_attach
-        )
+        token = _meta_handlers[args := frozenset(args)].add(conditions, func, cond_attach)
 
         func_meta = CallbackMeta(args, _meta_handlers[args], conditions, func, token, cond_attach)
         if metas := getattr(func, "aha_meta", None):
@@ -497,19 +497,26 @@ _waiting_event_calls = 0  # all_ready 永远不会再被 clear，所以该变量
 
 def _processer[T](func: T = None) -> T:
     @wraps(func)
-    async def wrapper(event: BaseEvent, *args, __func=ThreadSafeAsyncMeta.decorator(func), **kwargs):
+    async def wrapper(
+        event: BaseEvent,
+        *args,
+        __func=ThreadSafeAsyncMeta.decorator(func) if cfg.execution_mode == "thread" else func,
+        **kwargs,
+    ):
         global _waiting_event_calls
         from .api_service import MAX_WAITING_TASKS, bots
 
-        if bots[event.bot_id].block_event:
-            return
+        if event.bot_id:
+            if not (bot := bots[event.bot_id]) or bot.block_event:
+                return
+            current_lang.set(bot.config.get("lang", None))
+
         if not status.all_ready.is_set():
             if _waiting_event_calls > MAX_WAITING_TASKS:
                 raise MemoryError(_("router.many_wating"))
             _waiting_event_calls += 1
             await status.all_ready
 
-        current_lang.set(next((v.get("lang") for p in cfg.bots for k, v in p.items() if k == event.adapter), None))
         current_event.set(event)
         return await __func(event, *args, **kwargs)
 

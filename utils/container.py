@@ -42,7 +42,7 @@ def is_prefix(a: Sequence, b: Sequence):
 
 
 def is_suffix(a: Sequence, b: Sequence):
-    return len(a) >= len(b) and a[-len(b) :] == b
+    return not b or len(a) >= len(b) and a[-len(b) :] == b
 
 
 def get_item_by_index[KT, VT](d: dict[KT, VT], index):

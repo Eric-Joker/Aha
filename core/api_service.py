@@ -55,6 +55,7 @@ class BotInstance:
     instance: Process | BaseBot
     platform: str
     block_event: bool
+    config: dict
     if IS_THREAD_MODE:
         threading: Thread = None
     if IS_PROCESS_MODE:
@@ -192,6 +193,7 @@ async def start_bot(bot_cfg: dict, bot_id: int = None, block_event=False):
                     ),
                     cls.platform,
                     block_event,
+                    config,
                     pipe=AsyncConnection(event_parent),
                 )
             meta.instance.start()
@@ -199,13 +201,15 @@ async def start_bot(bot_cfg: dict, bot_id: int = None, block_event=False):
         elif IS_THREAD_MODE:
             async with bots_lock:
                 bots[bot_id] = meta = BotInstance(
-                    obj := (cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event
+                    obj := (cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event, config
                 )
             meta.threading = Thread(target=run_with_uvloop, args=(_start_async_bot(obj, meta.server_ok),), daemon=True)
             meta.threading.start()
         else:
             async with bots_lock:
-                bots[bot_id] = meta = BotInstance((cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event)
+                bots[bot_id] = meta = BotInstance(
+                    (cls := get_bot_class(bot_class))(bot_id, config), cls.platform, block_event, config
+                )
             create_task(_start_async_bot(meta.instance, meta.server_ok))
 
         async with bots_lock:
@@ -241,11 +245,11 @@ async def clean_bot(bot_id):
 
     if cfg.cache_conv:
         async with group_conv_lock:
-            for l in groups[bots[bot_id].platform].values():
+            for l in groups[meta.platform].values():
                 with suppress(ValueError):
                     l.remove(bot_id)
         async with friend_conv_lock:
-            for l in friends[bots[bot_id].platform].values():
+            for l in friends[meta.platform].values():
                 with suppress(ValueError):
                     l.remove(bot_id)
     async with bots_lock:
@@ -400,17 +404,16 @@ async def call_api(method: str, *args, bot: int, **kwargs):
         raise
 
     call_id = token_hex(4)[:7]
-    calls = bots[bot].calls
     try:
         # 等待服务状态
         if not is_close:
             async with meta.call_lock:
                 if IS_PROCESS_MODE:
-                    calls[call_id] = future = get_running_loop().create_future()
+                    meta.calls[call_id] = future = get_running_loop().create_future()
                 else:
-                    calls.add(current_task())
+                    meta.calls.add(current_task())
             if not meta.server_ok.is_set():
-                if len(calls) >= MAX_WAITING_TASKS:
+                if len(meta.calls) >= MAX_WAITING_TASKS:
                     raise MemoryError(_("router.many_wating"))
                 await meta.server_ok
 
@@ -448,10 +451,10 @@ async def call_api(method: str, *args, bot: int, **kwargs):
     finally:
         if IS_PROCESS_MODE:
             async with meta.call_lock:
-                del calls[call_id]
+                del meta.calls[call_id]
         else:
             async with meta.call_lock:
-                calls.discard(current_task())
+                meta.calls.discard(current_task())
 
 
 # endregion

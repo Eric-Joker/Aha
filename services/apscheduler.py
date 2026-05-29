@@ -24,8 +24,11 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from core.config import cfg
 from core.database import db_engine
 from utils.aio import SingletonThreadSafeAsyncMeta
+from utils.misc import SingletonMeta
+
 
 # from wrapt import when_imported
 
@@ -99,7 +102,7 @@ Job.unmarshal = unmarshal
 # endregion
 
 
-class Scheduler(metaclass=SingletonThreadSafeAsyncMeta):
+class Scheduler(metaclass=SingletonThreadSafeAsyncMeta if cfg.execution_mode == "thread" else SingletonMeta):
     """所有方法存在两个版本，一个用于持久任务或其调度器，一个用于程序生命周期内的瞬态任务或其调度器"""
 
     __slots__ = ("persistent_scheduler", "transient_scheduler", "_exit_stack")

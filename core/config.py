@@ -10,7 +10,6 @@ from functools import wraps
 from io import StringIO
 from itertools import islice
 from logging import getLevelNamesMapping, getLogger
-from multiprocessing import current_process
 from pathlib import Path
 from sys import exit, _is_gil_enabled
 from typing import TYPE_CHECKING, Any, Literal, SupportsIndex, overload
@@ -30,9 +29,8 @@ from tenacity import _unset
 from models.core import Group, User
 
 from utils.aha import caller_aha_module  # , AHA_MODULE_PATTERN
-from utils.aio import ThreadSafeMeta
+from utils.aio import SingletonThreadSafeMeta, ThreadSafeMeta
 from utils.container import SetList
-from utils.misc import SingletonMeta
 
 from .bot_register import get_bot_class
 from .i18n import _
@@ -186,17 +184,13 @@ def choose_scalar_style(self: Emitter):
 Emitter.choose_scalar_style = choose_scalar_style
 
 
-class ConfigMeta(ThreadSafeMeta, SingletonMeta):
-    pass
-
-
 class Config[
     TypeObj: type
     | type[Option]
     | tuple[type, type | tuple]
     | tuple[type, list[type | tuple]]
     | tuple[type, dict[Hashable, tuple[type | tuple, type | tuple]]]
-](metaclass=ConfigMeta):
+](metaclass=SingletonThreadSafeMeta):
     BASE_TYPES = (str, int, float, type(None), date)
 
     __slots__ = (
@@ -507,8 +501,6 @@ class Config[
         if isinstance(obj, Sequence):
             type_map = []
             if as_key:
-                # if isinstance(obj, CommentedSeq):
-                #     raise TypeError("Unsupported config key type: CommentedSeq")
                 new_obj = []
             else:
                 new_obj = OptionCommentedSeq()
@@ -617,7 +609,15 @@ class Config[
         return key in self._default_types[module]
 
     @ThreadSafeMeta.version_increment
-    def _register(self, key, default, module, comment=None):
+    def _register(self, key, value, module, comment=None, is_default=False):
+        """
+        Args:
+            key: 经过 `_type2yaml` 处理的。
+            value: 未经过 `_type2yaml` 处理的。
+        """
+        if is_default and not isinstance(value, self.BASE_TYPES) and isinstance(value, (Sequence, Mapping, Set)) and not value:
+            raise ValueError("Container in config default value must have at least one element")
+
         if not (mod_data := self._data.get(module)):
             self._data[module] = mod_data = OptionCommentedMap()
 
@@ -627,7 +627,7 @@ class Config[
         # if len(self._data) > 0 and mod != next(iter(self._data)):
         self._comment_update(self._data, module, "\n")
 
-        result, self._default_types[module][key] = self._type2yaml(default, index=key, parent=mod_data)
+        result, self._default_types[module][key] = self._type2yaml(value, index=key, parent=mod_data)
         return result
 
     @ThreadSafeMeta.version_increment
@@ -676,7 +676,11 @@ class Config[
                     value = self._type2registed(data[key], None, self._default_types[mod][key], key, noneable=noneable)
                 else:
                     value = self._type2registed(
-                        data[key], self._register(key, default, mod, comment), self._default_types[mod][key], key, noneable
+                        data[key],
+                        self._register(key, default, mod, comment, True),
+                        self._default_types[mod][key],
+                        key,
+                        noneable,
                     )
 
         if value is not _unset:
@@ -687,7 +691,7 @@ class Config[
             raise KeyError(key)
 
         # self._check_permission(module, caller)
-        self._set_value(key, self._register(key, default, storage_module, comment), storage_module)
+        self._set_value(key, self._register(key, default, storage_module, comment, True), storage_module)
         return default
 
     # endregion
@@ -982,71 +986,69 @@ taskkill /F /PID %TARGET_PID% 2>nul"""
     # endregion
 
 
-if current_process().name == "MainProcess":
-    cfg = Config()
+cfg = Config()
 
-    cfg.bots
-    cfg.register(
+cfg.bots
+cfg.register(
+    "execution_mode",
+    Option(("async", "process") if _is_gil_enabled() else ("async", "thread", "process"), "async"),
+    module="aha",
+)
+cfg.register(
+    "lang",
+    os.environ.get(
+        "LANG", locale.windows_locale[windll.kernel32.GetUserDefaultLCID()] if windll else locale.getlocale()[0]
+    ).split(".")[0],
+    module="aha",
+)
+cfg.register("console_level", Option(getLevelNamesMapping(), "INFO"), module="log")
+cfg.register("file_level", Option(getLevelNamesMapping(), "AHA_DEBUG"), module="log")
+cfg.register("max_files", 5, module="log")
+cfg.register("max_size", "16MiB", module="log")
+
+
+def init_base_cfgs():
+    cfg.set_comment(
         "execution_mode",
-        Option(("async", "process") if _is_gil_enabled() else ("async", "thread", "process"), "async"),
-        module="aha",
-    )
-    cfg.register(
-        "lang",
-        os.environ.get(
-            "LANG", locale.windows_locale[windll.kernel32.GetUserDefaultLCID()] if windll else locale.getlocale()[0]
-        ).split(".")[0],
-        module="aha",
-    )
-    cfg.register("console_level", Option(getLevelNamesMapping(), "INFO"), module="log")
-    cfg.register("file_level", Option(getLevelNamesMapping(), "AHA_DEBUG"), module="log")
-    cfg.register("max_files", 5, module="log")
-    cfg.register("max_size", "16MiB", module="log")
-
-    def init_base_cfgs():
-        cfg.set_comment(
-            "execution_mode",
-            f"""{_("config.comment.execution_mode.title")}
+        f"""{_("config.comment.execution_mode.title")}
 - 'async': {_("config.comment.execution_mode.async")}{"" if _is_gil_enabled() else f"\n- 'thread': {_("config.comment.execution_mode.thread")}"}
 - 'process': {_("config.comment.execution_mode.process")}""",
-            "aha",
-        )
-        cfg.set_comment("lang", _("config.comment.lang"), "aha")
-        cfg.set_comment("console_level", _("config.comment.log.console.level"), "log")
-        cfg.set_comment("file_level", _("config.comment.log.file.level"), "log")
-        cfg.set_comment("max_files", _("config.comment.log.file.max_files"), "log")
-        cfg.set_comment("max_size", _("config.comment.log.file.max_size"), "log")
+        "aha",
+    )
+    cfg.set_comment("lang", _("config.comment.lang"), "aha")
+    cfg.set_comment("console_level", _("config.comment.log.console.level"), "log")
+    cfg.set_comment("file_level", _("config.comment.log.file.level"), "log")
+    cfg.set_comment("max_files", _("config.comment.log.file.max_files"), "log")
+    cfg.set_comment("max_size", _("config.comment.log.file.max_size"), "log")
 
-        cfg.register("super", (User("QQ", "114514"),), "Super user ID.", module="aha")
-        cfg.register("global_msg_prefix", "~", _("config.comment.global_msg_prefix"), True, "aha")
-        database_def = CommentedMap(
-            {"uri": "sqlite+aiosqlite:///data.db", "green": "sqlite:///data.db", "backup_dir": os.path.abspath("db_backup")}
-        )
-        database_def.yaml_set_comment_before_after_key("uri", _("config.comment.database"), 4)
-        database_def.yaml_set_comment_before_after_key("green", _("config.comment.green_db"), 4)
-        database_def.yaml_set_comment_before_after_key("backup_dir", _("config.comment.db_backup"), 4)
-        cfg.register("database", database_def, module="aha")
-        cfg.register("cache_conv", False, _("config.comment.cache_conv"), module="aha")
-        cfg.register(
-            "memory_level", Option(("low", "medium", "high"), "medium"), _("config.comment.memory_level"), module="aha"
-        )
-        cfg.register("base64_buffer", 1919810, _("config.comment.base64_buffer"), module="aha")
-        cfg.register("bot_prefs", 1, _("config.comment.bot_prefs"), module="aha")
-        cfg.register("file_msg_ttl", 3600, _("config.comment.file_msg_ttl"), module="cache")
-        cfg.register("event", {"size": "16MiB", "ttl": 86400}, _("config.comment.event_cache"), module="cache")
-        cfg.point_feat
-        cfg.register(
-            "default_group_list_mode",
-            Option(("whitelist", "blacklist")),
-            _("config.comment.default_group_list_mode"),
-            module="aha",
-        )
-        cfg.register("default_group_list", frozenset((Group("NapCat", "1919810"),)), module="aha")
-        cfg.register(
-            "default_user_list_mode",
-            Option(("whitelist", "blacklist")),
-            _("config.comment.default_user_list_mode"),
-            module="aha",
-        )
-        cfg.register("default_user_list", frozenset(), module="aha")
-        cfg.register("debug", False, _("config.comment.debug"), module="aha")
+    cfg.register("super", (User("QQ", "114514"),), "Super user ID.", module="aha")
+    cfg.register("global_msg_prefix", "~", _("config.comment.global_msg_prefix"), True, "aha")
+    database_def = CommentedMap(
+        {"uri": "sqlite+aiosqlite:///data.db", "green": "sqlite:///data.db", "backup_dir": os.path.abspath("db_backup")}
+    )
+    database_def.yaml_set_comment_before_after_key("uri", _("config.comment.database"), 4)
+    database_def.yaml_set_comment_before_after_key("green", _("config.comment.green_db"), 4)
+    database_def.yaml_set_comment_before_after_key("backup_dir", _("config.comment.db_backup"), 4)
+    cfg.register("database", database_def, module="aha")
+    cfg.register("cache_conv", False, _("config.comment.cache_conv"), module="aha")
+    cfg.register("memory_level", Option(("low", "medium", "high"), "medium"), _("config.comment.memory_level"), module="aha")
+    cfg.register("base64_buffer", 1919810, _("config.comment.base64_buffer"), module="aha")
+    cfg.register("bot_prefs", 1, _("config.comment.bot_prefs"), module="aha")
+    cfg.register("file_msg_ttl", 3600, _("config.comment.file_msg_ttl"), module="cache")
+    cfg.register("event", {"size": "16MiB", "ttl": 86400}, _("config.comment.event_cache"), module="cache")
+    cfg.point_feat
+    cfg.register(
+        "default_group_list_mode",
+        Option(("whitelist", "blacklist")),
+        _("config.comment.default_group_list_mode"),
+        module="aha",
+    )
+    cfg.register("default_group_list", frozenset((Group("NapCat", "1919810"),)), module="aha")
+    cfg.register(
+        "default_user_list_mode",
+        Option(("whitelist", "blacklist")),
+        _("config.comment.default_user_list_mode"),
+        module="aha",
+    )
+    cfg.register("default_user_list", frozenset((User("NapCat", "114514"),)), module="aha")
+    cfg.register("debug", False, _("config.comment.debug"), module="aha")

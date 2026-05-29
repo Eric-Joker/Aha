@@ -7,6 +7,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import partial
 from logging import getLogger
+from pprint import pprint
 from time import localtime, strftime, time
 from types import CoroutineType, GenericAlias, UnionType
 from typing import TYPE_CHECKING, Any, Hashable, NoReturn, TypedDict, Unpack, _Final, _UnionGenericAlias
@@ -352,15 +353,8 @@ class Expr[Result]:
     def __rsub__(self, *args):
         return GetAttr(self, "__rsub__")(*args)
 
-    def __iadd__(self, *args):
-        return GetAttr(self, "__iadd__")(*args)
 
-    def __isub__(self, *args):
-        return GetAttr(self, "__isub__")(*args)
-
-    # endregion
-
-
+# endregion
 if DEBUG and not TYPE_CHECKING:
 
     class Expr[Result](Expr[Result]):
@@ -527,24 +521,35 @@ class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
         return f"{self.__class__.__name__}({self.left!r}, {self.right!r}, PRI={self.priority})"
 
     async def evaluate(self, event) -> Result:
+        if DEBUG:
+            if (debug := _current_debug.get()) is None:
+                _current_debug.set(debug := defaultdict(dict))
+            debug = debug[self]
+
         # 覆盖
         if self.left.__class__ is FieldClause and (result := self.left.field.overrides) and (result := result.get(self.right)):
-            return result if self.negate is None else result ^ self.negate
+            if DEBUG:
+                debug["right"] = self.right
+
         # 缓存
-        if self._cache_config:
+        elif self._cache_config:
             result, contextvars = await self._cached_evaluate(
                 left=self.left,
                 right=self.right,
                 event=event,
                 cache_key=lambda *_, **__: self._cache_config.key_func(self.__class__, self.right, event),
-                no_cache=self._cache_config.skip_cache and self._cache_config.skip_cache(self.__class__, self.right, event),
+                cache_read=not self._cache_config.skip_cache
+                or not self._cache_config.skip_cache(self.__class__, self.right, event),
             )
             for obj, value in contextvars.items():
                 obj.set(value)
-            return result if self.negate is None else result ^ self.negate
 
-        result = (await self._evaluate_wrapper(left=self.left, right=self.right, event=event))[0]
-        return result if self.negate is None else result ^ self.negate
+        else:
+            result = (await self._evaluate_wrapper(left=self.left, right=self.right, event=event))[0]
+
+        if DEBUG:
+            debug["result"] = result = result if self.negate is None else result ^ self.negate
+        return result
 
     async def _evaluate_wrapper(self, *, left, right, event) -> tuple[Any, dict[ContextVar, Any]]:
         from . import dispatcher
@@ -556,6 +561,11 @@ class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
             return True, {}
 
         result = await self._evaluate_logic()
+
+        if DEBUG:
+            (debug := _current_debug.get()[self])["left"] = self._left_val
+            debug["right"] = self._right_val
+
         self._left_val = self._right_val = None
         return result, (
             {(obj := getattr(dispatcher, v)): obj.get() for v in self._cache_config.contextvars} if self._cache_config else {}
@@ -564,60 +574,6 @@ class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
     @abstractmethod
     async def _evaluate_logic(self):
         raise NotImplementedError
-
-
-if DEBUG and not TYPE_CHECKING:
-
-    class BinaryExpr[Left, Right, Result](BinaryExpr[Left, Right, Result]):
-        async def evaluate(self, event) -> Result:
-            if (debug := _current_debug.get()) is None:
-                _current_debug.set(debug := defaultdict(dict))
-            debug = debug[self]
-
-            if (
-                self.left.__class__ is FieldClause
-                and (result := self.left.field.overrides)
-                and (result := result.get(self.right))
-            ):
-                debug["right"] = self.right
-
-            elif self._cache_config:
-                result, contextvars = await self._cached_evaluate(
-                    left=self.left,
-                    right=self.right,
-                    event=event,
-                    cache_key=lambda *_, **__: self._cache_config.key_func(self.__class__.__name__, self.right, event),
-                    no_cache=self._cache_config.skip_cache and self._cache_config.skip_cache(self.__class__, self.right, event),
-                )
-                for obj, value in contextvars.items():
-                    obj.set(value)
-
-            else:
-                result = (await self._evaluate_wrapper(left=self.left, right=self.right, event=event))[0]
-
-            debug["result"] = result = result if self.negate is None else result ^ self.negate
-            return result
-
-        async def _evaluate_wrapper(self, *, left, right, event) -> tuple[Any, dict[ContextVar, Any]]:
-            from . import dispatcher
-
-            self._left_val: Left = await left.evaluate(event) if isinstance(left, Expr) else left
-            self._right_val: Right = await right.evaluate(event) if isinstance(right, Expr) else right
-            if self._left_val.__class__ is AlwaysTrue or self._right_val.__class__ is AlwaysTrue:
-                self._left_val = self._right_val = None
-                return True, {}
-
-            result = await self._evaluate_logic()
-
-            (debug := _current_debug.get()[self])["left"] = self._left_val
-            debug["right"] = self._right_val
-
-            self._left_val = self._right_val = None
-            return result, (
-                {(obj := getattr(dispatcher, v)): obj.get() for v in self._cache_config.contextvars}
-                if self._cache_config
-                else {}
-            )
 
 
 class BoolExpr(Expr[bool]):
@@ -884,9 +840,19 @@ class ValidateBy[Value](BinaryExpr[Value, TypeAdapter, Value | None]):
             return None
 
 
-class Apply[Value, Result](BinaryExpr[Value, Callable[[Value], Result], Result]):
+class PureApply[Value, Result](BinaryExpr[Value, Callable[[Value], Result], Result]):
     async def _evaluate_logic(self):
         return self._right_val(self._left_val)
+
+
+class Apply(PureApply):
+    __pure_funcs = {abs, aiter, ascii, bin, callable, chr, dir, format, hash, hex, id, iter, len, oct, ord, repr, round, vars}
+    __pure_cls = (int, float, complex, str, type, range, slice, memoryview, super, reversed)
+
+    def __new__(cls, left, right):
+        if right in cls.__pure_funcs or isinstance(right, type) and issubclass(right, cls.__pure_cls):
+            return PureApply(left, right)
+        return object.__new__(cls)
 
 
 class GetAttr[Obj](BinaryExpr[Obj, str, Any]):
@@ -897,8 +863,8 @@ class GetAttr[Obj](BinaryExpr[Obj, str, Any]):
         return getattr(self._left_val, self._right_val)
 
 
-class Call(BinaryExpr[Callable, tuple[tuple, dict], Any]):
-    def __init__(self, func: Callable, args, kwargs):
+class PureCall(BinaryExpr[Callable, tuple[tuple, dict], Any]):
+    def __init__(self, func: Callable | Expr, args, kwargs):
         super().__init__(func, None)
         self.right = (args, kwargs)
 
@@ -909,6 +875,37 @@ class Call(BinaryExpr[Callable, tuple[tuple, dict], Any]):
 
     def _evaluate_logic(self):
         return async_run_func(self._left_val, *self._right_val[0], **self._right_val[1])
+
+
+class Call(PureCall):
+    __pure_methods = {
+        "__lt__",
+        "__le__",
+        "__gt__",
+        "__ge__",
+        "__getitem__",
+        "__add__",
+        "__sub__",
+        "__mul__",
+        "__matmul__",
+        "__truediv__",
+        "__floordiv__",
+        "__mod__",
+        "__pow__",
+        "__divmod__",
+        "__radd__",
+        "__rsub__",
+    }
+
+    def __new__(cls, func: Callable | Expr, args, kwargs):
+        if (
+            func.__class__ is GetAttr
+            and func.right in cls.__pure_methods
+            or callable(func)
+            and func.__name__ in cls.__pure_methods
+        ):
+            return PureCall(func, args, kwargs)
+        return object.__new__(cls)
 
 
 # endregion
@@ -1224,21 +1221,6 @@ def _wrap_conditions(conditions, event_type: EventCategory):
             expr.left, expr.right = _adjust_binary_field(expr.left, expr.right)
             expr.left = recursion(expr.left)
 
-            # 将形似 PM.message == Or("a", "b") 转化为 Or(PM.message == "a", PM.message == "b")
-            if isinstance(expr.right, BoolExpr):
-                conds = []
-                for r in expr.right.clauses:
-                    if expr.left.field.binary_semantics:
-                        operand = expr.left.field.binary_semantics(expr.__class__, r)
-                    else:
-                        operand = expr.__class__
-                    if converter := BinaryExprMeta.convert_rhs.get(expr.__class__):
-                        r = converter(r)
-                    if expr.left.field.rhs_converter:
-                        r = expr.left.field.rhs_converter(r, operand, event_type)
-                    conds.append(recursion(operand(expr.left, r)))
-                return expr.right.__class__(*conds)
-
             if expr.left.__class__ is FieldClause:
                 if expr.left.field.binary_semantics:
                     operand = expr.left.field.binary_semantics(expr.__class__, expr.right)
@@ -1521,7 +1503,7 @@ def modify_expr(expr: Expr, *overrides: BinaryExpr):
         elif isinstance(expr, Not):
             if (result := recursive(expr.clause, left, right))[1]:
                 return None if (result := result[0]) is None else Not(result), True
-        elif isinstance(expr, BinaryExpr) and expr.left is left and expr.right != right:
+        elif isinstance(expr, BinaryExpr) and expr.left is left and not isinstance(expr.right, Expr) and expr.right != right:
             return None if right is None else expr.__class__(expr.left, right), True
         return expr, False
 
@@ -1591,46 +1573,28 @@ def redirect_extractors():
 
 
 # endregion
-if DEBUG:
-    from pprint import pprint
-
-    async def evaluate(event: BaseEvent, expr: Expr | BoolExpr, token: int = None, pool: ExprPool = None) -> bool | None:
-        """评估表达式入口"""
-        if expr._exp and pool and expr._exp <= time():
-            pool.remove_key(expr)
-            return None
-        try:
-            result = await expr.evaluate(event)
+async def evaluate(event, expr: Expr | BoolExpr, token=None, pool: ExprPool = None) -> bool | None:
+    """评估表达式入口"""
+    if expr._exp and pool and expr._exp <= time():
+        pool.remove_key(expr)
+        return None
+    try:
+        result = await expr.evaluate(event)
+        if DEBUG:
             if expr._debug:
                 pprint(dict(_current_debug.get()))
             _current_debug.set(None)
-            if result:
-                if pool:
-                    if token and token not in pool.token_map:
-                        result = None
-                    if expr._exp:
-                        pool.remove_key(expr)
-                return result
-        except Exception:
+        if result:
+            if pool:
+                if token and token not in pool.token_map:
+                    result = None
+                if expr._exp:
+                    pool.remove_key(expr)
+            return result
+    except Exception:
+        if DEBUG:
             _logger.exception(_("expr.evaluate.error"))
-        return False
-
-else:
-
-    async def evaluate(event, expr: Expr | BoolExpr, token=None, pool: ExprPool = None) -> bool | None:
-        """评估表达式入口"""
-        if expr._exp and pool and expr._exp <= time():
-            pool.remove_key(expr)
-            return None
-        with suppress(Exception):
-            if result := await expr.evaluate(event):
-                if pool:
-                    if token and token not in pool.token_map:
-                        result = None
-                    if expr._exp:
-                        pool.remove_key(expr)
-                return result
-        return False
+    return False
 
 
 # endregion

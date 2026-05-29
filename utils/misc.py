@@ -71,9 +71,9 @@ def commented2basic(obj):
     from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
     if isinstance(obj, CommentedMap):
-        return dict(obj)
+        return {k: commented2basic(v) for k, v in obj.items()}
     elif isinstance(obj, CommentedSeq):
-        return list(obj)
+        return [commented2basic(item) for item in obj]
     else:
         return obj
 

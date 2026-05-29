@@ -11,6 +11,7 @@ import cachetools
 from aiologic import Lock
 from cachetools import Cache
 from cachetools.keys import hashkey
+from tenacity import _unset
 
 from utils.aio import async_run_func
 from utils.asizeof import asizeof
@@ -169,7 +170,7 @@ if TYPE_CHECKING:
 def async_cached(cache: Cache, key=None, lock=None, ignore=None, func=None):
     """
     被装饰的函数增加了两个 kwargs：
-        no_cache: 调用时不查询缓存。
+        cache_read: 调用时查询缓存，默认为 True。
         cache_key: 调用时临时更换缓存键生成器。
 
     Args:
@@ -183,19 +184,18 @@ def async_cached(cache: Cache, key=None, lock=None, ignore=None, func=None):
     def decorator[T: Callable](func: T) -> T:
         @wraps(func)
         async def wrapper(*args, __func=func, __lock=lock, **kwargs) -> T:
-            no_cache = kwargs.pop("no_cache", False)
+            cache_read = kwargs.pop("cache_read", True)
             cache_key = kwargs.pop("cache_key", None)
 
             async with __lock:
-                if not no_cache:
-                    if cache_key:
-                        cache_key = await async_run_func(cache_key, *args, **kwargs)
-                    elif key:
-                        cache_key = await async_run_func(key, *args, **kwargs)
-                    else:
-                        cache_key = hashkey(*args, **kwargs)
-                    if result := cache.get(cache_key):
-                        return result
+                if cache_key:
+                    cache_key = await async_run_func(cache_key, *args, **kwargs)
+                elif key:
+                    cache_key = await async_run_func(key, *args, **kwargs)
+                else:
+                    cache_key = hashkey(*args, **kwargs)
+                if cache_read and (result := cache.get(cache_key, _unset)) is not _unset:
+                    return result
 
                 result = await __func(*args, **kwargs)
                 if not ignore or not await async_run_func(ignore, result, *args, **kwargs):

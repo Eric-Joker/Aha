@@ -333,6 +333,9 @@ class ThreadSafeMeta(type):
         return cls
 
 
+class SingletonThreadSafeMeta(ThreadSafeMeta, SingletonMeta): ...
+
+
 class AsyncCounter:
     """等待计数器归0。非线程安全。"""
 
@@ -397,6 +400,7 @@ class AsyncTee[T]:
                 self.not_empty.notify_all()
         except Exception as e:
             self.exc = e
+            self.eof = True
             async with self.not_empty:
                 self.not_empty.notify_all()
 
@@ -600,9 +604,7 @@ class AsyncLoopExecutor(Executor):
 
                 # 初始任务标记为异常
                 if initial_work_item:
-                    e._AL__ = True
-                    initial_work_item[1].set(e)
-                    initial_work_item[0].set()
+                    initial_work_item[0].set_exception(e)
                 return
         meta.queue.put(initial_work_item)
 
@@ -658,12 +660,10 @@ class AsyncLoopExecutor(Executor):
     async def _clean_task(global_queue: aiologic.SimpleQueue, metas: list[_Thread], cancel_futures=False):
         """清空队列中所有任务并取消 future。"""
         if cancel_futures:
-            (exc := asyncio.CancelledError())._AL__ = True
             while True:
                 try:
                     item = await global_queue.async_get(blocking=False)
-                    item[1] = exc
-                    item[0].set()
+                    item[0].set_exception(asyncio.CancelledError())
                 except aiologic.QueueEmpty:
                     break
         for meta in metas:
@@ -671,8 +671,7 @@ class AsyncLoopExecutor(Executor):
                 while True:
                     try:
                         item = await meta.queue.async_get(blocking=False)
-                        item[1] = exc
-                        item[0].set()
+                        item[0].set_exception(asyncio.CancelledError())
                     except aiologic.QueueEmpty:
                         break
             meta.queue.put(None)

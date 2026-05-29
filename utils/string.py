@@ -136,7 +136,7 @@ class InlineStr[T](str):
                         if (length := code - start) >= 1024:
                             _AREAS.append((start, code - 1))
                             _A_LEN += length
-                            _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                            _A_PATTERN.append(rf"\U{start:08x}-\U{code - 1:08x}")
                             for i in range(length):
                                 _A_CPS.append((cp := start + i, chr(cp)))
                         start, prev_cat = code, cur_cat
@@ -145,7 +145,7 @@ class InlineStr[T](str):
                     if (length := code - start) >= 1024:
                         _AREAS.append((start, code - 1))
                         _A_LEN += length
-                        _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                        _A_PATTERN.append(rf"\U{start:08x}-\U{code - 1:08x}")
                         for i in range(length):
                             _A_CPS.append((cp := start + i, chr(cp)))
                     start = None
@@ -154,7 +154,7 @@ class InlineStr[T](str):
                 if (length := 0x110000 - start) >= 1024:
                     _AREAS.append((start, 0x10FFFF))
                     _A_LEN += length
-                    _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                    _A_PATTERN.append(rf"\U{start:08x}-\U{0x10FFFF:08x}")
                     for i in range(length):
                         _A_CPS.append((cp := start + i, chr(cp)))
 
@@ -170,9 +170,10 @@ class InlineStr[T](str):
 
             if len(code_points) >= cls._A_LEN * 0.95:
                 raise OverflowError
-            while (cp := (t := choice(cls._A_CPS))[0]) not in code_points:
-                code_points.add(cp)
-                return t[1]
+            while (cp := (t := choice(cls._A_CPS))[0]) in code_points:
+                pass
+            code_points.add(cp)
+            return t[1]
 
     else:
 
@@ -187,7 +188,7 @@ class InlineStr[T](str):
                         if (length := code - start) >= 1024:
                             _AREAS.append((start, code - 1))
                             _A_LEN += length
-                            _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                            _A_PATTERN.append(rf"\U{start:08x}-\U{code - 1:08x}")
                             _A_CUM.append(_A_LEN)
                             _A_STARTS.append(start)
                         start, prev_cat = code, cur_cat
@@ -196,7 +197,7 @@ class InlineStr[T](str):
                     if (length := code - start) >= 1024:
                         _AREAS.append((start, code - 1))
                         _A_LEN += length
-                        _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                        _A_PATTERN.append(rf"\U{start:08x}-\U{code - 1:08x}")
                         _A_CUM.append(_A_LEN)
                         _A_STARTS.append(start)
                     start = None
@@ -205,7 +206,7 @@ class InlineStr[T](str):
                 if (length := 0x110000 - start) >= 1024:
                     _AREAS.append((start, 0x10FFFF))
                     _A_LEN += length
-                    _A_PATTERN.append(rf"\U{start:08x}-\U{start:08x}")
+                    _A_PATTERN.append(rf"\U{start:08x}-\U{0x10FFFF:08x}")
                     _A_CUM.append(_A_LEN)
                     _A_STARTS.append(start)
             return _AREAS, _A_LEN, _A_PATTERN, _A_CUM, _A_STARTS
@@ -226,9 +227,10 @@ class InlineStr[T](str):
             # 已有已使用集合，需避免重复
             if len(code_points) >= cls._A_LEN * 0.95:
                 raise OverflowError
-            while (cp := cls._random_cp()) not in code_points:
-                code_points.add(cp)
-                return chr(cp)
+            while (cp := cls._random_cp()) in code_points:
+                pass
+            code_points.add(cp)
+            return chr(cp)
 
     _A_PATTERN = re.compile("[" + "".join(_A_PATTERN) + "]")
 
@@ -247,7 +249,7 @@ class InlineStr[T](str):
             return set(arr[mask])
 
     @classmethod
-    def from_iterable[T](cls, obj: Iterable[T], mapping: dict = None) -> Self[T]:
+    def from_iterable[T](cls, iterable: Iterable[T], mapping: dict = None) -> Self[T]:
         """
         Args:
             mapping: 将映射写入字典，键为字符串，值为被内联的对象。
@@ -260,7 +262,10 @@ class InlineStr[T](str):
         if (current_set := cls.current_cp.get()) is None:
             cls.current_cp.set(current_set := set())
 
-        for seg in obj:
+        if is_iterator := isinstance(iterable, Iterator):
+            iter_bak = []
+
+        for seg in iterable:
             if isinstance(seg, Text):
                 if current_set.isdisjoint(extracted := cls._extract_A_ord(seg.text)):
                     current_set |= extracted
@@ -271,36 +276,51 @@ class InlineStr[T](str):
                     current_set |= extracted
                 else:
                     raise CodePointConflictError
+            if is_iterator:
+                iter_bak.append(seg)
 
-        if mapping is None:
-            for seg in obj:
-                if isinstance(seg, Text):
-                    result.append(seg.text)
-                    result_len += len(seg.text)
-                elif isinstance(seg, str):
-                    result.append(seg)
-                    result_len += len(seg)
-                else:
-                    current_map.setdefault(char := cls.gen_char(), seg)
-                    inline_indices[result_len] = seg
-                    result.append(char)
-                    result_len += 1
-        else:
-            for seg in obj:
-                if isinstance(seg, Text):
-                    result.append(seg.text)
-                    result_len += len(seg.text)
-                elif isinstance(seg, str):
-                    result.append(seg)
-                    result_len += len(seg)
-                else:
-                    current_map.setdefault(char := cls.gen_char(), seg)
+        for seg in iter_bak if is_iterator else iterable:
+            if isinstance(seg, Text):
+                result.append(seg.text)
+                result_len += len(seg.text)
+            elif isinstance(seg, str):
+                result.append(seg)
+                result_len += len(seg)
+            else:
+                current_map[char := cls.gen_char()] = seg
+                if mapping is not None:
                     mapping[char] = seg
-                    inline_indices[result_len] = seg
-                    result.append(char)
-                    result_len += 1
+                inline_indices[result_len] = seg
+                result.append(char)
+                result_len += 1
+
         (result := cls().join(result)).inline_indices = inline_indices
         return result
+
+    @classmethod
+    def from_obj[T](cls, obj: T, mapping: dict = None) -> Self[T]:
+        """
+        Args:
+            mapping: 将映射写入字典，键为字符串，值为被内联的对象。
+        """
+        if isinstance(obj, Text):
+            obj = obj.text
+        elif not isinstance(obj, str):
+            if (current_map := cls.cism.get()) is None:
+                cls.cism.set(current_map := {})
+            current_map[char := cls.gen_char()] = obj
+            if mapping is not None:
+                mapping[char] = obj
+            (result := cls(char)).inline_indices = {0: obj}
+            return result
+
+        if (current_set := cls.current_cp.get()) is None:
+            cls.current_cp.set(cls._extract_A_ord(obj))
+        elif not current_set.isdisjoint(extracted := cls._extract_A_ord(obj)):
+            raise CodePointConflictError
+        else:
+            current_set |= extracted
+        return cls(obj)
 
     def to_list(self, mapping: dict = None) -> list[str | Any]:
         """
@@ -399,7 +419,7 @@ class InlineStr[T](str):
         # """
         if hasattr(self, "inline_indices"):
             if (length := len(self)) >= (width := width.__index__()):
-                new_indices = self.inline_indices
+                new_indices = self.inline_indices.copy()
             else:
                 count = (marg := width - length) // 2 + (marg & width & 1)
                 new_indices = {i + count: seg for i, seg in self.inline_indices.items()}
@@ -445,9 +465,13 @@ class InlineStr[T](str):
         @overload
         def ljust(self, width: SupportsIndex, fillchar: str = " ", /) -> Self: ...
     def ljust(self, width, fillchar=" ", /):
+        if width <= len(self):
+            return self
+
         if hasattr(self, "inline_indices"):
-            (result := self.__class__(super().ljust(width.__index__(), fillchar))).inline_indices = self.inline_indices
+            (result := self.__class__(super().ljust(width.__index__(), fillchar))).inline_indices = self.inline_indices.copy()
             return result
+
         return self.__class__(super().ljust(width, fillchar))
 
     if TYPE_CHECKING:
@@ -513,6 +537,9 @@ class InlineStr[T](str):
         @overload
         def rjust(self, width: SupportsIndex, fillchar: str = " ", /) -> Self: ...
     def rjust(self, width, fillchar=" "):
+        if width <= len(self):
+            return self
+
         # """
         if hasattr(self, "inline_indices"):
             count = (width := width.__index__()) - len(self)
@@ -617,6 +644,9 @@ class InlineStr[T](str):
         @overload
         def zfill(self, width: SupportsIndex, /) -> Self: ...
     def zfill(self, width):
+        if width <= len(self):
+            return self
+
         # """
         if hasattr(self, "inline_indices"):
             count = (width := width.__index__()) - len(self)
@@ -633,15 +663,14 @@ class InlineStr[T](str):
         @overload
         def __add__(self, value: str, /) -> Self: ...
     def __add__(self, value):
-        if hasattr(self, "inline_indices"):
-            new_indices: dict = self.inline_indices
-        else:
-            new_indices: dict = value.inline_indices
+        new_indices = new_indices.copy() if (new_indices := getattr(self, "inline_indices", None)) else {}
         if hasattr(value, "inline_indices"):
             count = len(self)
             for i, seg in value.inline_indices.items():
                 new_indices[i + count] = seg
-        (result := self.__class__(super().__add__(value))).inline_indices = new_indices
+        result = self.__class__(super().__add__(value))
+        if new_indices:
+            result.inline_indices = new_indices
         return result
 
     if TYPE_CHECKING:

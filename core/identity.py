@@ -71,7 +71,7 @@ async def user2aha_id(arg1=None, arg2=None, session=None):
         raise ValueError(f"Platform: {platform}, user id: {user_id}")
 
     async with CACHER_LOCK:
-        if result := CACHER.get((User, platform, user_id)):
+        if (result := CACHER.get((User, platform, user_id))) is not None:
             return result
 
     if session is None:
@@ -164,7 +164,7 @@ async def group2aha_id(arg1=None, arg2=None):
         raise ValueError(f"Platform: {platform}, group id: {group_id}")
 
     async with CACHER_LOCK:
-        if result := CACHER.get((Group, platform, group_id)):
+        if (result := CACHER.get((Group, platform, group_id))) is not None:
             return result
 
     async with db_sessionmaker() as session:

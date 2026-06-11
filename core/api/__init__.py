@@ -203,14 +203,12 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
     match strategy:
         case SS.PREFS:
             if not (prefs := cfg.bot_prefs):
-                return choice(await deduplicators[event.platform].services_of(event))
-            async with bots_lock:
-                result = bots.key_at(prefs if prefs < 0 else prefs - 1)
-            if result not in deduplicators[event.platform].cache[event]:
-                result = await deduplicators[event.platform].services_of(event)[index]
+                return choice(deduplicators[event.platform].services_of(event))
+            if (result := bots.key_at(prefs if prefs < 0 else prefs - 1)) not in deduplicators[event.platform].cache[event]:
+                result = deduplicators[event.platform].services_of(event=event)[index]
         case SS.NTH:
             try:
-                lst = await deduplicators[event.platform].services_of(event)
+                lst = deduplicators[event.platform].services_of(event)
             except IndexError:
                 raise RuntimeError(_("router.select_bot.event404"))
             async with bots_lock:
@@ -219,12 +217,12 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
             result = lst[index]
         case SS.UNORDERED_NTH:
             try:
-                return await deduplicators[event.platform].services_of(event)[index]
+                return deduplicators[event.platform].services_of(event)[index]
             except IndexError:
                 raise RuntimeError(_("router.select_bot.event404"))
         case SS.RANDOM:
             try:
-                return choice(await deduplicators[event.platform].services_of(event))
+                return choice(deduplicators[event.platform].services_of(event))
             except IndexError:
                 raise RuntimeError(_("router.select_bot.event404"))
         case SS.PLATFORM:
@@ -245,8 +243,7 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
                     return choice(tuple(filter(None.__ne__, bots)))
                 result = bots.key_at(prefs if prefs < 0 else prefs - 1)
         case SS.NTH_ANY:
-            async with bots_lock:
-                result = bots.key_at(index)
+            result = bots.key_at(index)
         case SS.RANDOM_ANY:
             async with bots_lock:
                 container = tuple(filter(None.__ne__, bots))
@@ -262,8 +259,7 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
                 async with friend_conv_lock:
                     if not (prefs := cfg.bot_prefs):
                         return choice(friends[platform][conv_id])
-                    async with bots_lock:
-                        result = bots.key_at(prefs if prefs < 0 else prefs - 1)
+                    result = bots.key_at(prefs if prefs < 0 else prefs - 1)
                     return result if result in friends[platform][conv_id] else friends[platform][conv_id][index]
             except KeyError as e:
                 raise KeyError(_("router.select_bot.user404") % {"platform": platform, "conv_id": conv_id})
@@ -302,8 +298,7 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
                 async with group_conv_lock:
                     if not (prefs := cfg.bot_prefs):
                         return choice(groups[platform][conv_id])
-                    async with bots_lock:
-                        result = bots.key_at(prefs if prefs < 0 else prefs - 1)
+                    result = bots.key_at(prefs if prefs < 0 else prefs - 1)
                     return result if result in groups[platform][conv_id] else groups[platform][conv_id][index]
             except KeyError as e:
                 raise KeyError(_("router.select_bot.group404") % {"platform": platform, "conv_id": conv_id})
@@ -332,9 +327,8 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
                     raise KeyError(_("router.select_bot.group404") % {"platform": platform, "conv_id": conv_id})
             raise RuntimeError(_("router.select_bot.403"))
 
-    async with bots_lock:
-        if bots[result] is None:
-            raise RuntimeError(_("router.api_closed"))
+    if bots[result] is None:
+        raise RuntimeError(_("router.api_closed"))
     return result
 
 

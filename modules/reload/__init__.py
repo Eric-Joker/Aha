@@ -21,7 +21,7 @@ async def reload_or_restart():
     if cfg.debug:
         from .. import reload_modules
 
-        create_task(reload_modules())
+        create_task(reload_modules(), eager_start=True)
     else:
         core.status.need_reboot = True
         core.status.main_task.cancel()

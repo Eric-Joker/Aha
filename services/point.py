@@ -66,7 +66,8 @@ async def adjust_point(arg1, arg2=None, arg3=None, /, session=None):
             .on_conflict_do_update(index_elements=(Point.user_id,), set_={Point.points: Point.points + delta})
             .returning(Point.points)
         )
-        await session.commit()
+        if should_close_session:
+            await session.commit()
         return result
     finally:
         if should_close_session:

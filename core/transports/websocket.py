@@ -43,12 +43,12 @@ class WebSocketClient(ClientTransport):
         if self._closed:
             return
         self.websocket = await connect(self.uri, **self._connect_args)
-        create_task(self._connect_cb())
+        create_task(self._connect_cb(), eager_start=True)
         return True
 
     _connect.__qualname__ = "WebSocketClient"
     _connect.__module__ = None
-    
+
     async def _listen_impl(self):
         while True:
             try:

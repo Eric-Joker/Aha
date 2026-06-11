@@ -121,9 +121,8 @@ class Deduplicator:
             self.cache[hashed] = bucket  # 更新缓存计数
         return result
 
-    async def services_of(self, event):
-        async with self._lock:
-            return b.services.copy() if (b := self.cache.get(hash(event))) else []
+    def services_of(self, event):
+        return b.services.copy() if (b := self.cache.get(hash(event))) else []
 
 
 # region instance manager
@@ -150,20 +149,20 @@ if cfg.cache_conv:
     # 下两个变量需要拿 bots_lock
     groups: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "q")))
     friends: defaultdict[str, defaultdict[str, SetArray]] = defaultdict(partial(defaultdict, partial(SetArray, "q")))
-    group_conv_lock = Lock()
-    friend_conv_lock = Lock()
+    group_conv_lock = RLock()
+    friend_conv_lock = RLock()
 
     async def _cache_group(bot_id, bot: BotInstance):
-        cacher = groups[bot.platform]
-        if gs := await call_api("get_groups", bot=bot_id):
-            async with group_conv_lock:
+        async with group_conv_lock:
+            cacher = groups[bot.platform]
+            if gs := await call_api("get_groups", bot=bot_id):
                 for g in gs:
                     cacher[g.group_id].append(bot_id)
 
     async def _cache_user(bot_id, bot: BotInstance):
-        cacher = friends[bot.platform]
-        if fs := await call_api("get_friends", bot=bot_id):
-            async with friend_conv_lock:
+        async with friend_conv_lock:
+            cacher = friends[bot.platform]
+            if fs := await call_api("get_friends", bot=bot_id):
                 for u in fs:
                     cacher[u.user_id].append(bot_id)
 
@@ -309,10 +308,11 @@ def process_service_request(service: ServiceType, args, bot_id=None):
                     args=(args.api_method,),
                     kwargs=args.api_kwargs,
                     **args.schedule_kwargs,
-                )
+                ),
+                eager_start=True,
             )
         case ServiceType.RM_SCHEDULE_BY_META:
-            create_task(sched.rm_persist_schedules_by_meta(args))
+            create_task(sched.rm_persist_schedules_by_meta(args), eager_start=True)
 
 
 async def event_route(bot_id, event_type, payload):
@@ -327,11 +327,11 @@ async def event_route(bot_id, event_type, payload):
                     bot.server_ok.clear()
             elif payload.status and not payload.status.online:
                 bot.server_ok.clear()
-            create_task(process_meta(payload))
+            create_task(process_meta(payload), eager_start=True)
         case EventCategory.CHAT:
             if await deduplicators[payload.platform].is_duplicate(payload):
                 return
-            create_task(process_message(payload))
+            create_task(process_message(payload), eager_start=True)
         case EventCategory.NOTICE:
             # 会话列表维护
             if cfg.cache_conv and payload.event_type is NoticeEventType.FRIEND_ADD:
@@ -340,7 +340,7 @@ async def event_route(bot_id, event_type, payload):
 
             if await deduplicators[payload.platform].is_duplicate(payload):
                 return
-            create_task(process_notice(payload))
+            create_task(process_notice(payload), eager_start=True)
         case EventCategory.REQUEST:
             # 会话列表维护
             if cfg.cache_conv and payload.event_type is RequestEventType.GROUP and payload.sub_type is RequestSubType.INVITE:
@@ -348,9 +348,9 @@ async def event_route(bot_id, event_type, payload):
 
             if await deduplicators[payload.platform].is_duplicate(payload):
                 return
-            create_task(process_request(payload))
+            create_task(process_request(payload), eager_start=True)
         case EventCategory.EXTERNAL:
-            create_task(process_external(payload))
+            create_task(process_external(payload), eager_start=True)
         case EventCategory.RESPONSE:
             call_id, result = payload
             if future := bot.calls.get(call_id):
@@ -419,9 +419,8 @@ async def call_api(method: str, *args, bot: int, **kwargs):
 
         # 请求
         if IS_PROCESS_MODE:
-            await meta.pipe.send((call_id, method, args, kwargs))
-            if not is_close:
-                result = await future
+            meta.pipe.send((call_id, method, args, kwargs))
+            result = None if is_close else await future
         else:
             result = await getattr(meta.instance, method)(call_id, *args, **kwargs)
 

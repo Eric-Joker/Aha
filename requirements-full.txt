@@ -8,12 +8,12 @@ cachetools >= 7
 colorama >= 0.4
 cryptography >= 46
 FastAPI
-git+https://github.com/MagicStack/httptools
+httptools
 uvicorn
 httpx[http2,socks,zstd]
 # httpx[http2,socks,zstd,brotli]
 httpx-sse
-# git+https://github.com/scoder/lxml.git@ft_python
+lxml >= 7.0.0a2
 mistune >= 3
 ssrjson
 playwright >= 1
@@ -22,6 +22,6 @@ ruamel.yaml
 # ruamel.yaml[libyaml]
 SQLAlchemy[asyncio, aiosqlite, postgresql-psycopg] >= 2.1.0b1
 tenacity >= 9
-uvloop; sys_platform == 'linux'
+git+https://github.com/samypr100/uvloop@eager; sys_platform == 'linux'
 websockets >= 15
 xxhash >= 3

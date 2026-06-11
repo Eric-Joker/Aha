@@ -41,8 +41,8 @@ def aha_code2dict_list(string, pattern=AHA_CODE_PATTERN) -> list[dict[Literal["t
     # 遍历所有匹配的 Aha 码
     for match in pattern.finditer(string):
         # 处理 Aha 码之前的文本
-        if text_before := string[last_pos : match.start()]:
-            result.append(aha_code2dict_list(text_before, pattern))
+        if text := string[last_pos : match.start()]:
+            result.append(unescape_aha(text))
 
         # 解析 Aha 码参数
         params = {}
@@ -55,8 +55,8 @@ def aha_code2dict_list(string, pattern=AHA_CODE_PATTERN) -> list[dict[Literal["t
         last_pos = match.end()
 
     # 处理最后一个 Aha 码之后的文本
-    if text_after := string[last_pos:]:
-        result.append(aha_code2dict_list(text_after, pattern))
+    if text := string[last_pos:]:
+        result.append(unescape_aha(text))
 
     return result
 
@@ -70,8 +70,8 @@ def parse_aha_code(string):
     # 遍历所有匹配的 Aha 码
     for match in AHA_CODE_PATTERN.finditer(string):
         # 处理 Aha 码之前的文本
-        if text_before := string[last_pos : match.start()]:
-            chain.append(unescape_aha(text_before))
+        if text := string[last_pos : match.start()]:
+            chain.append(unescape_aha(text))
 
         # 解析 Aha 码参数
         params = {}
@@ -84,41 +84,26 @@ def parse_aha_code(string):
         last_pos = match.end()
 
     # 处理最后一个 Aha 码之后的文本
-    if text_after := string[last_pos:]:
-        chain.append(unescape_aha(text_after))
+    if text := string[last_pos:]:
+        chain.append(unescape_aha(text))
 
     return chain
 
 
 # endregion
-# region 从 msg 直接获取属性
-def get_at(msg: Message, index=0):
-    """获取消息中第 `index-1` 个被 @ 的 id
-
-    这是一个没有用途的函数
-    """
-
-    count = 0
-    for i, d in enumerate(msg.message):
-        if i != 0 or isinstance(d, At) and d.user_id != str(msg.self_id):
-            if count == index:
-                return d.user_id
-            count += 1
-    return None
-
-
 async def get_card_by_event(msg: Message):
     """获取群成员名片，不存在时自动选择昵称"""
     return msg.sender.card or msg.sender.nickname
 
 
-# endregion
 async def post_msg_to_supers(msg: str | Sequence[MsgSeg | str] | MsgSeg | None = None):
     from core.api import API, SS, select_bot
     from core.config import cfg
 
     for s in cfg.super:
-        create_task(API.send_private_msg(s.user_id, msg, bot=await select_bot(SS.PLATFORM_NTH, platform=s.platform)))
+        create_task(
+            API.send_private_msg(s.user_id, msg, bot=await select_bot(SS.PLATFORM_NTH, platform=s.platform)), eager_start=True
+        )
 
 
 AHA_MODULE_PATTERN = compile(r"^[^.]*modules\.([^.]+)")

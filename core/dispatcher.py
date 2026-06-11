@@ -529,12 +529,12 @@ if cfg.execution_mode == "thread":
         if threadable:
             await status.async_loop_executor.submit(func, *args)
         else:
-            create_task(func(*args))
+            create_task(func(*args), eager_start=True)
 
 else:
 
     async def _into_thread(func, _, *args):
-        create_task(func(*args))
+        create_task(func(*args), eager_start=True)
 
 
 async def _message_evaluate(event: Message, expr, func, token, attach: ExprAttach, pool, e, m, a, l):
@@ -562,7 +562,7 @@ async def _message_evaluate(event: Message, expr, func, token, attach: ExprAttac
             kwargs["args"] = current_args.get()
         if l:
             kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
-        create_task(func(**kwargs))
+        await func(**kwargs)
 
 
 @_processer
@@ -598,7 +598,7 @@ async def _notice_evaluate(event: Notice, expr, func, token, attach: ExprAttach,
             kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
         if l:
             kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
-        create_task(func(**kwargs))
+        await func(**kwargs)
 
 
 @_processer
@@ -624,7 +624,7 @@ async def _request_evaluate(event: Request, expr, func, token, attach: ExprAttac
             kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
         if l:
             kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
-        create_task(func(**kwargs))
+        await func(**kwargs)
 
 
 @_processer
@@ -650,7 +650,7 @@ async def _meta_evaluate(event: MetaEvent, expr, func, token, attach: ExprAttach
             kwargs["event"] = event if attach.need_isolation else event.model_copy(deep=True)
         if l:
             kwargs["localizer"] = create_translator(attach.aha_module, current_lang.get())
-        create_task(func(**kwargs))
+        await func(**kwargs)
 
 
 @_processer
@@ -678,7 +678,7 @@ async def _external_evaluate(event: External, key, func, attach: ExprAttach, e, 
             kwargs["data"] = deepcopy(event.data)
         if l:
             kwargs["localizer"] = create_translator(attach.aha_module, event.lang or current_lang.get())
-        create_task(func(**kwargs))
+        await func(**kwargs)
 
 
 @_processer

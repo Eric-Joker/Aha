@@ -251,7 +251,10 @@ class BaseGroupAPI(BaseAPI):
 
     async def get_user_by_groups(self, call_id, user_id: str | int) -> GroupMemberInfo:
         """从所有群中查询群成员信息"""
-        tasks = [create_task(self.get_group_members(self.gen_id(), g["group_id"])) for g in (await self.get_groups())]
+        tasks = [
+            create_task(self.get_group_members(self.gen_id(), g["group_id"]), eager_start=True)
+            for g in (await self.get_groups())
+        ]
         for task in as_completed(tasks):
             for member in await task:
                 if member.user_id == user_id:

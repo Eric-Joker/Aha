@@ -187,13 +187,14 @@ def async_cached(cache: Cache, key=None, lock=None, ignore=None, func=None):
             cache_read = kwargs.pop("cache_read", True)
             cache_key = kwargs.pop("cache_key", None)
 
+            if cache_key:
+                cache_key = await async_run_func(cache_key, *args, **kwargs)
+            elif key:
+                cache_key = await async_run_func(key, *args, **kwargs)
+            else:
+                cache_key = hashkey(*args, **kwargs)
+
             async with __lock:
-                if cache_key:
-                    cache_key = await async_run_func(cache_key, *args, **kwargs)
-                elif key:
-                    cache_key = await async_run_func(key, *args, **kwargs)
-                else:
-                    cache_key = hashkey(*args, **kwargs)
                 if cache_read and (result := cache.get(cache_key, _unset)) is not _unset:
                     return result
 

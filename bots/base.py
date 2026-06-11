@@ -1,10 +1,9 @@
 import signal
 import sys
 from abc import abstractmethod
-from asyncio import CancelledError, create_task, get_running_loop, sleep
+from asyncio import CancelledError, create_task, get_running_loop
 from contextlib import suppress
 from logging import getLogger
-from threading import current_thread, main_thread
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from tenacity.stop import stop_base
@@ -96,7 +95,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
     async def start(self):
         if self.is_process_mode:
             await load_locales()
-            self.main_task = create_task(self._handle_requests())
+            self.main_task = create_task(self._handle_requests(), eager_start=True)
         else:
             from core.api_service import event_route
 
@@ -113,7 +112,9 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
             await self.close()
             return False
         self.logger.info(_("api.service.init.success"))
-        create_task(self.transport.listen(self._listen_callback)).add_done_callback(lambda _: create_task(self.close()))
+        create_task(self.transport.listen(self._listen_callback), eager_start=True).add_done_callback(
+            lambda _: create_task(self.close(), eager_start=True)
+        )
 
         with suppress(CancelledError):
             await self.main_task
@@ -124,21 +125,23 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
             data.bot_id, data.platform, data.adapter = self.bot_id, self.platform, self.__class__.__name__
         if self.is_process_mode:
             with suppress(BrokenPipeError, EOFError):
-                await self.pipe.send((category, data))
+                self.pipe.send((category, data))
         else:
             await event_route(self.bot_id, category, data)
 
     async def _handle_requests(self):
         """仅多进程模式"""
         while True:
-            call_id, method, args, kwargs = await self.pipe.recv()
             try:
-                await self.pipe.send((EventCategory.RESPONSE, (call_id, await getattr(self, method)(call_id, *args, **kwargs))))
+                call_id, method, args, kwargs = await self.pipe.recv()
+            except EOFError:
+                break
+            try:
+                self.pipe.send((EventCategory.RESPONSE, (call_id, await getattr(self, method)(call_id, *args, **kwargs))))
             except EOFError:
                 pass
             except Exception as e:
-                create_task(self.pipe.send((EventCategory.RESPONSE, (call_id, make_exc_picklable(e)))))
-            await sleep(0)
+                self.pipe.send((EventCategory.RESPONSE, (call_id, make_exc_picklable(e))))
 
     async def close(self, _=None):  # 参数为 call_id
         if not self._closing:

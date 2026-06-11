@@ -668,17 +668,17 @@ class Config[
 
         # 获取配置
         key, value = self._type2yaml(key, True)[0], _unset
-        for mod in {"aha", storage_module}:
-            if (data := self._data.get(mod)) and key in data:
+        for mod_name, mod_data in (("aha", aha_data := self._data.get("aha")), (storage_module, self._data.get(storage_module))):
+            if mod_data and key in mod_data:
                 if default is _unset:
-                    if not self._is_registered(key, mod):
+                    if not self._is_registered(key, mod_name):
                         raise KeyError(key)
-                    value = self._type2registed(data[key], None, self._default_types[mod][key], key, noneable=noneable)
+                    value = self._type2registed(mod_data[key], None, self._default_types[mod_name][key], key, noneable=noneable)
                 else:
                     value = self._type2registed(
-                        data[key],
-                        self._register(key, default, mod, comment, True),
-                        self._default_types[mod][key],
+                        mod_data[key],
+                        self._register(key, default, mod_name, comment, True),
+                        self._default_types[mod_name][key],
                         key,
                         noneable,
                     )
@@ -691,6 +691,8 @@ class Config[
             raise KeyError(key)
 
         # self._check_permission(module, caller)
+        if aha_data and key in aha_data:
+            raise KeyError(f"Key '{key}' is already registered in 'aha' config.")
         self._set_value(key, self._register(key, default, storage_module, comment, True), storage_module)
         return default
 

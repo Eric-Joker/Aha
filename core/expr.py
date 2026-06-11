@@ -1478,7 +1478,12 @@ def binary_expr_exists(expr: Expr | Any, binary_expr: type[BinaryExpr] | Iterabl
     """检查表达式中是否存在指定二元表达式类型"""
     if isinstance(expr, BoolExpr):
         return any(binary_expr_exists(c, binary_expr) for c in expr.clauses)
-    elif binary_expr.__class__ is type and isinstance(expr, binary_expr) or any(isinstance(expr, x) for x in binary_expr):
+    elif (
+        binary_expr.__class__ is type
+        and isinstance(expr, binary_expr)
+        or isinstance(binary_expr, Iterable)
+        and any(isinstance(expr, x) for x in binary_expr)
+    ):
         return True
     elif isinstance(expr, BinaryExpr):
         return binary_expr_exists(expr.left, binary_expr) or binary_expr_exists(expr.right, binary_expr)

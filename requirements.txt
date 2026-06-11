@@ -7,7 +7,7 @@ attrs >= 25
 cachetools >= 7
 colorama >= 0.4
 httpx
-# git+https://github.com/scoder/lxml.git@ft_python
+lxml >= 7.0.0a2
 mistune >= 3
 ssrjson
 pydantic > 2

@@ -227,7 +227,7 @@ async def cache_file_sessionmaker(file_name=None, file_ext=None, _level=2):
         cache_dir = CACHE_DIR / module
     else:
         cache_dir = CACHE_DIR
-    await CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    await cache_dir.mkdir(parents=True, exist_ok=True)
 
     async with CacheFileSession(cache_dir, file_name, file_ext) as session:
         yield session
@@ -243,4 +243,3 @@ async def cleanup():
                     if await cache_file.file_path.exists():
                         await cache_file.file_path.unlink(True)
                     await session.delete(cache_file)
-            await session.commit()

@@ -43,6 +43,7 @@ async def _shield_commit():
                 await session.commit()
             except Exception:
                 _logger.exception(_("simple_data_store.commit_error") % instance._module)
+                await session.rollback()
 
 
 async def commit_worker():
@@ -51,7 +52,7 @@ async def commit_worker():
             await _commit_event
             _commit_event.clear()
             try:
-                await (task := shield(create_task(_shield_commit())))
+                await (task := shield(create_task(_shield_commit(), eager_start=True)))
             except:
                 await task
                 raise
@@ -64,7 +65,7 @@ async def commit_worker():
 def get_commit_task():
     global _commit_task
     if _commit_task is None or _commit_task.done():
-        _commit_task = create_task(commit_worker())
+        _commit_task = create_task(commit_worker(), eager_start=True)
     return _commit_task
 
 
@@ -137,7 +138,7 @@ class SimpleStore[K: str, V]:
         return self._cache.get(key, default)
 
     def keys(self):
-        return self._cache
+        return self._cache.keys()
 
     def values(self):
         return self._cache.values()
@@ -199,9 +200,6 @@ class SimpleStore[K: str, V]:
             self._trigger_commit()
             return default
         return self._cache[key]
-
-    def __dict__(self):
-        return self._cache.copy()
 
     def _trigger_commit(self):
         if self._has_changes:

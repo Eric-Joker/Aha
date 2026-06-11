@@ -108,7 +108,7 @@ class ThreadSafeAsyncMeta(type):
         if getattr(obj, "_TS__loop", None) is None:
             obj._TS__loop = asyncio.get_running_loop()
             obj._TS__queue = aiologic.SimpleQueue()
-            task = asyncio.create_task(cls._task_handler(obj._TS__queue))
+            task = asyncio.create_task(cls._task_handler(obj._TS__queue), eager_start=True)
             finalize(obj, lambda t: t.cancel(), task)
             return True
 
@@ -160,7 +160,9 @@ class ThreadSafeAsyncMeta(type):
     async def _task_handler(cls, queue: aiologic.SimpleQueue):
         while True:
             result_queue, task_flag, func, args, kwargs, context = await queue.async_get()
-            task_flag.set(asyncio.create_task(cls._run_asyncgen(result_queue, func, args, kwargs), context=context))
+            task_flag.set(
+                asyncio.create_task(cls._run_asyncgen(result_queue, func, args, kwargs), context=context, eager_start=True)
+            )
 
     @staticmethod
     async def _run_asyncgen(result_queue: aiologic.SimpleQueue, func, args, kwargs):
@@ -546,7 +548,9 @@ class AsyncLoopExecutor(Executor):
         self._threads: list[AsyncLoopExecutor._Thread] = []
         self._broken = None
         self._shutdown = False
-        self._finalizer = finalize(self, lambda: asyncio.create_task(self._clean_task(self._global_queue, self._threads)))
+        self._finalizer = finalize(
+            self, lambda: asyncio.create_task(self._clean_task(self._global_queue, self._threads), eager_start=True)
+        )
 
     async def submit(self, fn: Callable, *args, **kwargs):
         if self._broken:
@@ -628,22 +632,20 @@ class AsyncLoopExecutor(Executor):
                             break
                         async with meta.lock:
                             meta.active_tasks += 1
-                        tasks.add(asyncio.create_task(cls._run_task(item, meta)))
+                        tasks.add(asyncio.create_task(cls._run_task(item, meta), eager_start=True))
                     return await asyncio.gather(*tasks, return_exceptions=True)
                 else:
                     if task is global_task:
                         async with meta.lock:
                             meta.active_tasks += 1
-                    tasks.add(asyncio.create_task(cls._run_task(item, meta)))
-
-            await asyncio.sleep(0)
+                    tasks.add(asyncio.create_task(cls._run_task(item, meta), eager_start=True))
 
     @staticmethod
     async def _run_task(item, meta: _Thread):
         """执行用户函数并设置结果。"""
         result, fn, args, kwargs, context = item
         try:
-            result.set_result(await asyncio.create_task(async_run_func(fn, *args, **kwargs), context=context))
+            result.set_result(await asyncio.create_task(async_run_func(fn, *args, **kwargs), context=context, eager_start=True))
         except Exception as e:
             result.set_exception(e)
         async with meta.lock:
@@ -707,7 +709,7 @@ class AsyncConnection:
             except EOFError, OSError:
                 break
 
-    async def send(self, obj):
+    def send(self, obj):
         if self._closed.is_set():
             raise EOFError
         self._send_queue.put(obj)

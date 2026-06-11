@@ -14,7 +14,7 @@ from aiofiles import open
 from anyio import Path
 from httpx import HTTPStatusError
 
-# from lxml.etree import XML, _Element
+from lxml.etree import XML, _Element
 from mistune import create_markdown
 from mistune.markdown import Markdown
 from mistune.plugins.table import table
@@ -811,14 +811,14 @@ class Json(MsgSeg):
     data: Annotated[dict | list, BeforeValidator(loads)]
 
 
-# class Xml(MsgSeg):
-#    """Xml消息段"""
-#
-#    data: Annotated[_Element, BeforeValidator(XML)]
-#
-#    @field_serializer("data")
-#    def serialize(self, value: _Element, _):
-#        return value.tostring()
+class Xml(MsgSeg):
+    """Xml消息段"""
+
+    data: Annotated[_Element, BeforeValidator(XML)]
+
+    @field_serializer("data")
+    def serialize(self, value: _Element, _):
+        return value.tostring()
 
 
 class Markdown(Text):

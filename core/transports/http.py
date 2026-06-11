@@ -104,7 +104,7 @@ class _SseMixin(ClientTransport):
                     if not await self._connect():
                         break
                     self._logger.info(_("api.transport.retry_success"))
-                    create_task(self._connect_cb())
+                    create_task(self._connect_cb(), eager_start=True)
                     continue
                 except Exception as e:
                     self._logger.error(_("api.transport.retry_failed") % e)

@@ -6,7 +6,7 @@
 
 API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 API 返回的异常码，`err_msg` 属性为 API 返回的异常信息。
 
-[示例](../示例.md#调用更多-api)
+[示例](../基本教学.md#调用-api)
 
 ## APIs
 

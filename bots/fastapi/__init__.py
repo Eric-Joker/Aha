@@ -141,8 +141,7 @@ class VerificationMiddleware:
             return await reject()
 
         # 记录 nonce
-        async with self._cache_lock:
-            self._nonce_cache[nonce] = i_timestamp + self.DELTA
+        self._nonce_cache[nonce] = i_timestamp + self.DELTA
 
         await self.app(scope, receive, send)
 
@@ -228,8 +227,11 @@ class FastAPI(BaseBot, metaclass=BaseBotSingletonMeta):
     @classmethod
     async def get(cls, key, data=None, lang=None, timeout=64800):
         """上报事件并等待结果"""
-        create_task(cls.post(key, data, lang))
-        return await wait_for(cls._calls[key], timeout)
+        await cls.post(key, data, lang)
+        try:
+            return await wait_for(cls._calls[key], timeout)
+        finally:
+            del cls._calls[key]
 
     async def set_result(self, _, key, data):
         """API: 设置结果"""

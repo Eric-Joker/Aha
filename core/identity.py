@@ -173,6 +173,7 @@ async def group2aha_id(arg1=None, arg2=None):
                 AhaGroup, platform=platform, group_id=group_id, aha_id=_generate_aha_id(platform, group_id)
             ).returning(AhaGroup.aha_id)
         )
+        await session.commit()
 
     async with CACHER_LOCK:
         CACHER[(Group, platform, group_id)] = result

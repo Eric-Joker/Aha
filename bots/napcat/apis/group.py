@@ -173,7 +173,7 @@ class GroupAPI(Utils, BaseGroupAPI):
                 create_task(
                     self._call_api(
                         self.gen_id(), "set_group_ban", {"group_id": group_id, "user_id": user_id, "duration": 2591940}
-                    )
+                    ), eager_start=True
                 )
 
                 # 计算剩余时长并设置续期任务
@@ -193,7 +193,8 @@ class GroupAPI(Utils, BaseGroupAPI):
                     self.gen_id(),
                     "set_group_ban",
                     {"group_id": group_id, "user_id": user_id, "duration": (duration + 59) // 60 * 60},
-                )
+                ),
+                eager_start=True,
             )
 
             if duration % 60 != 0:
@@ -204,15 +205,16 @@ class GroupAPI(Utils, BaseGroupAPI):
                     {"seconds": duration},
                     {"metadata": {"platform": "QQ", "group_id": group_id, "user_id": user_id, "tag": "ban"}},
                 )
-                create_task(self.add_schedule(schedule_args))
+                await self.add_schedule(schedule_args, eager_start=True)
             return True
 
         # 解禁
         if member.shut_up_time.timestamp() > time():
             create_task(
-                self._call_api(self.gen_id(), "set_group_ban", {"group_id": group_id, "user_id": user_id, "duration": 0})
+                self._call_api(self.gen_id(), "set_group_ban", {"group_id": group_id, "user_id": user_id, "duration": 0}),
+                eager_start=True,
             )
-            create_task(self.rm_schedule_by_meta({"platform": "QQ", "group_id": group_id, "user_id": user_id, "tag": "ban"}))
+            await self.rm_schedule_by_meta({"platform": "QQ", "group_id": group_id, "user_id": user_id, "tag": "ban"})
             return True
 
         return False

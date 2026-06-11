@@ -1,2 +1,23 @@
+[project]
+name = "aha"
+description = "跨平台、高性能、极为灵活的 Python 聊天机器人后端框架"
+requires-python = ">=3.14"
+license = {text = "MIT"}
+authors = [
+    {name = "Eric-Joker", email = "er1c_j0ker@qq.com"},
+]
+keywords = ["chatbot", "framework", "async", "free-threading"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Free Threading ::",
+    "Operating System :: OS Independent",
+]
+
 [tool.black]
 line-length = 128
+target-version = ["py314"]

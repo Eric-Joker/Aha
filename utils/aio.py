@@ -113,7 +113,7 @@ class ThreadSafeAsyncMeta(type):
             return True
 
     @staticmethod
-    async def _asyncgen_return(queue: aiologic.SimpleQueue, flag: aiologic.Flag):
+    async def _asyncgen_return(queue: aiologic.SimpleQueue, flag: aiologic.Flag[asyncio.Task]):
         try:
             while (item := await queue.async_get()) is not _unset:
                 if isinstance(item, BaseException) and getattr(item, "_TS__", False):
@@ -169,7 +169,7 @@ class ThreadSafeAsyncMeta(type):
         try:
             async for item in func(*args, **kwargs):
                 result_queue.put(item)
-        except Exception as e:
+        except BaseException as e:
             e._TS__ = True
             result_queue.put(e)
         else:
@@ -400,7 +400,7 @@ class AsyncTee[T]:
             self.eof = True
             async with self.not_empty:
                 self.not_empty.notify_all()
-        except Exception as e:
+        except BaseException as e:
             self.exc = e
             self.eof = True
             async with self.not_empty:

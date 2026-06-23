@@ -17,6 +17,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from pydantic import BaseModel
 from ssrjson import dumps_to_bytes
+from tenacity import _unset
 from xxhash import xxh3_64
 
 from bots import BaseBot, api_process
@@ -388,7 +389,7 @@ api_result_caches: dict[str, Cache | WeakValueDictionary] = {
 async def call_api(method: str, *args, bot: int, **kwargs):
     # 缓存
     cache_key = None
-    if (cacher := api_result_caches.get(method)) and (result := cacher.get(cache_key := hash(hashkey(bot, *args, **kwargs)))):
+    if (cacher := api_result_caches.get(method)) and (result := cacher.get(cache_key := hash(hashkey(bot, *args, **kwargs)), _unset)) is not _unset:
         return result
 
     is_close = method == "close"
@@ -443,10 +444,6 @@ async def call_api(method: str, *args, bot: int, **kwargs):
             return result
     except (BrokenPipeError, EOFError):
         raise RuntimeError(_("router.api_closed"))
-    except Exception:
-        raise
-    except BaseException:
-        pass
     finally:
         if IS_PROCESS_MODE:
             async with meta.call_lock:

@@ -554,7 +554,7 @@ async def _message_evaluate(event: Message, expr, func, token, attach: ExprAttac
         if e:
             if not copied:
                 event = event.model_copy(deep=True)
-            event.message = cprmc.get() or remove_msg_seq_prefix(event.message)
+            event.message = remove_msg_seq_prefix(event.message) if (cache := cprms.get()) is None else cache
             kwargs["event"] = event
         if m:
             kwargs["match_"] = current_match.get()

@@ -17,6 +17,7 @@ from cachetools import Cache
 from pydantic import TypeAdapter
 from pydantic_core._pydantic_core import ValidationError
 from sqlalchemy import Column, Float, Integer, String, insert, update
+from tenacity import _unset
 
 from core.database import db_sessionmaker, dbBase
 from core.i18n import LocalizedString
@@ -139,8 +140,10 @@ class Expr[Result]:
             ((self.__class__, self._exp) if self._exp else (self.__class__,))
             + tuple(
                 v if isinstance(v, Hashable) else object.__hash__(v)
-                for slot in self.__slots__
-                if (v := getattr(self, slot, None)) and not slot.startswith("_")
+                for cls in self.__class__.__mro__
+                if (slots := getattr(cls, "__slots__", None))
+                for slot in ((slots,) if isinstance(slots, str) else slots)
+                if not slot.startswith("_") and (v := getattr(self, slot, _unset)) is not _unset
             )
         )
 
@@ -371,13 +374,21 @@ async def _get_field_value(field: FieldClause, event: BaseEvent):
     return await async_run_func(field.field.extractor, event)
 
 
+custom_fields = []
+
+
 class FieldClause[Result](Expr[Result]):
     """字段访问表达式"""
 
     __slots__ = ("name", "field", "priority")
 
     def __init__(self, name, field: Field):
-        self.name = f"{mod}.{name}" if (mod := caller_aha_module(pattern=AHA_MODULE_PATTERN)) else name
+        if mod := caller_aha_module(pattern=AHA_MODULE_PATTERN):
+            self.name = f"{mod}.{name}"
+            if field.default is not None:
+                custom_fields.append(self.name)
+        else:
+            self.name = name
         if self.name in fields:
             raise AhaExprFieldDuplicate(_("expr.fields.409"))
 
@@ -495,7 +506,7 @@ class BinaryExprMeta(type):
 class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
     """二元表达式基类"""
 
-    __slots__ = ("negate", "left", "right", "priority", "_cache_config", "_left_val", "_right_val", "_cached_evaluate")
+    __slots__ = ("negate", "left", "right", "priority", "_cache_config", "_cached_evaluate")
 
     convert_rhs: Callable[[Any], Any] = None
 
@@ -547,32 +558,30 @@ class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
         else:
             result = (await self._evaluate_wrapper(left=self.left, right=self.right, event=event))[0]
 
+        if self.negate is not None:
+            result = result ^ self.negate
         if DEBUG:
-            debug["result"] = result = result if self.negate is None else result ^ self.negate
+            debug["result"] = result
         return result
 
     async def _evaluate_wrapper(self, *, left, right, event) -> tuple[Any, dict[ContextVar, Any]]:
         from . import dispatcher
 
-        self._left_val: Left = await left.evaluate(event) if isinstance(left, Expr) else left
-        self._right_val: Right = await right.evaluate(event) if isinstance(right, Expr) else right
-        if self._left_val.__class__ is AlwaysTrue or self._right_val.__class__ is AlwaysTrue:
-            self._left_val = self._right_val = None
+        left_val: Left = await left.evaluate(event) if isinstance(left, Expr) else left
+        right_val: Right = await right.evaluate(event) if isinstance(right, Expr) else right
+        if left_val.__class__ is AlwaysTrue or right_val.__class__ is AlwaysTrue:
             return True, {}
 
-        result = await self._evaluate_logic()
-
         if DEBUG:
-            (debug := _current_debug.get()[self])["left"] = self._left_val
-            debug["right"] = self._right_val
+            (debug := _current_debug.get()[self])["left"] = left_val
+            debug["right"] = right_val
 
-        self._left_val = self._right_val = None
-        return result, (
+        return await self._evaluate_logic(left_val, right_val), (
             {(obj := getattr(dispatcher, v)): obj.get() for v in self._cache_config.contextvars} if self._cache_config else {}
         )
 
     @abstractmethod
-    async def _evaluate_logic(self):
+    async def _evaluate_logic(self, left_val: Left, right_val: Right) -> Result:
         raise NotImplementedError
 
 
@@ -612,8 +621,7 @@ def _command_evaluate(left, right):
         if v != (arg := left[i]):
             if v.__class__ is TypeAdapter:
                 with suppress(ValidationError):
-                    v.validate_python(arg)
-                    args.append(arg)
+                    args.append(v.validate_python(arg))
                     continue
             return False
     current_args.set(args)
@@ -621,20 +629,20 @@ def _command_evaluate(left, right):
 
 
 class Equal(BinaryExpr[Any, Any | LocalizedString, bool]):
-    async def _evaluate_logic(self):
+    async def _evaluate_logic(self, left_val, right_val):
         if self.left is PM.command:
-            return _command_evaluate(self._left_val, self._right_val) if len(self._left_val) == len(self._right_val) else False
+            return _command_evaluate(left_val, right_val) if len(left_val) == len(right_val) else False
 
-        elif self.left is PM.message and isinstance(self._right_val, LocalizedString):
+        elif self.left is PM.message and isinstance(right_val, LocalizedString):
             from .dispatcher import current_lang
 
-            for lang, i10n in self._right_val.translations.items():
-                if i10n == self._left_val:
+            for lang, i10n in right_val.translations.items():
+                if i10n == left_val:
                     current_lang.set(lang)
                     return True
             return False
 
-        return self._left_val == self._right_val
+        return left_val == right_val
 
 
 class NotEqual(Equal):
@@ -643,8 +651,8 @@ class NotEqual(Equal):
 
 
 class In(BinaryExpr[Any, Container | Iterable | KeysView | ValuesView, bool]):
-    async def _evaluate_logic(self):
-        return self._left_val in self._right_val
+    async def _evaluate_logic(self, left_val, right_val):
+        return left_val in right_val
 
 
 class NotIn(In):
@@ -653,8 +661,8 @@ class NotIn(In):
 
 
 class Contains(BinaryExpr[Container | Iterable | KeysView | ValuesView, Any, bool]):
-    async def _evaluate_logic(self):
-        return self._right_val in self._left_val
+    async def _evaluate_logic(self, left_val, right_val):
+        return right_val in left_val
 
 
 class NotContains(Contains):
@@ -663,17 +671,17 @@ class NotContains(Contains):
 
 
 class StartsWith(BinaryExpr[Sequence | str, Sequence | str, bool]):
-    async def _evaluate_logic(self):
+    async def _evaluate_logic(self, left_val, right_val):
         if self.left is PM.command:
-            if len(self._left_val) >= (rl := len(self._right_val)) and _command_evaluate(self._left_val, self._right_val):
+            if len(left_val) >= (rl := len(right_val)) and _command_evaluate(left_val, right_val):
                 from .dispatcher import current_args
 
-                current_args.set(self._left_val[rl:])
+                current_args.set(left_val[rl:])
                 return True
             return False
-        if isinstance(self._left_val, str):
-            return self._left_val.startswith(self._right_val)
-        return is_prefix(self._left_val, self._right_val)
+        if isinstance(left_val, str):
+            return left_val.startswith(right_val)
+        return is_prefix(left_val, right_val)
 
 
 class NotStartsWith(StartsWith):
@@ -682,10 +690,10 @@ class NotStartsWith(StartsWith):
 
 
 class EndsWith(BinaryExpr[Sequence | str, Sequence | str, bool]):
-    async def _evaluate_logic(self):
-        if isinstance(self._left_val, str):
-            return self._left_val.endswith(self._right_val)
-        return is_suffix(self._left_val, self._right_val)
+    async def _evaluate_logic(self, left_val, right_val):
+        if isinstance(left_val, str):
+            return left_val.endswith(right_val)
+        return is_suffix(left_val, right_val)
 
 
 class NotEndsWith(EndsWith):
@@ -695,8 +703,8 @@ class NotEndsWith(EndsWith):
 
 """
 class SubClassOf(BinaryExpr[type, type | tuple[type, ...], bool]):
-    async def _evaluate_logic(self):
-        return issubclass(self._left_val, self._right_val)
+    async def _evaluate_logic(self, left_val, right_val):
+        return issubclass(left_val, right_val)
 
 
 class NotSubClassOf(SubClassOf):
@@ -705,8 +713,8 @@ class NotSubClassOf(SubClassOf):
 
 
 class SuperClassOf(BinaryExpr[type, type, bool]):
-    async def _evaluate_logic(self):
-        return issubclass(self._right_val, self._left_val)
+    async def _evaluate_logic(self, left_val, right_val):
+        return issubclass(right_val, left_val)
 
 
 class NotSuperClassOf(SuperClassOf):
@@ -715,8 +723,8 @@ class NotSuperClassOf(SuperClassOf):
 
 
 class InstanceOf(BinaryExpr[Any, type | tuple[type, ...], bool]):
-    async def _evaluate_logic(self):
-        return isinstance(self._left_val, self._right_val)
+    async def _evaluate_logic(self, left_val, right_val):
+        return isinstance(left_val, right_val)
 
 
 class NotInstanceOf(InstanceOf):
@@ -725,8 +733,8 @@ class NotInstanceOf(InstanceOf):
 
 
 class HasInstance(BinaryExpr[type | tuple[type, ...], Any, bool]):
-    async def _evaluate_logic(self):
-        return isinstance(self._right_val, self._left_val)
+    async def _evaluate_logic(self, left_val, right_val):
+        return isinstance(right_val, left_val)
 
 
 class NotHasInstance(HasInstance):
@@ -736,37 +744,35 @@ class NotHasInstance(HasInstance):
 
 
 class IsOnly(BinaryExpr[Sequence, TypeAdapter, bool]):
-    async def _evaluate_logic(self):
-        if len(self._left_val) != 1:
+    async def _evaluate_logic(self, left_val, right_val):
+        if len(left_val) != 1:
             return False
-        if self.left is PM.command and self._right_val.__class__ is TypeAdapter:
+        if self.left is PM.command and right_val.__class__ is TypeAdapter:
             from .dispatcher import current_args
 
             try:
-                self._right_val.validate_python(self._left_val[0])
-                current_args.set((self._left_val[0],))
+                current_args.set((right_val.validate_python(left_val[0]),))
                 return True
             except ValidationError:
                 return False
 
-        return self._left_val[0] == self._right_val
+        return left_val[0] == right_val
 
 
 class IsNotOnly(IsOnly):
-    async def _evaluate_logic(self):
-        if len(self._left_val) != 1:
+    async def _evaluate_logic(self, left_val, right_val):
+        if len(left_val) != 1:
             return True
-        if self.left is PM.command and self._right_val.__class__ is TypeAdapter:
+        if self.left is PM.command and right_val.__class__ is TypeAdapter:
             from .dispatcher import current_args
 
             try:
-                self._right_val.validate_python(self._left_val[0])
-                current_args.set((self._left_val[0],))
+                current_args.set((right_val.validate_python(left_val[0]),))
                 return False
             except ValidationError:
                 return True
 
-        return self._left_val[0] != self._right_val
+        return left_val[0] != right_val
 
 
 def _convert_pattern_rhs(value):
@@ -776,73 +782,73 @@ def _convert_pattern_rhs(value):
     return re.compile(str(value), re.I)
 
 
-class Match(BinaryExpr[str, re.Pattern, re.Match | None]):
+class Match(BinaryExpr[str, re.Pattern | LocalizedString, re.Match | None]):
     convert_rhs = _convert_pattern_rhs
 
-    async def _evaluate_logic(self):
+    async def _evaluate_logic(self, left_val, right_val):
         from .dispatcher import current_lang, current_match
 
-        if isinstance(self._right_val, LocalizedString):
-            for lang, pattern in self._right_val.patterns.items():
-                if match := pattern.match(self._left_val):
+        if isinstance(right_val, LocalizedString):
+            for lang, pattern in right_val.patterns.items():
+                if match := pattern.match(left_val):
                     current_match.set(match)
                     current_lang.set(lang)
                     return match
             return None
 
-        current_match.set(match := self._right_val.match(self._left_val))
+        current_match.set(match := right_val.match(left_val))
         return match
 
 
-class FullMatch(BinaryExpr[str, re.Pattern, re.Match | None]):
+class FullMatch(BinaryExpr[str, re.Pattern | LocalizedString, re.Match | None]):
     convert_rhs = _convert_pattern_rhs
 
-    async def _evaluate_logic(self):
+    async def _evaluate_logic(self, left_val, right_val):
         from .dispatcher import current_lang, current_match
 
-        if isinstance(self._right_val, LocalizedString):
-            for lang, pattern in self._right_val.patterns.items():
-                if match := pattern.fullmatch(self._left_val):
+        if isinstance(right_val, LocalizedString):
+            for lang, pattern in right_val.patterns.items():
+                if match := pattern.fullmatch(left_val):
                     current_match.set(match)
                     current_lang.set(lang)
                     return match
             return None
 
-        current_match.set(match := self._right_val.fullmatch(self._left_val))
+        current_match.set(match := right_val.fullmatch(left_val))
         return match
 
 
-class Search(BinaryExpr[str, re.Pattern, re.Match | None]):
+class Search(BinaryExpr[str, re.Pattern | LocalizedString, re.Match | None]):
     convert_rhs = _convert_pattern_rhs
 
-    async def _evaluate_logic(self):
+    async def _evaluate_logic(self, left_val, right_val):
         from .dispatcher import current_lang, current_match
 
-        if isinstance(self._right_val, LocalizedString):
-            for lang, pattern in self._right_val.patterns.items():
-                if match := pattern.search(self._left_val):
+        if isinstance(right_val, LocalizedString):
+            for lang, pattern in right_val.patterns.items():
+                if match := pattern.search(left_val):
                     current_match.set(match)
                     current_lang.set(lang)
                     return match
             return None
 
-        current_match.set(match := self._right_val.search(self._left_val))
+        current_match.set(match := right_val.search(left_val))
         return match
 
 
-class ValidateBy[Value](BinaryExpr[Value, TypeAdapter, Value | None]):
+class ValidateBy[Value](BinaryExpr[Value, TypeAdapter, Value | Any]):
     convert_rhs = lambda x: x if isinstance(x, TypeAdapter) else TypeAdapter(x)
 
-    async def _evaluate_logic(self):
+    async def _evaluate_logic(self, left_val, right_val):
         try:
-            return self._right_val.validate_python(self._left_val)
+            return right_val.validate_python(left_val)
         except ValidationError:
             return None
 
 
 class PureApply[Value, Result](BinaryExpr[Value, Callable[[Value], Result], Result]):
-    async def _evaluate_logic(self):
-        return self._right_val(self._left_val)
+    async def _evaluate_logic(self, left_val, right_val):
+        return right_val(left_val)
 
 
 class Apply(PureApply):
@@ -859,8 +865,8 @@ class GetAttr[Obj](BinaryExpr[Obj, str, Any]):
     def __call__(self, *args, **kwargs):
         return Call(self, args, kwargs)
 
-    async def _evaluate_logic(self):
-        return getattr(self._left_val, self._right_val)
+    async def _evaluate_logic(self, left_val, right_val):
+        return getattr(left_val, right_val)
 
 
 class PureCall(BinaryExpr[Callable, tuple[tuple, dict], Any]):
@@ -873,8 +879,8 @@ class PureCall(BinaryExpr[Callable, tuple[tuple, dict], Any]):
             return f"{self.left!r} {self.__class__.__name__} {self.args} {self.kwargs}(exp={strftime("%Y-%m-%d %H:%M:%S", localtime(self._exp))}, PRI={self.priority})"
         return f"{self.left!r} {self.__class__.__name__} {self.args} {self.kwargs}(PRI={self.priority})"
 
-    def _evaluate_logic(self):
-        return async_run_func(self._left_val, *self._right_val[0], **self._right_val[1])
+    def _evaluate_logic(self, left_val, right_val):
+        return async_run_func(left_val, *right_val[0], **right_val[1])
 
 
 class Call(PureCall):

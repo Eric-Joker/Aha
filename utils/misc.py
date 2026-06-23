@@ -87,7 +87,7 @@ def make_exc_picklable(exc: BaseException, logger: Logger = None):
         new_exc = exc_type(*exc.args)
     except Exception:
         if logger:
-            logger.exception(exc_info=exc)
+            logger.exception("", exc_info=exc)
         try:
             if not is_pickleable(new_exc := exc_type()):
                 new_exc = Exception() if issubclass(exc_type, Exception) else BaseException()

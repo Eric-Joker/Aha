@@ -682,6 +682,7 @@ class Config[
                         key,
                         noneable,
                     )
+                break
 
         if value is not _unset:
             return deepcopy(value)

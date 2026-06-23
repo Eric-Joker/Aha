@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, overload
 from aiologic import Lock
 from sqlalchemy import BigInteger, Column, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from tenacity import _unset
 from xxhash import xxh3_64_digest
 
 from core.database import db_sessionmaker, dbBase
@@ -99,11 +100,11 @@ async def user2aha_id(arg1=None, arg2=None, session=None):
 
 async def aha_id2user(aha_id: int) -> list[User]:
     """根据 Aha ID 反向查找用户"""
-    async with db_sessionmaker() as session:
-        async with CACHER_LOCK:
-            if result := CACHER.get((User, aha_id)):
-                return result
+    async with CACHER_LOCK:
+        if (result := CACHER.get((User, aha_id), _unset)) is not _unset:
+            return result
 
+    async with db_sessionmaker() as session:
         result = [
             User(p, u)
             for p, u in (await session.execute(select(AhaUser.platform, AhaUser.user_id).where(AhaUser.aha_id == aha_id))).all()
@@ -118,9 +119,6 @@ async def map_user(source_platform: str, source_user_id: str, target_platform: s
     """将一个平台的用户映射到另一个用户，建议不得映射自己"""
     async with db_sessionmaker() as session:
         target_aha_id = await user2aha_id(target_platform, target_user_id, session=session)
-
-        if not target_aha_id:
-            return False
         # 更新源用户的aha_id
         await session.execute(upsert(AhaUser, platform=source_platform, user_id=source_user_id, aha_id=target_aha_id))
         await session.commit()
@@ -182,11 +180,11 @@ async def group2aha_id(arg1=None, arg2=None):
 
 async def aha_id2group(aha_id: int) -> list[Group]:
     """根据 Aha ID 反向查找群组"""
-    async with db_sessionmaker() as session:
-        async with CACHER_LOCK:
-            if result := CACHER.get((Group, aha_id)):
-                return result
+    async with CACHER_LOCK:
+        if (result := CACHER.get((Group, aha_id), _unset)) is not _unset:
+            return result
 
+    async with db_sessionmaker() as session:
         result = [
             Group(p, g)
             for p, g in (

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 async def is_super(arg1=None, arg2=None, /):
     if arg2:
         return any(arg2 == obj.user_id for obj in cfg.super if arg1 == obj.platform)
-    if arg1:
+    if arg1 is not None:
         return any(u.user_id == obj.user_id for obj in cfg.super for u in await aha_id2user(arg1) if u.platform == obj.platform)
     event = current_event.get()
     return any(event.user_id == obj.user_id for obj in cfg.super if event.platform == obj.platform)

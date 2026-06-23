@@ -35,7 +35,7 @@ if __name__ == "__main__":
         from services.playwright import browser_mgr
         from services.file_cache import start_file_cache_service
         from services.data_store import clean_data_store, initialize_all_stores
-        from core.expr import redirect_extractors
+        from core.expr import custom_fields, redirect_extractors
         from core.dispatcher import clear_handlers, process_clean, process_start
         from core.api_service import close_bots, start_bots
         from utils.aio import AsyncLoopExecutor, ThreadSafeAsyncMeta
@@ -47,6 +47,30 @@ if __name__ == "__main__":
         redirect_extractors()
         await cfg.finalize_initialization()
         db_init()
+
+        feats = []
+        if cfg._default_group_list:
+            if cfg._default_group_list_mode == "blacklist":
+                feats.append(_("default_feat.group_blacklist") % len(cfg._default_group_list))
+            else:
+                feats.append(_("default_feat.group_whitelist") % len(cfg._default_group_list))
+        if cfg._default_user_list:
+            if cfg._default_user_list_mode == "blacklist":
+                feats.append(_("default_feat.user_blacklist") % len(cfg._default_user_list))
+            else:
+                feats.append(_("default_feat.user_whitelist") % len(cfg._default_user_list))
+        feats.append(_("default_feat.private_enabled") if cfg.private else _("default_feat.private_disabled"))
+        if cfg.limit:
+            feats.append(_("default_feat.rate_limit") % cfg.limit)
+        if cfg.global_msg_prefix == "":
+            feats.append(_("default_feat.prefix_at_only"))
+        elif cfg.global_msg_prefix:
+            feats.append(_("default_feat.prefix_custom") % cfg.global_msg_prefix)
+        if cfg.get("validated", module="expr_extractors"):
+            feats.append(_("default_feat.validation_enabled"))
+        if custom_fields:
+            feats.append(_("default_feat.custom_fields") % " ".join(custom_fields))
+        logger.info(_("default_feat.header") % " ".join(feats))
 
         try:
             logger.info(_("main.start_api_services"))

@@ -371,13 +371,20 @@ async def _get_field_value(field: FieldClause, event: BaseEvent):
     return await async_run_func(field.field.extractor, event)
 
 
+custom_fields = []
+
+
 class FieldClause[Result](Expr[Result]):
     """字段访问表达式"""
 
     __slots__ = ("name", "field", "priority")
 
     def __init__(self, name, field: Field):
-        self.name = f"{mod}.{name}" if (mod := caller_aha_module(pattern=AHA_MODULE_PATTERN)) else name
+        if (mod := caller_aha_module(pattern=AHA_MODULE_PATTERN)):
+            self.name = f"{mod}.{name}"
+            custom_fields.append(self.name)
+        else:
+            self.name = name
         if self.name in fields:
             raise AhaExprFieldDuplicate(_("expr.fields.409"))
 

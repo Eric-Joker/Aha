@@ -2,8 +2,8 @@ import os
 from asyncio import wait_for
 from collections import defaultdict
 from collections.abc import Iterable
-from contextlib import suppress
 from datetime import datetime
+from enum import Enum, auto
 from multiprocessing import current_process
 from re import compile
 from typing import TYPE_CHECKING, Annotated, Any, overload
@@ -144,7 +144,12 @@ class AICharacterList(list[AICharacter]):
         return next((character.character_id for character in self if character.character_name == name), None)
 
 
-_poke_flag = object()
+class StickerType(Enum):
+    QQFACE = auto()
+    MARKETFACE = auto()
+    POKE = auto()
+    DICE = auto()
+    RPS = auto()
 
 
 class Utils(BaseAPI):
@@ -223,10 +228,13 @@ class Utils(BaseAPI):
                 data["user_id"] = (data := item["data"]).pop("qq")
                 return At.model_validate(data)
             case "face":
-                return Sticker(summary=(data := item["data"])["raw"]["faceText"], file_id=data["id"])
+                return Sticker(
+                    summary=(data := item["data"])["raw"]["faceText"], file_id=data["id"], sub_type=StickerType.QQFACE
+                )
             case "image":
                 if "emoji_package_id" in (data := item["data"]):
                     data["file_id"] = (data.pop("emoji_package_id"), data.pop("emoji_id"), data.pop("key"))
+                    data["sub_type"] = StickerType.MARKETFACE
                     return self._build_downloadable(item, type_=Sticker)
                 return self._build_downloadable(item, Image)
             case "file":
@@ -279,7 +287,11 @@ class Utils(BaseAPI):
                     data["type"] = "friend"
                 return Contact.model_validate(data)
             case "shake" | "poke":
-                return Sticker(summary="戳一戳", file_id=(_poke_flag, item["data"].get("id", 0)))
+                return Sticker(summary="戳一戳", file_id=item["data"].get("id", 0), sub_type=StickerType.POKE)
+            case "dice":
+                return Sticker(summary="骰子", file_id=item["data"]["result"], sub_type=StickerType.DICE)
+            case "rps":
+                return Sticker(summary="猜拳", file_id=item["data"]["result"], sub_type=StickerType.RPS)
             case _:
                 return MsgSeq.get_seg_class(event_type).model_validate(item["data"])
 
@@ -327,19 +339,25 @@ class Utils(BaseAPI):
     async def serialize_msg_seg(self, item: MsgSeg):
         """不处理 Forward"""
         if isinstance(item, Sticker):
-            if isinstance(item.file_id, tuple):
-                if item.file_id[0] is _poke_flag:
-                    return {"type": "poke", "data": {"id": item.file_id[1]}}
-                return {
-                    "type": "mface",
-                    "data": {
-                        "emoji_package_id": item.file_id[0],
-                        "emoji_id": item.file_id[1],
-                        "key": item.file_id[2],
-                        "summary": item.summary,
-                    },
-                }
-            return {"type": "face", "data": {"id": item.file_id}}
+            match item.sub_type:
+                case StickerType.POKE:
+                    return {"type": "poke", "data": {"id": item.file_id}}
+                case StickerType.MARKETFACE:
+                    return {
+                        "type": "mface",
+                        "data": {
+                            "emoji_package_id": item.file_id[0],
+                            "emoji_id": item.file_id[1],
+                            "key": item.file_id[2],
+                            "summary": item.summary,
+                        },
+                    }
+                case StickerType.QQFACE:
+                    return {"type": "face", "data": {"id": item.file_id}}
+                case StickerType.DICE:
+                    return {"type": "dice", "data": {"result": item.file_id}}
+                case StickerType.RPS:
+                    return {"type": "rps", "data": {"result": item.file_id}}
         if isinstance(item, Downloadable):
             if self.is_process_mode:
                 item.file = await self.prepare_upload(item.file, self.transport.local_srv)

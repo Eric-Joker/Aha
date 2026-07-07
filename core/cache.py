@@ -76,8 +76,11 @@ class MemoryCacheMixin:
     def __setitem(self, key, value):
         if (size := asizeof(key, value) + self.ADDITIONAL_PER_ITEM_MEM_SIZE) > self._Cache__maxsize:
             raise ValueError("value too large")
-        if key not in self._Cache__data or self._Cache__size[key] < size:
+        if key not in self._Cache__data:
             while self._Cache__currsize + size > self._Cache__maxsize:
+                self.popitem()
+        elif self._Cache__size[key] < size:
+            while self._Cache__currsize + size - self._Cache__size[key] > self._Cache__maxsize:
                 self.popitem()
         diffsize = size - self._Cache__size[key] if key in self._Cache__data else size
         self._Cache__data[key] = value

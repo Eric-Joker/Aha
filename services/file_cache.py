@@ -242,4 +242,4 @@ async def cleanup():
                 with suppress(OSError):
                     if await cache_file.file_path.exists():
                         await cache_file.file_path.unlink(True)
-                    await session.delete(cache_file)
+                await session.delete(cache_file)

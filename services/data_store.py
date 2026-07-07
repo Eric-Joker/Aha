@@ -1,15 +1,22 @@
 from asyncio import Task, create_task, shield
+from collections.abc import Iterable
+from functools import partial
 from logging import getLogger
+from typing import TYPE_CHECKING, overload
 from weakref import WeakSet
 
 from aiologic import REvent
 from sqlalchemy import Column, PickleType, String, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from tenacity import _unset
 
 import core.database
 from core.i18n import _
 from utils.aha import AHA_MODULE_PATTERN, caller_aha_module
 from utils.sqlalchemy import upsert
+
+if TYPE_CHECKING:
+    from _typeshed import SupportsKeysAndGetItem
 
 __all__ = "SimpleStore"
 
@@ -94,7 +101,7 @@ class SimpleStore[K: str, V]:
                 key = Column(String, primary_key=True)
                 value = Column(PickleType)
 
-            self.table = Simple
+            self.table = Simple.__table__
         self._cache: dict[K, V] = {}
         self._changed_keys: set[K] = set()
         self._removed_keys: set[K] = set()
@@ -111,8 +118,7 @@ class SimpleStore[K: str, V]:
         return self._cache[key]
 
     def __setitem__(self, key: K, value: V):
-
-        if self._cache.get(key) != value:
+        if self._cache.get(key, _unset) != value:
             self._cache[key] = value
             self._changed_keys.add(key)
             self._removed_keys.discard(key)
@@ -170,20 +176,36 @@ class SimpleStore[K: str, V]:
             self._cache.clear()
             self._trigger_commit()
 
-    def update(self, other: dict[K, V] = None, **kwargs: V):
+    if TYPE_CHECKING:
+        @overload
+        def update(self, m: SupportsKeysAndGetItem[K, V], /) -> None: ...
+        @overload
+        def update(self, m: Iterable[tuple[K, V]], /) -> None: ...
+        @overload
+        def update(self, **kwargs: V) -> None: ...
+
+    def update(self, __m= None, /, **kwargs: V):
         changed = False
 
-        if other:
-            for key, value in other.items():
-                if self._cache.get(key) != value:
-                    self._cache[key] = value
-                    self._changed_keys.add(key)
-                    self._removed_keys.discard(key)
-                    changed = True
+        if __m:
+            if (keys := getattr(__m, 'keys', None)) and hasattr(__m, '__getitem__'):
+                for key in keys():
+                    if self._cache.get(key, _unset) != __m[key]:
+                        self._cache[key] = __m[key]
+                        self._changed_keys.add(key)
+                        self._removed_keys.discard(key)
+                        changed = True
+            else:
+                for key, value in __m:
+                    if self._cache.get(key, _unset) != value:
+                        self._cache[key] = value
+                        self._changed_keys.add(key)
+                        self._removed_keys.discard(key)
+                        changed = True
 
         if kwargs:
             for key, value in kwargs.items():
-                if self._cache.get(key) != value:
+                if self._cache.get(key, _unset) != value:
                     self._cache[key] = value
                     self._changed_keys.add(key)
                     self._removed_keys.discard(key)
@@ -205,18 +227,28 @@ class SimpleStore[K: str, V]:
         if self._has_changes:
             _commit_event.set()
 
+    @staticmethod
+    def _rollback_callback(_, *, s: set, v):
+        s.add(v)
+
     async def flush_to_db(self, session: AsyncSession):
         """将变更数据刷新到数据库"""
         while self._has_changes:
             for key in tuple(self._changed_keys):
                 if key in self._changed_keys:
                     self._changed_keys.remove(key)
+                    core.database.reg_once_rollback_callback(
+                        session, partial(self._rollback_callback, s=self._changed_keys, v=key)
+                    )
                     await session.execute(upsert(self.table, key=key, value=self._cache[key]))
 
             for key in tuple(self._removed_keys):
                 if key in self._removed_keys:
                     self._removed_keys.remove(key)
-                    await session.execute(delete(self.table).where(self.table.key == key))
+                    core.database.reg_once_rollback_callback(
+                        session, partial(self._rollback_callback, s=self._removed_keys, v=key)
+                    )
+                    await session.execute(delete(self.table).where(self.table.c.key == key))
 
     async def load_from_db(self):
         """从数据库加载所有数据到缓存"""
@@ -225,5 +257,5 @@ class SimpleStore[K: str, V]:
             self._changed_keys.clear()
             self._removed_keys.clear()
 
-            for row in (await session.scalars(select(self.table))).all():
+            for row in (await session.execute(select(self.table))).all():
                 self._cache[row.key] = row.value

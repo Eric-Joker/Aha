@@ -5084,7 +5084,7 @@ async with browser_mgr.acquire_page() as page:
 
 ## API
 
-在 `core.api` 模块中存在一个 `API` 类，其声明了大量静态方法且其元类定义了 `__getattr__`。获取该类的属性时会返回用于将调用转发到适配器实例的方法，调用该属性即调用 API。
+在 `core.api` 模块中存在一个 `API` 类，获取该类本身的属性时会返回用于将调用转发到适配器实例的静态方法，调用该方法即调用 API。
 
 适配器不会实现所有方法，届时会抛出 `NotImplementedError` 异常。
 
@@ -5124,16 +5124,12 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>PREFS</td>
-    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择接收到相同事件的实例。若指向的实例接收到该事件则采用，否则采用 <code>NTH</code>。</td>
+    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择接收到相同事件的实例，否则将收到消息的实例按<a heaf="../统一配置系统.md">配置</a>中 <code>bots</code> 键值顺序排序后选择第 <code>aha.bot_prefs</code> 个。</td>
     <td>
       <table>
         <tr>
           <th>参数名</th>
           <th>说明</th>
-        </tr>
-        <tr>
-          <td>index</td>
-          <td></td>
         </tr>
       </table>
     </td>
@@ -5169,16 +5165,12 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>PLATFORM</td>
-    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择相同平台的可用实例。若指向实例为相同平台且仍可用则采用，否则采用 <code>PLATFORM_NTH</code>。</td>
+    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择相同平台的可用实例，否则将相同平台的可用实例按<a heaf="../统一配置系统.md">配置</a>中 <code>bots</code> 键值顺序排序后选择第 <code>aha.bot_prefs</code> 个。</td>
     <td>
       <table>
         <tr>
           <td>platform</td>
           <td>平台。</td>
-        </tr>
-        <tr>
-          <td>index</td>
-          <td>n-1，默认为第一个。</td>
         </tr>
       </table>
     </td>
@@ -5213,7 +5205,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>PREFS_ANY</td>
-    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则选择随机实例，否则选择指向的实例。</td>
+    <td>若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则选择随机可用实例，否则选择指向的实例。</td>
     <td>
     </td>
   </tr>
@@ -5236,7 +5228,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>FRIEND</td>
-    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定好友的可用实例。若指向的实例有指定好友且仍可用则采用，否则采用 <code>FRIEND_NTH</code>。</td>
+    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定好友的可用实例，否则将有指定好友的可用实例按<a heaf="../统一配置系统.md">配置</a>中 <code>bots</code> 键值顺序排序后选择第 <code>aha.bot_prefs</code> 个。</td>
     <td>
       <table>
         <tr>
@@ -5246,10 +5238,6 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
         <tr>
           <td>conv_id</td>
           <td>指定的好友平台 ID。</td>
-        </tr>
-        <tr>
-          <td>index</td>
-          <td>回退 <code>FRIEND_NTH</code> 时的参数。</td>
         </tr>
       </table>
     </td>
@@ -5292,7 +5280,7 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
   </tr>
   <tr>
     <td>GROUP</td>
-    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定群组的可用实例。若指向的实例有指定群组且仍可用则采用，否则采用 <code>GROUP_NTH</code>。</td>
+    <td><a heaf="../统一配置系统.md">配置</a>项 <code>aha.cache_conv</code> 为 <code>true</code> 时可用。若<a heaf="../统一配置系统.md">配置</a>项 <code>aha.bot_prefs</code> 为 0 则随机选择有指定群组的可用实例，否则将有指定群组的可用实例按<a heaf="../统一配置系统.md">配置</a>中 <code>bots</code> 键值顺序排序后选择第 <code>aha.bot_prefs</code> 个。</td>
     <td>
       <table>
         <tr>
@@ -5302,10 +5290,6 @@ API 返回异常时会抛出 `models.exc.APIException`，其 `code` 属性为 AP
         <tr>
           <td>conv_id</td>
           <td>指定的平台群组 ID。</td>
-        </tr>
-        <tr>
-          <td>index</td>
-          <td>回退 <code>GROUP_NTH</code> 时的参数。</td>
         </tr>
       </table>
     </td>

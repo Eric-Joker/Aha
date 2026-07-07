@@ -275,7 +275,7 @@ class AsyncBase64Encoder:
         for interval in list(self._req_intervals)[1:]:
             ewma_interval = self._ewma_alpha * interval + (1 - self._ewma_alpha) * ewma_interval
 
-        if (r_i := sum(self._gen_times) / 3 / ewma_interval) >= 1.2:
+        if (r_i := sum(self._gen_times) / len(self._gen_times) / ewma_interval) >= 1.2:
             self._chunk_size = max(3, min(self._max_chunk_size, int(self._chunk_size / r_i) // 3 * 3))
             self._CAing = True
         elif r_i <= 0.8:
@@ -293,7 +293,7 @@ class AsyncBase64Encoder:
         for interval in list(self._req_intervals)[1:]:
             ewma_interval = self._ewma_alpha * interval + (1 - self._ewma_alpha) * ewma_interval
 
-        if (r_i := sum(self._gen_times) / 3 / ewma_interval) >= 1.2:
+        if (r_i := sum(self._gen_times) / len(self._gen_times) / ewma_interval) >= 1.2:
             self._chunk_size = max(3, int(self._chunk_size / r_i) // 3 * 3)
             self._CAing = True
         elif r_i <= 0.8:

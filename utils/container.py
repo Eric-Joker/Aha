@@ -148,11 +148,8 @@ class SetList[_T](SetSeqMixin[_T], list[_T]):
     """支持O(1)存在性检查的 list"""
 
     def __init__(self, iterable: Iterable[_T] = None, /):
-        if iterable is None:
-            self._set = set()
-        else:
-            self._set = iterable = set(iterable)
         super().__init__(iterable)
+        self._set = set() if iterable is None else set(self)
 
     def copy(self):
         return self.__class__(self)

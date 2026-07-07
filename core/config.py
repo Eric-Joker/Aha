@@ -853,7 +853,7 @@ class Config[
         if not module:
             module = caller_aha_module()
 
-        if data := self._group_blacklist.get(module):  # 缓存
+        if (data := self._group_blacklist.get(module)) is not None:  # 缓存
             return data
         if not module:  # 短路
             return self._default_group_list if self._default_group_list_mode == "blacklist" else frozenset()
@@ -876,7 +876,7 @@ class Config[
         if not module:
             module = caller_aha_module()
 
-        if data := self._group_whitelist.get(module):  # 缓存
+        if (data := self._group_whitelist.get(module)) is not None:  # 缓存
             return data
         if not module:  # 短路
             return self._default_group_list if self._default_group_list_mode == "whitelist" else frozenset()
@@ -899,7 +899,7 @@ class Config[
         if not module:
             module = caller_aha_module()
 
-        if data := self._user_blacklist.get(module):  # 缓存
+        if (data := self._user_blacklist.get(module)) is not None:  # 缓存
             return data
         if not module:  # 短路
             return self._default_user_list if self._default_user_list_mode == "blacklist" else frozenset()
@@ -922,7 +922,7 @@ class Config[
         if not module:
             module = caller_aha_module()
 
-        if data := self._user_whitelist.get(module):  # 缓存
+        if (data := self._user_whitelist.get(module)) is not None:  # 缓存
             return data
         if not module:  # 短路
             return self._default_user_list if self._default_user_list_mode == "whitelist" else frozenset()

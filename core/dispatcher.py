@@ -163,7 +163,7 @@ current_module = ContextVar("aha_module")
 cugp = ContextVar("aha_use_global_prefix", default=False)
 current_event: ContextVar[BaseEvent] = ContextVar("aha_event", default=None)
 current_match: ContextVar[Match] = ContextVar("aha_match", default=None)  # PM.pattern
-current_args: ContextVar[list[str | MsgSeg]] = ContextVar("aha_args", default=None)  # PM.command
+current_args: ContextVar[Sequence[str | MsgSeg]] = ContextVar("aha_args", default=None)  # PM.command
 current_lang = ContextVar("aha_lang", default=cfg.lang)
 
 start_handlers: list[Callable] = []
@@ -554,7 +554,7 @@ async def _message_evaluate(event: Message, expr, func, token, attach: ExprAttac
         if e:
             if not copied:
                 event = event.model_copy(deep=True)
-            event.message = remove_msg_seq_prefix(event.message) if (cache := cprms.get()) is None else cache
+            event.message = remove_msg_seq_prefix(event.message) if (cache := cprmc.get()) is None else cache
             kwargs["event"] = event
         if m:
             kwargs["match_"] = current_match.get()

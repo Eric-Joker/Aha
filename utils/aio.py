@@ -62,6 +62,7 @@ def try_get_loop():
 
 
 def run_in_executor_else_direct(func, *args):
+    """不返回返回值"""
     if loop := try_get_loop():
         loop.run_in_executor(None, func, *args)
     else:
@@ -417,12 +418,8 @@ class AsyncTee[T]:
     async def close(self):
         if self.producer_task:
             self.producer_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self.producer_task
-            except Exception:
-                raise
-            except BaseException:
-                pass
 
     class _Consumer:
         __slots__ = ("tee", "cid")
@@ -622,6 +619,7 @@ class AsyncLoopExecutor(Executor):
             for task in pending:
                 task.cancel()
 
+            should_return = False
             for task in done:
                 if (item := task.result()) is None:
                     # 清理全局队列后关闭
@@ -633,12 +631,15 @@ class AsyncLoopExecutor(Executor):
                         async with meta.lock:
                             meta.active_tasks += 1
                         tasks.add(asyncio.create_task(cls._run_task(item, meta), eager_start=True))
-                    return await asyncio.gather(*tasks, return_exceptions=True)
+                    should_return = True
                 else:
                     if task is global_task:
                         async with meta.lock:
                             meta.active_tasks += 1
                     tasks.add(asyncio.create_task(cls._run_task(item, meta), eager_start=True))
+
+            if should_return:
+                return await asyncio.gather(*tasks, return_exceptions=True)
 
     @staticmethod
     async def _run_task(item, meta: _Thread):

@@ -15,7 +15,10 @@ async_loop_executor.422 : "max_workers must be > 0"
 async_loop_executor.closed: "cannot schedule new futures after shutdown"
 cannot_get_caller_aha_module: "Cannot get the Aha module from the caller."
 config.comment.base64_buffer: "Limits the peak memory usage during streamed Base64 encoding from a file. Unit: bytes. When value <= 0, encoding runs at maximum speed with unbounded memory. During reading, each chunk size is calculated as (x-2)//13*3."
-config.comment.bot_prefs: "When selecting a bot instance by ignoring the event context, this setting specifies which bot to prefer by its order in the list (starting from 1). Set to 0 for random selection."
+config.comment.bot_prefs: |
+  When calling the API, the business logic may select a different bot instance.
+  If this value is greater than 0, the Nth option from the available choices, sorted by the order of the "bots" key, will be preferentially selected. If the number of available choices is less than N, the last one will be selected.
+  If this value is 0, one option will be randomly selected from the available choices.
 config.comment.cache_conv: "Maintains the bot's group and contact list for API call routing through them. Some modules depend on this feature."
 config.comment.database: "Database URI for SQLAlchemy async engine; only sqlite or postgreSQL are recommended."
 config.comment.db_backup: "Automatic backup database directory."

@@ -676,7 +676,7 @@ class StartsWith(BinaryExpr[Sequence | str, Sequence | str, bool]):
             if len(left_val) >= (rl := len(right_val)) and _command_evaluate(left_val, right_val):
                 from .dispatcher import current_args
 
-                current_args.set(left_val[rl:])
+                current_args.get().extend(left_val[rl:])
                 return True
             return False
         if isinstance(left_val, str):
@@ -1498,30 +1498,30 @@ def binary_expr_exists(expr: Expr | Any, binary_expr: type[BinaryExpr] | Iterabl
     return False
 
 
+def _modify_recursive(expr, left, right):
+    if isinstance(expr, BoolExpr):
+        new_clauses = []
+        modified = False
+        for clause in expr.clauses:
+            if (new_expr := (result := _modify_recursive(clause, left, right))[0]) is not None:
+                new_clauses.append(new_expr)
+            if result[1]:
+                modified = True
+        return expr.__class__(*new_clauses) if modified else expr, modified
+    elif isinstance(expr, Not):
+        if (result := _modify_recursive(expr.clause, left, right))[1]:
+            return None if (result := result[0]) is None else Not(result), True
+    elif isinstance(expr, BinaryExpr) and expr.left is left and not isinstance(expr.right, Expr) and expr.right != right:
+        return None if right is None else expr.__class__(expr.left, right), True
+    return expr, False
+
+
 def modify_expr(expr: Expr, *overrides: BinaryExpr):
     """递归修改表达式中的字段，第二个操作数为 `None` 时删除该字段的表达式"""
-
-    def recursive(expr, left, right):
-        if isinstance(expr, BoolExpr):
-            new_clauses = []
-            modified = False
-            for clause in expr.clauses:
-                if (new_expr := (result := recursive(clause, left, right))[0]) is not None:
-                    new_clauses.append(new_expr)
-                if result[1]:
-                    modified = True
-            return expr.__class__(*new_clauses) if modified else expr, modified
-        elif isinstance(expr, Not):
-            if (result := recursive(expr.clause, left, right))[1]:
-                return None if (result := result[0]) is None else Not(result), True
-        elif isinstance(expr, BinaryExpr) and expr.left is left and not isinstance(expr.right, Expr) and expr.right != right:
-            return None if right is None else expr.__class__(expr.left, right), True
-        return expr, False
-
     for override in overrides:
-        exp = expr._exp
-        expr = recursive(expr, *_adjust_binary_field(override.left, override.right))[0]
-        expr._exp = exp
+        if new_expr := _modify_recursive(expr, *_adjust_binary_field(override.left, override.right))[0]:
+            new_expr._exp, new_expr._debug = expr._exp, expr._debug
+        expr = new_expr
     return expr
 
 

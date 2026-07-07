@@ -15,7 +15,10 @@ async_loop_executor.422: "max_workers 必须大于 0。"
 async_loop_executor.closed: "关闭后无法安排新的任务。"
 cannot_get_caller_aha_module: "无法获取调用者的 Aha 模块。"
 config.comment.base64_buffer: "限制从文件流式 Base64 编码时最大瞬时内存占用。单位字节，小于等于0时有多快跑多快。读取时每 chunk 大小为(x-2)//13*3。"
-config.comment.bot_prefs: "业务逻辑忽略事件上下文选择 bot 实例以调用 API 时，偏好选择第几个（按bots键的值顺序）。为0时代表随机。"
+config.comment.bot_prefs: |
+  业务逻辑调用 API 时可能会选择其他 bot 实例。
+  本项大于0时，将优先选择按 bots 键值的顺序排序的可选项中的第 N 个，若选项数量不足则选择最后一个。
+  本项为0时，将随机从可选项选择一个。
 config.comment.cache_conv: "维护 bot 的群、联系人列表，用于通过群/联系人进行 API 调用路由。可能有些模块依赖此特性。"
 config.comment.database: "用于 sqlalchemy 异步引擎的数据库 URI，仅建议采用 sqlite 或 postgreSQL。"
 config.comment.db_backup: "自动备份的数据库目录。"

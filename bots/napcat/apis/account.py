@@ -2,7 +2,7 @@ from models.api import Friend, FriendCategory, LoginInfo, LastestMsgs, Sex, Stra
 from models.msg import Sticker
 
 from ...apis import BaseAccountAPI
-from ..utils import StickerType, Utils
+from ..utils import Utils
 
 
 class AccountAPI(Utils, BaseAccountAPI):
@@ -110,10 +110,7 @@ class AccountAPI(Utils, BaseAccountAPI):
         return nickname if (nickname := (await self.get_stranger_info(call_id, user_id)).nickname.strip()) else str(user_id)
 
     async def fetch_collected_stickers(self, call_id, count=48):
-        return [
-            Sticker(file=i)
-            for i in await self._call_api(call_id, "fetch_custom_face", {"count": count})
-        ]
+        return [Sticker(file=i) for i in await self._call_api(call_id, "fetch_custom_face", {"count": count})]
 
     async def get_user_status(self, call_id, user_id):
         return UserStatus.model_validate(await self._call_api(call_id, "nc_get_user_status", {"user_id": user_id}))

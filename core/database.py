@@ -2,6 +2,7 @@ import gzip
 import logging
 import os
 import sys
+from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -10,11 +11,11 @@ from shutil import which
 from subprocess import run
 
 import sqlalchemy.sql.schema
-from sqlalchemy import BINARY, NUMERIC, create_engine, text
+from sqlalchemy import BINARY, NUMERIC, create_engine, event, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Session
 
 from core.arg_parser import parser
 from models.exc import DatabaseBackupError
@@ -23,7 +24,7 @@ from utils.aha import AHA_MODULE_PATTERN, caller_aha_module
 from .config import cfg
 from .i18n import _
 
-__all__ = ("db_engine", "dbBase", "metadata", "db_sessionmaker")
+__all__ = ("db_engine", "dbBase", "metadata", "db_sessionmaker", "reg_once_rollback_callback")
 
 MODULE_AUTHOR_PATTERN = compile(r"^modules\.([^.]+)")
 DATABASEPATHS = {"database", "database.py"}
@@ -176,6 +177,7 @@ def backup_database():
         if "sqlite" in (url := make_url(cfg.database["green"])).drivername:
             if not url.database or url.database == ":memory:":
                 _logger.warning(_("database.backup.not_supported"))
+                return
             _logger.info(_("database.backup.start"))
             (backup_dir := Path(cfg.database["backup_dir"])).mkdir(parents=True, exist_ok=True)
             with open(url.database, "rb") as f_in:
@@ -198,9 +200,9 @@ def backup_database():
                     f"postgresql{sep}{right}" if sep else cfg.database["green"],
                     "-F",
                     "c",
-                    "-Z 9",
+                    "-Z9",
                     "-j",
-                    os.cpu_count(),
+                    str(os.cpu_count()),
                     "-f",
                     cfg.database["backup_dir"],
                 ],
@@ -238,3 +240,15 @@ def __init__(self, name, *args, **kwargs):
 
 sqlalchemy.sql.schema.Table.__init__ = __init__
 # endregion
+
+
+def reg_once_rollback_callback(session: Session, callback: Callable):
+    def on_rollback(sess):
+        callback(sess)
+        event.remove(sess, "after_commit", on_commit)
+
+    def on_commit(sess):
+        event.remove(sess, "after_rollback", on_rollback)
+
+    event.listen(session, "after_rollback", on_rollback, once=True)
+    event.listen(session, "after_commit", on_commit, once=True)

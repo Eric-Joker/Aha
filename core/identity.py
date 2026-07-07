@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, overload
 from aiologic import Lock
 from sqlalchemy import BigInteger, Column, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from tenacity import _unset
 from xxhash import xxh3_64_digest
 
 from core.database import db_sessionmaker, dbBase
@@ -101,7 +100,7 @@ async def user2aha_id(arg1=None, arg2=None, session=None):
 async def aha_id2user(aha_id: int) -> list[User]:
     """根据 Aha ID 反向查找用户"""
     async with CACHER_LOCK:
-        if (result := CACHER.get((User, aha_id), _unset)) is not _unset:
+        if (result := CACHER.get((User, aha_id))) is not None:
             return result
 
     async with db_sessionmaker() as session:
@@ -181,7 +180,7 @@ async def group2aha_id(arg1=None, arg2=None):
 async def aha_id2group(aha_id: int) -> list[Group]:
     """根据 Aha ID 反向查找群组"""
     async with CACHER_LOCK:
-        if (result := CACHER.get((Group, aha_id), _unset)) is not _unset:
+        if (result := CACHER.get((Group, aha_id))) is not None:
             return result
 
     async with db_sessionmaker() as session:

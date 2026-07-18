@@ -2662,7 +2662,9 @@ await API.send_group_msg(group_id=123456, message=forward)
 
 ## API 数据结构
 
-适配器的返回值不一定能具备所有属性，此时属性值会为 `None`。
+适配器的返回值不一定能具备所有字段，此时属性值会为 `None`；
+
+模型也不一定具备适配器返回的所有字段，这些额外的字段会被放在 [Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/) 实例的 `extra` 属性的字典内。
 
 ### models.api.ReactionUser
 
@@ -2894,14 +2896,14 @@ await API.send_group_msg(group_id=123456, message=forward)
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
-| peer_id | str | 对端平台 ID |
+| peer_id | str \| None | 对端平台 ID |
 | remark | str | 备注 |
-| msg_time | datetime | 最新一条消息的发送时间 |
-| chat_type | [MessageSubType](./事件对象.md#messagesubtype) | 聊天类型 |
-| message_id | str | 最新一条消息的消息 ID |
-| sender | [MessageSender](./事件对象.md#messagesender) | 发送者的昵称 |
+| msg_time | datetime \| None | 最新一条消息的发送时间 |
+| chat_type | [MessageSubType](./事件对象.md#messagesubtype) \| None | 聊天类型 |
+| message_id | str \| None | 最新一条消息的消息 ID |
+| sender | [MessageSender](./事件对象.md#messagesender) \| None | 发送者的昵称 |
 | peer_name | str | 对端的名称（如好友昵称或群名称） |
-| latest_msg | [Message](./事件对象.md#message) | 最新一条消息 |
+| latest_msg | [Message](./事件对象.md#message) \| None | 最新一条消息 |
 
 ### models.api.Stranger
 
@@ -3059,6 +3061,7 @@ curl -X POST "http://127.0.0.1:6550/test" \
 | activity_level | str | 活跃度等级。 |
 | title_expire_time | datetime | 群头衔过期时间。 |
 | card_changeable | bool | 是否允许修改其群名片。 |
+| qq_level | int | QQ 等级。 |
 
 #### get_group_members
 
@@ -3094,6 +3097,15 @@ curl -X POST "http://127.0.0.1:6550/test" \
 | type | [HonorType](#botsnapcathonortype) \| None |  |
 
 **返回**：[GroupHonor](#botsnapcatgrouphonor)
+
+#### get_essence_msg_list
+
+与 [get_essence_msg_list](../模块开发/向协议服务请求/Group%20有关%20API.md#get_essence_msg_list) 相同，但返回的 [EssenceMessage](../../数据结构/群组.md#essencemessage) 对象额外包含如下属性：
+
+| 属性 | 类型 | 描述 |
+| --- | --- | --- |
+| msg_seq | int | 消息序号。 |
+| msg_random | int | 消息随机值。 |
 
 #### set_online_status
 
@@ -3165,6 +3177,32 @@ curl -X POST "http://127.0.0.1:6550/test" \
 从陌生人、好友渠道获取用户等级
 
 **返回**: int | None
+
+#### get_stranger_info
+
+与 [get_stranger_info](../模块开发/向协议服务请求/Account%20有关%20API.md#get_stranger_info) 相同，但返回的 [Stranger](../../数据结构/账号.md#stranger) 对象额外包含如下属性：
+
+| 属性 | 类型 | 描述 |
+| --- | --- | --- |
+| uid | str | UID。 |
+| qid | str | QID。 |
+| is_years_vip | bool | 是否为年费 VIP。 |
+| vip_level | int | VIP 等级。 |
+| status | int | 状态。 |
+| login_days | int | 登录天数。 |
+
+#### get_last_msg_per_conv
+
+与 [get_last_msg_per_conv](../模块开发/向协议服务请求/Account%20有关%20API.md#get_last_msg_per_conv) 相同，但返回的 [LastestMsgs](../../数据结构/账号.md#lastestmsgs) 对象额外包含如下属性：
+
+| 属性 | 类型 | 描述 |
+| --- | --- | --- |
+| peer_uin | str | 对方 UIN。 |
+| send_nick_name | str | 发送者昵称。 |
+| send_member_name | str | 发送者群名片。 |
+| msg_id | str | 消息 ID。 |
+| chat_type_num | int | 聊天类型。 |
+| msg_time_str | str | 消息时间。 |
 
 #### get_ai_characters
 
@@ -4602,25 +4640,14 @@ async with browser_mgr.acquire_page() as page:
 | group_id | str \| int | 平台群组 ID。 |
 | folder_id | str | 文件夹 ID。 |
 
-### get_group_root_files
+### get_group_files
 
-获取群根目录文件列表。
-
-| 参数 | 类型 | 说明 |
-| --- | --- | --- |
-| group_id | str \| int | 平台群组 ID。 |
-| file_count | int | 返回的文件数量上限，默认为 50。 |
-
-**返回**: [GroupFiles](../../数据结构/API%20相关.md#modelsapigroupfiles)
-
-### get_group_files_by_folder
-
-获取文件夹内文件列表。
+获取群文件列表。
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | group_id | str \| int | 平台群组 ID。 |
-| folder_id | str | 文件夹 ID。 |
+| folder_id | str \| None | 若存在文件夹，指定文件夹 ID 获取该文件夹内的文件。 |
 | file_count | int | 返回的文件数量上限，默认为 50。 |
 
 **返回**: [GroupFiles](../../数据结构/API%20相关.md#modelsapigroupfiles)

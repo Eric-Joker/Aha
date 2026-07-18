@@ -55,31 +55,31 @@ class FriendCategory(FrozenBaseModel):
 class LastestMsgs(FrozenBaseModel):
     remark: str
     peer_name: str = Field(validation_alias="peerName")
-    latest_msg: Message = Field(validation_alias="lastestMsg")
-    
+    latest_msg: Message | None = Field(None, validation_alias="lastestMsg")
+
     @property
     def sender(self):
-        return self.latest_msg.sender
+        return self.latest_msg.sender if self.latest_msg else None
 
     @property
     def sender_uid(self):
-        return self.latest_msg.user_id
-    
+        return self.latest_msg.user_id if self.latest_msg else None
+
     @property
     def msg_time(self):
-        return self.latest_msg.time
-    
+        return self.latest_msg.time if self.latest_msg else None
+
     @property
     def chat_type(self):
-        return self.latest_msg.sub_type
+        return self.latest_msg.sub_type if self.latest_msg else None
 
     @property
     def message_id(self):
-        return self.latest_msg.message_id
-    
+        return self.latest_msg.message_id if self.latest_msg else None
+
     @property
     def peer_id(self):
-        return self.latest_msg.group_id or self.latest_msg.user_id
+        return (self.latest_msg.group_id or self.latest_msg.user_id) if self.latest_msg else None
 
 
 class Stranger(FrozenBaseModel):

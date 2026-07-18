@@ -214,12 +214,8 @@ class BaseGroupAPI(BaseAPI):
         """删除群文件夹"""
         raise NotImplementedError
 
-    async def get_group_root_files(self, call_id, group_id: str | int, file_count=50) -> GroupFiles:
-        """获取群根目录文件列表"""
-        raise NotImplementedError
-
-    async def get_group_files_by_folder(self, call_id, group_id: str | int, folder_id: str, file_count=50) -> GroupFiles:
-        """获取文件夹内文件列表"""
+    async def get_group_files(self, call_id, group_id: str | int, folder_id: str = None, file_count=50) -> GroupFiles:
+        """获取群文件列表"""
         raise NotImplementedError
 
     async def get_group_file_url(self, call_id, group_id: str | int, file_id: str) -> str:

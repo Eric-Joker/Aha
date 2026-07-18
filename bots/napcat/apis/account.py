@@ -1,7 +1,9 @@
-from models.api import Friend, FriendCategory, LoginInfo, LastestMsgs, Sex, Stranger, UserStatus
+from models.api import Friend, FriendCategory, LoginInfo, Sex, UserStatus
 from models.msg import Sticker
 
 from ...apis import BaseAccountAPI
+from ..models.account import Stranger
+from ..models.message import LastestMsgs
 from ..utils import Utils
 
 

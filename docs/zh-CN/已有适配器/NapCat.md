@@ -28,6 +28,7 @@
 | activity_level | str | 活跃度等级。 |
 | title_expire_time | datetime | 群头衔过期时间。 |
 | card_changeable | bool | 是否允许修改其群名片。 |
+| qq_level | int | QQ 等级。 |
 
 ### get_group_members
 
@@ -63,6 +64,15 @@
 | type | [HonorType](#botsnapcathonortype) \| None |  |
 
 **返回**：[GroupHonor](#botsnapcatgrouphonor)
+
+### get_essence_msg_list
+
+与 [get_essence_msg_list](../模块开发/向协议服务请求/Group%20有关%20API.md#get_essence_msg_list) 相同，但返回的 [EssenceMessage](../../数据结构/群组.md#essencemessage) 对象额外包含如下属性：
+
+| 属性 | 类型 | 描述 |
+| --- | --- | --- |
+| msg_seq | int | 消息序号。 |
+| msg_random | int | 消息随机值。 |
 
 ### set_online_status
 
@@ -134,6 +144,32 @@
 从陌生人、好友渠道获取用户等级
 
 **返回**: int | None
+
+### get_stranger_info
+
+与 [get_stranger_info](../模块开发/向协议服务请求/Account%20有关%20API.md#get_stranger_info) 相同，但返回的 [Stranger](../../数据结构/账号.md#stranger) 对象额外包含如下属性：
+
+| 属性 | 类型 | 描述 |
+| --- | --- | --- |
+| uid | str | UID。 |
+| qid | str | QID。 |
+| is_years_vip | bool | 是否为年费 VIP。 |
+| vip_level | int | VIP 等级。 |
+| status | int | 状态。 |
+| login_days | int | 登录天数。 |
+
+### get_last_msg_per_conv
+
+与 [get_last_msg_per_conv](../模块开发/向协议服务请求/Account%20有关%20API.md#get_last_msg_per_conv) 相同，但返回的 [LastestMsgs](../../数据结构/账号.md#lastestmsgs) 对象额外包含如下属性：
+
+| 属性 | 类型 | 描述 |
+| --- | --- | --- |
+| peer_uin | str | 对方 UIN。 |
+| send_nick_name | str | 发送者昵称。 |
+| send_member_name | str | 发送者群名片。 |
+| msg_id | str | 消息 ID。 |
+| chat_type_num | int | 聊天类型。 |
+| msg_time_str | str | 消息时间。 |
 
 ### get_ai_characters
 

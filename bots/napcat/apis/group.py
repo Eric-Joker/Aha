@@ -4,12 +4,13 @@ from time import time
 from asyncio import create_task
 from typing import TYPE_CHECKING, Literal
 
-from models.api import EssenceMessage, GroupFiles, RetrievedMessage, Role
+from models.api import GroupFiles, RetrievedMessage, Role
 from models.core import AddScheduleArgs, APSTriggerType
 from models.msg import Forward, MsgSeq
 
 from ...apis import BaseGroupAPI
-from ..utils import GroupInfo, GroupMemberInfo, GroupMembers, Utils
+from ..models.group import EssenceMessage, GroupInfo, GroupMemberInfo, GroupMembers
+from ..utils import Utils
 
 if TYPE_CHECKING:
     from .. import GroupHonor, HonorType, NapCat
@@ -173,7 +174,8 @@ class GroupAPI(Utils, BaseGroupAPI):
                 create_task(
                     self._call_api(
                         self.gen_id(), "set_group_ban", {"group_id": group_id, "user_id": user_id, "duration": 2591940}
-                    ), eager_start=True
+                    ),
+                    eager_start=True,
                 )
 
                 # 计算剩余时长并设置续期任务
@@ -313,15 +315,12 @@ class GroupAPI(Utils, BaseGroupAPI):
     def delete_group_folder(self, call_id, group_id, folder_id):
         return self._call_api(call_id, "delete_group_folder", {"group_id": group_id, "folder_id": folder_id})
 
-    async def get_group_root_files(self, call_id, group_id, file_count=50):
-        return GroupFiles.model_validate(
-            await self._call_api(call_id, "get_group_root_files", {"group_id": group_id, "file_count": file_count})
-        )
-
-    async def get_group_files_by_folder(self, call_id, group_id, folder_id, file_count=50):
+    async def get_group_files(self, call_id, group_id, folder_id=None, file_count=50):
         return GroupFiles.model_validate(
             await self._call_api(
-                call_id, "get_group_files_by_folder", {"group_id": group_id, "folder_id": folder_id, "file_count": file_count}
+                call_id,
+                "get_group_files_by_folder" if folder_id else "get_group_root_files",
+                {"group_id": group_id, "folder_id": folder_id, "file_count": file_count},
             )
         )
 

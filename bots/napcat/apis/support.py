@@ -4,7 +4,8 @@ from models.api import APIVersion
 from models.api.events import HeartbeatStatus
 
 from ...apis import BaseSupportAPI
-from ..utils import AICharacterList, Utils
+from ..models.support import AICharacterList
+from ..utils import Utils
 
 
 class SupportAPI(Utils, BaseSupportAPI):

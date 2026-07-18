@@ -446,7 +446,10 @@ async def call_api(method: str, *args, bot: int, **kwargs):
         raise RuntimeError(_("router.api_closed"))
     finally:
         async with meta.call_lock:
-            meta.calls.discard(call_id if IS_PROCESS_MODE else current_task())
+            if IS_PROCESS_MODE:
+                del meta.calls[call_id]
+            else:
+                meta.calls.discard(call_id if IS_PROCESS_MODE else current_task())
 
 
 # endregion

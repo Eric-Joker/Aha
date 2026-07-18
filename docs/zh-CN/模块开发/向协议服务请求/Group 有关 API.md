@@ -349,25 +349,14 @@
 | group_id | str \| int | 平台群组 ID。 |
 | folder_id | str | 文件夹 ID。 |
 
-## get_group_root_files
+## get_group_files
 
-获取群根目录文件列表。
-
-| 参数 | 类型 | 说明 |
-| --- | --- | --- |
-| group_id | str \| int | 平台群组 ID。 |
-| file_count | int | 返回的文件数量上限，默认为 50。 |
-
-**返回**: [GroupFiles](../../数据结构/API%20相关.md#modelsapigroupfiles)
-
-## get_group_files_by_folder
-
-获取文件夹内文件列表。
+获取群文件列表。
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | group_id | str \| int | 平台群组 ID。 |
-| folder_id | str | 文件夹 ID。 |
+| folder_id | str \| None | 若存在文件夹，指定文件夹 ID 获取该文件夹内的文件。 |
 | file_count | int | 返回的文件数量上限，默认为 50。 |
 
 **返回**: [GroupFiles](../../数据结构/API%20相关.md#modelsapigroupfiles)

@@ -228,12 +228,8 @@ class GroupAPI:
         """删除群文件夹"""
 
     @staticmethod
-    async def get_group_root_files(group_id: str | int, file_count=50, *, bot: int = None) -> GroupFiles:
-        """获取群根目录文件列表"""
-
-    @staticmethod
-    async def get_group_files_by_folder(group_id: str | int, folder_id: str, file_count=50, *, bot: int = None) -> GroupFiles:
-        """获取文件夹内文件列表"""
+    async def get_group_files(group_id: str | int, folder_id: str = None, file_count=50, *, bot: int = None) -> GroupFiles:
+        """获取群文件列表"""
 
     @staticmethod
     async def get_group_file_url(group_id: str | int, file_id: str, *, bot: int = None) -> str:

@@ -153,7 +153,7 @@ class Message[T: MsgSeg](BaseEvent):
         建议减少调用该方法的次数。
 
         Returns:
-            InlineStr: 跨事件上下文不一致，具有易被恶意碰撞的风险，不可直接用于调用 API 发送消息。
+            InlineStr: 跨事件上下文不一致，不可直接用于调用 API 发送消息。
         """
         from utils.string import InlineStr
 

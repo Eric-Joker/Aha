@@ -175,7 +175,7 @@ def split_string(s):
                         count += 1
                         last_pos = pos
 
-            total_segments = count + 1 if n - last_pos + sep_len > 0 else count
+            total_segments = count + 1
 
             if (total_segments > best_count) or (total_segments == best_count and sep_len > best_sep_len):
                 best_count = total_segments

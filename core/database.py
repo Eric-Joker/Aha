@@ -201,8 +201,6 @@ def backup_database():
                     "-F",
                     "c",
                     "-Z9",
-                    "-j",
-                    str(os.cpu_count()),
                     "-f",
                     cfg.database["backup_dir"],
                 ],

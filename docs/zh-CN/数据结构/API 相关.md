@@ -1,6 +1,8 @@
 # API 数据结构
 
-适配器的返回值不一定能具备所有属性，此时属性值会为 `None`。
+适配器的返回值不一定能具备所有字段，此时属性值会为 `None`；
+
+模型也不一定具备适配器返回的所有字段，这些额外的字段会被放在 [Pydantic Model](https://docs.pydantic.dev/latest/concepts/models/) 实例的 `extra` 属性的字典内。
 
 ## models.api.ReactionUser
 
@@ -232,14 +234,14 @@
 
 | 属性 | 类型 | 概述 |
 | --- | --- | --- |
-| peer_id | str | 对端平台 ID |
+| peer_id | str \| None | 对端平台 ID |
 | remark | str | 备注 |
-| msg_time | datetime | 最新一条消息的发送时间 |
-| chat_type | [MessageSubType](./事件对象.md#messagesubtype) | 聊天类型 |
-| message_id | str | 最新一条消息的消息 ID |
-| sender | [MessageSender](./事件对象.md#messagesender) | 发送者的昵称 |
+| msg_time | datetime \| None | 最新一条消息的发送时间 |
+| chat_type | [MessageSubType](./事件对象.md#messagesubtype) \| None | 聊天类型 |
+| message_id | str \| None | 最新一条消息的消息 ID |
+| sender | [MessageSender](./事件对象.md#messagesender) \| None | 发送者的昵称 |
 | peer_name | str | 对端的名称（如好友昵称或群名称） |
-| latest_msg | [Message](./事件对象.md#message) | 最新一条消息 |
+| latest_msg | [Message](./事件对象.md#message) \| None | 最新一条消息 |
 
 ## models.api.Stranger
 

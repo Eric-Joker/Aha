@@ -86,7 +86,10 @@ class PrivateAPI(Utils, BasePrivateAPI):
                 "send_private_msg",
                 {
                     "user_id": user_id,
-                    "message": {"file": await self.prepare_upload(file, self.transport.local_srv), "name": name},
+                    "message": {
+                        "type": "file",
+                        "data": {"file": await self.prepare_upload(file, self.transport.local_srv), "name": name},
+                    },
                 },
             )
         )["message_id"]
@@ -96,7 +99,7 @@ class PrivateAPI(Utils, BasePrivateAPI):
             await self._call_api(
                 call_id,
                 "send_private_msg",
-                {"user_id": user_id, "message": {"type": "music", "data": {"type": platform.value, "id": id}}},
+                {"user_id": user_id, "message": {"type": "music", "data": {"type": platform, "id": id}}},
             )
         )["message_id"]
 
@@ -111,7 +114,7 @@ class PrivateAPI(Utils, BasePrivateAPI):
                         "type": "custom_music",
                         "data": {
                             "url": url,
-                            "image": await self.prepare_upload(image, self.transport.local_srv),
+                            "image": None if image else await self.prepare_upload(image, self.transport.local_srv),
                             "audio": audio,
                             "title": title,
                             "content": content,

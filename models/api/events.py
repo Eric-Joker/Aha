@@ -29,20 +29,18 @@ class BaseEvent(BaseModel):
     sub_type: EventSubType | None = None
 
     async def user_aha_id(self):
-        if user_id := getattr(self, "user_id"):
-            from core.identity import user2aha_id
+        from core.identity import user2aha_id
 
-            return await user2aha_id(self.platform, user_id)
+        return await user2aha_id(self.platform, self.user_id)
 
     async def group_aha_id(self):
-        if group_id := getattr(self, "group_id"):
-            from core.identity import group2aha_id
+        from core.identity import group2aha_id
 
-            return await group2aha_id(self.platform, group_id)
+        return await group2aha_id(self.platform, self.group_id)
 
     @property
     def user(self):
-        """可用于表达式 PM.group"""
+        """可用于表达式 PM.user"""
         if self._user_obj:
             return self._user_obj
         if user_id := getattr(self, "user_id"):
@@ -51,7 +49,7 @@ class BaseEvent(BaseModel):
 
     @property
     def group(self):
-        """可用于表达式 PM.user"""
+        """可用于表达式 PM.group"""
         if self._group_obj:
             return self._group_obj
         if group_id := getattr(self, "group_id"):
@@ -153,7 +151,7 @@ class Message[T: MsgSeg](BaseEvent):
         建议减少调用该方法的次数。
 
         Returns:
-            InlineStr: 跨事件上下文不一致，具有易被恶意碰撞的风险，不可直接用于调用 API 发送消息。
+            InlineStr: 跨事件上下文不一致，不可直接用于调用 API 发送消息。
         """
         from utils.string import InlineStr
 

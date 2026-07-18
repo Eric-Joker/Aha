@@ -69,9 +69,7 @@ class PrivateAPI:
         """
 
     @staticmethod
-    async def send_private_platform_music(
-        user_id: str | int, platform: Literal["qq", "163"], id: str | int, *, bot: int = None
-    ) -> str:
+    async def send_private_platform_music(user_id: str | int, platform: str, id: str | int, *, bot: int = None) -> str:
         """发送私聊平台音乐分享消息。
 
         Returns:

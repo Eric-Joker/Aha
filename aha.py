@@ -39,7 +39,7 @@ if __name__ == "__main__":
         from core.dispatcher import clear_handlers, process_clean, process_start
         from core.api_service import close_bots, start_bots
         from utils.aio import AsyncLoopExecutor, ThreadSafeAsyncMeta
-        from utils.network import _httpx_client
+        import utils.network
 
         # import core.identity 由 core.expr 引用
 
@@ -105,7 +105,7 @@ if __name__ == "__main__":
             with suppress(Exception):
                 await sched.stop()
             with suppress(Exception):
-                await _httpx_client.aclose()
+                await utils.network._httpx_client.aclose()
             # clear_all_cache()
             await clean_data_store()
             await gather(

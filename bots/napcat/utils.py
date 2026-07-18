@@ -2,23 +2,18 @@ import os
 from asyncio import wait_for
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import datetime
-from enum import Enum, auto
 from multiprocessing import current_process
 from re import compile
-from typing import TYPE_CHECKING, Annotated, Any, overload
+from typing import TYPE_CHECKING, Any
 
 from anyio import Path
-from pydantic import BeforeValidator, Field
 
 import core.status
 from bots.apis import BaseAPI
 from core.transports import WebSocketClient
-from models.api import GroupInfo as AhaGroupInfo
-from models.api import GroupMemberInfo as AhaGroupMemberInfo
-from models.api import GroupMembers as AhaGroupMembers
-from models.base import FrozenBaseModel, PureNameEnum
 from models.exc import APIException, APITimeoutError, UnknownMessageTypeError
+
+from .models.message import MUSIC_PLATFORM_MAP, StickerType
 from models.msg import (
     At,
     Contact,
@@ -47,109 +42,11 @@ from utils.misc import AsyncBase64Encoder, stream_async_json
 if TYPE_CHECKING:
     from . import NapCat
 
-MUSIC_PLATFORM_MAP = {  # TODO: 补齐
-    "163": "163",  # 不知道
-    "QQ音乐": "qq",
-    "kugou": "kugou",  # 不知道
-    "migu": "migu",  # 不知道
-    "kuwo": "kuwo",  # 不知道
-}
-
 CQ_CODE_PATTERN = compile(r"\[CQ:([^,\]]+)(?:,([^\]]+))?\]")
 
 
 def sticker2cq_face(sticker: Sticker):
     return f"[CQ:face,id={sticker.file_id}]"
-
-
-class GroupInfo(AhaGroupInfo):
-    max_member_count: int | None = None
-
-
-class GroupMemberInfo(AhaGroupMemberInfo):
-    activity_level: str
-    title_expire_time: Annotated[datetime, BeforeValidator(datetime.fromtimestamp)] = Field(
-        validation_alias="specialTitleExpireTime"
-    )
-    card_changeable: bool
-
-
-class GroupMembers(AhaGroupMembers[GroupMemberInfo]):
-    def __new__(cls, *args):
-        return super().__new__(cls, *args, element_cls=GroupMemberInfo)
-
-    def filter_by_level_ge(self, level: int):
-        """过滤活跃等级大于等于指定值的成员"""
-        return GroupMembers(member for member in self if int(member.activity_level) >= level)
-
-    def filter_by_level_le(self, level: int):
-        """过滤活跃等级小于等于指定值的成员"""
-        return GroupMembers(member for member in self if int(member.activity_level) <= level)
-
-
-class HonorType(str, PureNameEnum):
-    TALKATIVE = "talkative"
-    PERFORMER = "performer"
-    EMOTION = "emotion"
-
-
-class GroupHonorUser(FrozenBaseModel):
-    user_id: Annotated[str, BeforeValidator(str)]
-    nickname: str
-    avatar: str
-    description: str | None = None
-
-
-class GroupHonor(FrozenBaseModel):
-    group_id: Annotated[str, BeforeValidator(str)]
-    current_talkative: GroupHonorUser
-    talkative_list: list[GroupHonorUser]
-    performer_list: list[GroupHonorUser] = []
-    legend_list: list[GroupHonorUser] = []
-    emotion_list: list[GroupHonorUser] = []
-
-
-class AICharacter(FrozenBaseModel):
-    character_id: str
-    character_name: str
-    preview_url: str
-
-
-class AICharacterList(list[AICharacter]):
-    if TYPE_CHECKING:
-
-        @overload
-        def __init__(self) -> None: ...
-
-        @overload
-        def __init__(self, *elements: dict | AICharacter) -> None: ...
-
-        @overload
-        def __init__(self, iterable: Iterable[dict | AICharacter], /) -> None: ...
-
-    def __init__(self, *args):
-        if not args:
-            super().__init__()
-        elif len(args) == 1:
-            if isinstance(arg := args[0], dict):
-                super().__init__((AICharacter.model_validate(arg),))
-            elif isinstance(arg, AICharacter):
-                super().__init__(args)
-            else:
-                super().__init__(AICharacter.model_validate(a) if isinstance(a, dict) else a for a in arg)
-        else:
-            super().__init__(AICharacter.model_validate(arg) if isinstance(arg, dict) else arg for arg in args)
-
-    def get_search_id_by_name(self, name: str) -> str | None:
-        return next((character.character_id for character in self if character.character_name == name), None)
-
-
-class StickerType(Enum):
-    QQFACE = auto()
-    MARKETFACE = auto()
-    POKE = auto()
-    DICE = auto()
-    RPS = auto()
 
 
 class Utils(BaseAPI):
@@ -160,9 +57,10 @@ class Utils(BaseAPI):
             self.transport: WebSocketClient
 
     async def _call_api(self, echo, action, params=None, timeout=300) -> Any:
+        call = self._calls[echo]
         await self.transport.invoke(stream_async_json({"action": action, "params": params or {}, "echo": echo}))
         try:
-            data: dict = await wait_for(self._calls[echo], timeout)
+            data: dict = await wait_for(call, timeout)
             if (retcode := data["retcode"]) == 0:
                 return data.get("data")
             raise APIException(data["message"], retcode)
@@ -189,7 +87,7 @@ class Utils(BaseAPI):
         del data["sender"]["user_id"]
         del data["message_format"]
         if data["sub_type"] == "group":
-            data["sub_type"] == "temporary"
+            data["sub_type"] = "temporary"
         if data["message"] and data["message"][0]["type"] == "markdown":
             del data["message"][1:]
         data["message"] = MsgSeq(
@@ -204,7 +102,7 @@ class Utils(BaseAPI):
         del data["sender"]["user_id"]
         del data["message_format"]
         if data["sub_type"] == "group":
-            data["sub_type"] == "temporary"
+            data["sub_type"] = "temporary"
         if isinstance(data["message"], str):
             data["message"] = aha_code2dict_list(data["message"], CQ_CODE_PATTERN)
         if data["message"] and data["message"][0]["type"] == "markdown":
@@ -484,7 +382,7 @@ class Utils(BaseAPI):
                 return "该消息不支持预览"
 
     @classmethod
-    def raw2forward_data(cls, content: list[dict] | None, id):
+    def raw2forward_data(cls, content: list[dict] | None, id = None):
         return (
             {"id": id, "content": None, "message_type": None}
             if content is None

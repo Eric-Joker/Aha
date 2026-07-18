@@ -1,18 +1,22 @@
+from itertools import chain
 from typing import Literal
 
 from models.api import APIVersion
 from models.api.events import HeartbeatStatus
 
 from ...apis import BaseSupportAPI
-from ..utils import AICharacterList, Utils
+from ..models.support import AICharacterList
+from ..utils import Utils
 
 
 class SupportAPI(Utils, BaseSupportAPI):
     # region AI 声聊
     async def get_ai_characters(self, call_id, group_id: str | int, chat_type: Literal[1, 2]):
         return AICharacterList(
-            item["characters"]
-            for item in await self._call_api(call_id, "get_ai_characters", {"group_id": group_id, "chat_type": chat_type})
+            chain.from_iterable(
+                item["characters"]
+                for item in await self._call_api(call_id, "get_ai_characters", {"group_id": group_id, "chat_type": chat_type})
+            )
         )
 
     def get_ai_record(self, call_id, group_id: str | int, character_id: str, text: str):

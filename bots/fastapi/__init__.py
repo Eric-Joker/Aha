@@ -122,26 +122,23 @@ class VerificationMiddleware:
         except Error:
             return await reject()
 
-        # 防重放
-        now = time()
-        if i_timestamp > now - self.DELTA and i_timestamp < now + self.DELTA:
-            async with self._cache_lock:
-                # 清理过期项。避免迭代时修改
-                for k in [k for k, exp in self._nonce_cache.items() if exp <= now]:
-                    del self._nonce_cache[k]
-                if nonce in self._nonce_cache:
-                    return await reject()
-        else:
-            return await reject()
-
         # 验证签名
         try:
             self.public_key.verify(b_signature, f"{timestamp}|{nonce}".encode())
         except Exception:
             return await reject()
 
-        # 记录 nonce
-        self._nonce_cache[nonce] = i_timestamp + self.DELTA
+        # 防重放
+        now = time()
+        if not (now - self.DELTA < i_timestamp < now + self.DELTA):
+            return await reject()
+        async with self._cache_lock:
+            # 清理过期项。避免迭代时修改
+            for k in [k for k, exp in self._nonce_cache.items() if exp <= now]:
+                del self._nonce_cache[k]
+            if nonce in self._nonce_cache:
+                return await reject()
+            self._nonce_cache[nonce] = i_timestamp + self.DELTA
 
         await self.app(scope, receive, send)
 
@@ -238,4 +235,4 @@ class FastAPI(BaseBot, metaclass=BaseBotSingletonMeta):
         self._calls[key].set_result(data)
 
     async def send_msg(self, _, *, user_id, msg, **__):
-        await self.set_result(user_id, msg)
+        await self.set_result(_, user_id, msg)

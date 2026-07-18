@@ -319,17 +319,9 @@
 | --- | --- | --- |
 | group_id | str \| int | 平台群组 ID。 |
 | folder_name | str | 文件夹名称。 |
+| parents | bool | 递归创建。默认 False。 |
 
-## group_file_folder_makedir
-
-按路径创建群文件夹。
-
-| 参数 | 类型 | 说明 |
-| --- | --- | --- |
-| group_id | str \| int | 平台群组 ID。 |
-| path | str | 文件夹路径（如 `/foo/bar/`）。 |
-
-**返回**: str（创建的文件夹 ID）
+**返回**: str （最后创建的）新文件夹的唯一标识符
 
 ## delete_group_file
 
@@ -349,25 +341,14 @@
 | group_id | str \| int | 平台群组 ID。 |
 | folder_id | str | 文件夹 ID。 |
 
-## get_group_root_files
+## get_group_files
 
-获取群根目录文件列表。
-
-| 参数 | 类型 | 说明 |
-| --- | --- | --- |
-| group_id | str \| int | 平台群组 ID。 |
-| file_count | int | 返回的文件数量上限，默认为 50。 |
-
-**返回**: [GroupFiles](../../数据结构/API%20相关.md#modelsapigroupfiles)
-
-## get_group_files_by_folder
-
-获取文件夹内文件列表。
+获取群文件列表。
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | group_id | str \| int | 平台群组 ID。 |
-| folder_id | str | 文件夹 ID。 |
+| folder_id | str \| None | 若存在文件夹，指定文件夹 ID 获取该文件夹内的文件。 |
 | file_count | int | 返回的文件数量上限，默认为 50。 |
 
 **返回**: [GroupFiles](../../数据结构/API%20相关.md#modelsapigroupfiles)

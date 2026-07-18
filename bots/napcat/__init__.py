@@ -10,23 +10,26 @@ from ssrjson import loads
 
 import core.status
 from core.transports import WebSocketClient
-from models.api import Message, MessageSent, MetaEvent, Notice, NoticeEventType, Request
-from models.api.events import LifecycleSubType, MetaEventType
+from models.api import (
+    Friend,
+    LifecycleSubType,
+    Message,
+    MessageSent,
+    MetaEvent,
+    MetaEventType,
+    Notice,
+    NoticeEventType,
+    Request,
+)
 from models.core import EventCategory
 
 from ..base import BaseBot
 from .apis import AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI
-from .utils import (
-    AICharacter,
-    AICharacterList,
-    GroupInfo,
-    GroupMemberInfo,
-    GroupMembers,
-    GroupHonor,
-    GroupHonorUser,
-    HonorType,
-    sticker2cq_face,
-)
+from .models.account import Stranger
+from .models.group import EssenceMessage, GroupHonor, GroupHonorUser, GroupInfo, GroupMemberInfo, GroupMembers, HonorType
+from .models.message import StickerType
+from .models.support import AICharacter, AICharacterList
+from .utils import sticker2cq_face
 
 __all__ = (
     "NapCat",
@@ -39,6 +42,10 @@ __all__ = (
     "HonorType",
     "AICharacter",
     "AICharacterList",
+    "Friend",
+    "Stranger",
+    "EssenceMessage",
+    "StickerType",
 )
 
 

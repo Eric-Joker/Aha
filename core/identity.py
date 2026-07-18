@@ -35,7 +35,7 @@ CACHER_LOCK = Lock()
 
 
 def _generate_aha_id(platform, entity_id):
-    return int.from_bytes(xxh3_64_digest(platform + entity_id), signed=True)
+    return int.from_bytes(xxh3_64_digest(platform + "\0" + entity_id), signed=True)
 
 
 # region 用户

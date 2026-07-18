@@ -36,7 +36,7 @@ class _HttpMixin(ClientTransport):
             return loads(response.content)
         elif "text/" in content_type:
             return response.text
-        return await response.content
+        return response.content
 
     async def _close_impl(self):
         if self._http_client:
@@ -56,7 +56,7 @@ class _SseMixin(ClientTransport):
         self._logger = logger or logging.getLogger("API Connection (HTTP SSE)")
         self._local_srv = None
 
-    async def open(self, *, sse_connect_config: dict, sse_client_config: dict = {}, retry_config: dict = None, **kwargs):
+    async def open(self, *, sse_connect_config: dict, sse_client_config: dict = None, retry_config: dict = None, **kwargs):
         from httpx_sse import aconnect_sse
 
         await super().open(**kwargs)
@@ -72,7 +72,7 @@ class _SseMixin(ClientTransport):
             _retry_args |= retry_config
         self._connect = retry(**_retry_args)(self._connect)
         args = set(get_arg_names(AsyncClient.__init__))
-        self._sse_client = AsyncClient(**{k: v for k, v in sse_client_config.items() if k in args})
+        self._sse_client = AsyncClient(**{k: v for k, v in sse_client_config.items() if k in args}) if sse_client_config else AsyncClient()
         self._closed = False
 
         await self._connect()

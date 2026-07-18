@@ -4,12 +4,13 @@ from time import time
 from asyncio import create_task
 from typing import TYPE_CHECKING, Literal
 
-from models.api import EssenceMessage, GroupFiles, RetrievedMessage, Role
+from models.api import GroupFiles, RetrievedMessage, Role
 from models.core import AddScheduleArgs, APSTriggerType
 from models.msg import Forward, MsgSeq
 
 from ...apis import BaseGroupAPI
-from ..utils import GroupInfo, GroupMemberInfo, GroupMembers, Utils
+from ..models.group import EssenceMessage, GroupInfo, GroupMemberInfo, GroupMembers
+from ..utils import Utils
 
 if TYPE_CHECKING:
     from .. import GroupHonor, HonorType, NapCat
@@ -103,7 +104,7 @@ class GroupAPI(Utils, BaseGroupAPI):
             await self._call_api(
                 call_id,
                 "send_group_msg",
-                {"group_id": group_id, "message": {"type": "music", "data": {"type": platform.value, "id": id}}},
+                {"group_id": group_id, "message": {"type": "music", "data": {"type": platform, "id": id}}},
             )
         )["message_id"]
 
@@ -118,7 +119,7 @@ class GroupAPI(Utils, BaseGroupAPI):
                         "type": "custom_music",
                         "data": {
                             "url": url,
-                            "image": await self.prepare_upload(image, self.transport.local_srv),
+                            "image": await self.prepare_upload(image, self.transport.local_srv) if image else None,
                             "audio": audio,
                             "title": title,
                             "content": content,
@@ -173,7 +174,8 @@ class GroupAPI(Utils, BaseGroupAPI):
                 create_task(
                     self._call_api(
                         self.gen_id(), "set_group_ban", {"group_id": group_id, "user_id": user_id, "duration": 2591940}
-                    ), eager_start=True
+                    ),
+                    eager_start=True,
                 )
 
                 # 计算剩余时长并设置续期任务
@@ -205,7 +207,7 @@ class GroupAPI(Utils, BaseGroupAPI):
                     {"seconds": duration},
                     {"metadata": {"platform": "QQ", "group_id": group_id, "user_id": user_id, "tag": "ban"}},
                 )
-                await self.add_schedule(schedule_args, eager_start=True)
+                await self.add_schedule(schedule_args)
             return True
 
         # 解禁
@@ -301,11 +303,29 @@ class GroupAPI(Utils, BaseGroupAPI):
             call_id, "upload_group_file", {"group_id": group_id, "file": file, "name": name, "folder": folder}
         )
 
-    def create_group_file_folder(self, call_id, group_id, folder_name):
-        return self._call_api(call_id, "create_group_file_folder", {"group_id": group_id, "folder_name": folder_name})
+    async def create_group_file_folder(self, call_id, group_id, folder_name, parents=False):
+        if parents:
+            folder_id = None
+            for name in folder_name.replace("\\", "/").split("/"):
+                if not name:
+                    continue
+                if folder := next(
+                    (f for f in (await self.get_group_files(call_id, group_id, folder_id)).folders if f.folder_name == name),
+                    None,
+                ):
+                    folder_id = folder.folder_id
+                    continue
 
-    def group_file_folder_makedir(self, call_id, group_id, path):
-        return super().group_file_folder_makedir(call_id, group_id, path)
+                await self._call_api(call_id, "create_group_file_folder", {"group_id": group_id, "folder_name": name})
+                folder_id = next(
+                    (f for f in (await self.get_group_files(call_id, group_id, folder_id)).folders if f.folder_name == name),
+                    None,
+                ).folder_id
+            return folder_id
+        await self._call_api(call_id, "create_group_file_folder", {"group_id": group_id, "folder_name": folder_name})
+        return next(
+            (f for f in (await self.get_group_files(call_id, group_id)).folders if f.folder_name == folder_name), None
+        ).folder_id
 
     def delete_group_file(self, call_id, group_id, file_id):
         return self._call_api(call_id, "delete_group_file", {"group_id": group_id, "file_id": file_id})
@@ -313,15 +333,12 @@ class GroupAPI(Utils, BaseGroupAPI):
     def delete_group_folder(self, call_id, group_id, folder_id):
         return self._call_api(call_id, "delete_group_folder", {"group_id": group_id, "folder_id": folder_id})
 
-    async def get_group_root_files(self, call_id, group_id, file_count=50):
-        return GroupFiles.model_validate(
-            await self._call_api(call_id, "get_group_root_files", {"group_id": group_id, "file_count": file_count})
-        )
-
-    async def get_group_files_by_folder(self, call_id, group_id, folder_id, file_count=50):
+    async def get_group_files(self, call_id, group_id, folder_id=None, file_count=50):
         return GroupFiles.model_validate(
             await self._call_api(
-                call_id, "get_group_files_by_folder", {"group_id": group_id, "folder_id": folder_id, "file_count": file_count}
+                call_id,
+                "get_group_files_by_folder" if folder_id else "get_group_root_files",
+                {"group_id": group_id, "folder_id": folder_id, "file_count": file_count},
             )
         )
 

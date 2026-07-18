@@ -1,7 +1,9 @@
-from models.api import Friend, FriendCategory, LoginInfo, LastestMsgs, Sex, Stranger, UserStatus
+from models.api import Friend, FriendCategory, LoginInfo, Sex, UserStatus
 from models.msg import Sticker
 
 from ...apis import BaseAccountAPI
+from ..models.account import Stranger
+from ..models.message import LastestMsgs
 from ..utils import Utils
 
 
@@ -75,7 +77,7 @@ class AccountAPI(Utils, BaseAccountAPI):
         return self._call_api(call_id, "mark_group_msg_as_read", {"group_id": group_id})
 
     def mark_private_msg_as_read(self, call_id, user_id):
-        return self._call_api(call_id, "mark_private_msg_as_read", {"group_id": user_id})
+        return self._call_api(call_id, "mark_private_msg_as_read", {"user_id": user_id})
 
     def create_collection(self, call_id, raw_data, brief):
         return self._call_api(call_id, "create_collection", {"rawData": raw_data, "brief": brief})

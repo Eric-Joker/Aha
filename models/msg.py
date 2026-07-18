@@ -397,6 +397,8 @@ class Downloadable(MsgSeg):
                                     if len(buf) >= 18:
                                         break
                                 header_bytes = bytes(buf[:18])
+                        else:
+                            header_bytes = b""
 
                         # 修正
                         if ext := self._detect_extension(header_bytes):
@@ -512,7 +514,7 @@ class Downloadable(MsgSeg):
     ):
         from services.file_cache import cache_file_sessionmaker
 
-        async with cache_file_sessionmaker(name, ext if ext.startswith(".") else f".{ext}", 3) as session:
+        async with cache_file_sessionmaker(name, ext if ext and ext.startswith(".") else f".{ext}", 3) as session:
             return cls(file=(path := await session.register(ttl, data)), name=path.name, summary=summary)
 
 

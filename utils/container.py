@@ -4,6 +4,8 @@ from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Sequence
 from typing import TYPE_CHECKING, Literal, Self, SupportsIndex, overload
 
+from tenacity import _unset
+
 if TYPE_CHECKING:
     from _typeshed import SupportsKeysAndGetItem
 
@@ -181,10 +183,10 @@ class IndexedDictMixin[_KT, _VT]:
         def pop(self, key: _KT, default: _VT, /) -> _VT: ...
         @overload
         def pop[_T](self, key: _KT, default: _T, /) -> _VT | _T: ...
-    def pop(self, key, default=None):
+    def pop(self, key, default=_unset):
         if key in self:
             self._keys.remove(key)
-        return super().pop(key, default)
+        return super().pop(key) if default is _unset else super().pop(key, default)
 
     def popitem(self) -> _VT:
         self._keys.remove((result := super().popitem())[0])
@@ -277,5 +279,5 @@ class DefaultIndexedDict[_KT, _VT](IndexedDictMixin[_KT, _VT], defaultdict[_KT, 
         ) -> None: ...
 
     def __missing__(self, key: _KT, /) -> _VT:
-        self._keys.append(key)
+        self._keys.append(key)  # C defdict_missing 并不会执行覆写的 setitem
         return super().__missing__(key)

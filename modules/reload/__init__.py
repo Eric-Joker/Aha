@@ -65,6 +65,6 @@ async def msg_entry(event: Message):
 async def api_entry():
     async with db_sessionmaker() as session:
         for s in cfg.super:
-            await session.execute(upsert(Status, user_id=s.user_id, platform=s.platform))
+            await session.execute(upsert(Status, group_id="", user_id=s.user_id, platform=s.platform))
         await session.commit()
     await reload_or_restart()

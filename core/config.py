@@ -113,10 +113,10 @@ class Option:
 class OptionCommentedMap(CommentedMap):
     def __setitem__(self, key, value):
         # 如果原值是Option但新值不是，验证新值是否在选项内
-        if (old := self.get(key)) and isinstance(option_obj := old, Option) and not isinstance(value, Option):
-            if value not in option_obj.options:
-                raise ValueError(_("config.option.invalid") % (value, option_obj.options))
-            value = Option(option_obj.options, value)
+        if (old := super().get(key)) and isinstance(old, Option) and not isinstance(value, Option):
+            if value not in old.options:
+                raise ValueError(_("config.option.invalid") % (value, old.options))
+            value = Option(old.options, value)
         super().__setitem__(key, value)
 
     def __getitem__(self, key):
@@ -128,10 +128,10 @@ class OptionCommentedMap(CommentedMap):
 
 class OptionCommentedSeq(CommentedSeq):
     def _setitem_single(self, idx, val):
-        if isinstance(self[idx := idx.__index__()], Option) and not isinstance(val, Option):
-            if val not in (opt_obj := self[idx]).options:
-                raise ValueError(_("config.option.invalid") % (val, opt_obj.options))
-            val = Option(opt_obj.options, val)
+        if isinstance(old := super().__getitem__(idx := idx.__index__()), Option) and not isinstance(val, Option):
+            if val not in old.options:
+                raise ValueError(_("config.option.invalid") % (val, old.options))
+            val = Option(old.options, val)
         super().__setitem__(idx, val)
 
     def __setitem__(self, index, value):
@@ -668,7 +668,10 @@ class Config[
 
         # 获取配置
         key, value = self._type2yaml(key, True)[0], _unset
-        for mod_name, mod_data in (("aha", aha_data := self._data.get("aha")), (storage_module, self._data.get(storage_module))):
+        for mod_name, mod_data in (
+            ("aha", aha_data := self._data.get("aha")),
+            (storage_module, self._data.get(storage_module)),
+        ):
             if mod_data and key in mod_data:
                 if default is _unset:
                     if not self._is_registered(key, mod_name):
@@ -865,7 +868,7 @@ class Config[
             data = {Group(**i) for i in data["group_list"]}
             if self._default_group_list_mode == "blacklist":
                 data.update(self._default_group_list)
-                data = frozenset(data)
+            data = frozenset(data)
         else:
             data = frozenset()
         self._group_blacklist[module] = data

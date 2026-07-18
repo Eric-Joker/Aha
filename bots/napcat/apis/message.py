@@ -1,6 +1,6 @@
 import os
 from base64 import b64decode
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from models.api import AudioFormat, RetrievedMessage
@@ -89,7 +89,7 @@ class MessageAPI(Utils, BaseMessageAPI):
         ):
             if msg.user_id != self_id:
                 raise APIException("无权撤回该消息。")
-            if msg.time <= datetime.now().astimezone() - 120:
+            if msg.time <= datetime.now().astimezone() - timedelta(minutes=2):
                 raise APIException("消息已超过2分钟，无法撤回。")
 
         return await self._call_api(call_id, "delete_msg", {"message_id": message_id})

@@ -932,6 +932,7 @@ class Not(Expr):
     def __init__(self, clause):
         self.clause = clause if isinstance(clause, Expr) else RawCondition(clause)
         self.priority = clause.priority
+        super().__init__()
 
     def __repr__(self):
         if self._exp:

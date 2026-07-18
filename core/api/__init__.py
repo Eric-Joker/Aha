@@ -69,7 +69,7 @@ class APIMeta(type):
         for attr_name, attr_value in namespace.items():
             if not attr_name.startswith("__") and attr_value.__class__ is FunctionType:
                 methods_to_wrap.add(attr_name)
-                mcs._warp_method(new_class, attr_name, attr_value, (base.__module__, f"{base.__qualname__}.{attr_name}"))
+                mcs._warp_method(new_class, attr_name, attr_value, (attr_value.__module__, attr_value.__qualname__))
 
         # 父类
         for base in bases:
@@ -301,7 +301,7 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
                     platform = event.platform
                 try:
                     async with group_conv_lock:
-                        return groups[platform][conv_id][index]
+                        return choice(groups[platform][conv_id])
                 except KeyError as e:
                     raise KeyError(_("router.select_bot.group404") % {"platform": platform, "conv_id": conv_id})
             raise RuntimeError(_("router.select_bot.403"))

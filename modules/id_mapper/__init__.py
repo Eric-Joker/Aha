@@ -52,7 +52,7 @@ async def linker(event: Message, match_: Match, localizer):
 @on_message(_("command_admin") % (a := at_or_str(), a), Pprefix == True, Psuper == True)
 async def linker_admin(event: Message, match_: Match, localizer):
     if (platform := match_[2]) not in platform_bot_map:
-        return event.reply(localizer("unknown_platform"))
+        return await event.reply(localizer("unknown_platform"))
     if await map_user(event.platform, match_[1], platform, match_[3]):
         return await event.reply(localizer("linked"))
     else:

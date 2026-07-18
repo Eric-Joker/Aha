@@ -47,8 +47,6 @@ def api_process(bot_class: type[BaseBot], bot_id, pipe, config, base64_buffer, l
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    if sys.platform == "win32":
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
     with suppress(KeyboardInterrupt):
         run_with_uvloop(bot_class(bot_id, config, AsyncConnection(pipe)).start())

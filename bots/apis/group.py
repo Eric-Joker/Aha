@@ -180,7 +180,7 @@ class BaseGroupAPI(BaseAPI):
 
     # region 群文件
     async def move_group_file(
-        self, group_id: str | int, file_id: str, current_parent_directory: str, target_parent_directory: str
+        self, call_id, group_id: str | int, file_id: str, current_parent_directory: str, target_parent_directory: str
     ):
         """移动群文件"""
         raise NotImplementedError
@@ -197,11 +197,11 @@ class BaseGroupAPI(BaseAPI):
         """上传群文件"""
         raise NotImplementedError
 
-    async def create_group_file_folder(self, call_id, group_id: str | int, folder_name: str) -> None:
-        """创建群文件文件夹"""
+    async def create_group_file_folder(self, call_id, group_id: str | int, folder_name: str) -> str:
+        """创建群文件文件夹，返回文件夹的唯一标识符"""
         raise NotImplementedError
 
-    async def group_file_folder_makedir(self, call_id, group_id: str | int, path: str) -> str:
+    async def group_folder_makedir(self, call_id, group_id: str | int, path: str) -> str:
         """按路径创建群文件夹"""
         # TODO: 自定义函数, 按照路径创建群文件夹
         raise NotImplementedError
@@ -214,12 +214,8 @@ class BaseGroupAPI(BaseAPI):
         """删除群文件夹"""
         raise NotImplementedError
 
-    async def get_group_root_files(self, call_id, group_id: str | int, file_count=50) -> GroupFiles:
-        """获取群根目录文件列表"""
-        raise NotImplementedError
-
-    async def get_group_files_by_folder(self, call_id, group_id: str | int, folder_id: str, file_count=50) -> GroupFiles:
-        """获取文件夹内文件列表"""
+    async def get_group_files(self, call_id, group_id: str | int, folder_id: str = None, file_count=50) -> GroupFiles:
+        """获取群文件列表"""
         raise NotImplementedError
 
     async def get_group_file_url(self, call_id, group_id: str | int, file_id: str) -> str:
@@ -253,7 +249,7 @@ class BaseGroupAPI(BaseAPI):
         """从所有群中查询群成员信息"""
         tasks = [
             create_task(self.get_group_members(self.gen_id(), g["group_id"]), eager_start=True)
-            for g in (await self.get_groups())
+            for g in (await self.get_groups(self.gen_id()))
         ]
         for task in as_completed(tasks):
             for member in await task:

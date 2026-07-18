@@ -72,9 +72,7 @@ class GroupAPI:
         """
 
     @staticmethod
-    async def send_group_platform_music(
-        group_id: str | int, platform: Literal["qq", "163"], id: str | int, *, bot: int = None
-    ) -> str:
+    async def send_group_platform_music(group_id: str | int, platform, id: str | int, *, bot: int = None) -> str:
         """发送群聊平台音乐分享消息。
 
         Returns:
@@ -210,14 +208,8 @@ class GroupAPI:
         """上传群文件"""
 
     @staticmethod
-    async def create_group_file_folder(group_id: str | int, folder_name: str, *, bot: int = None):
-        """创建群文件文件夹"""
-
-    @staticmethod
-    async def group_file_folder_makedir(group_id: str | int, path: str, *, bot: int = None) -> str:
-        """按路径创建群文件夹"""
-        # 自定义函数, 按照路径创建群文件夹
-        pass
+    async def create_group_file_folder(group_id: str | int, folder_name: str, parents=False, *, bot: int = None) -> str:
+        """创建群文件文件夹，返回文件夹的唯一标识符"""
 
     @staticmethod
     async def delete_group_file(group_id: str | int, file_id: str, *, bot: int = None):
@@ -228,12 +220,8 @@ class GroupAPI:
         """删除群文件夹"""
 
     @staticmethod
-    async def get_group_root_files(group_id: str | int, file_count=50, *, bot: int = None) -> GroupFiles:
-        """获取群根目录文件列表"""
-
-    @staticmethod
-    async def get_group_files_by_folder(group_id: str | int, folder_id: str, file_count=50, *, bot: int = None) -> GroupFiles:
-        """获取文件夹内文件列表"""
+    async def get_group_files(group_id: str | int, folder_id: str = None, file_count=50, *, bot: int = None) -> GroupFiles:
+        """获取群文件列表"""
 
     @staticmethod
     async def get_group_file_url(group_id: str | int, file_id: str, *, bot: int = None) -> str:

@@ -38,12 +38,6 @@ if TYPE_CHECKING:
     ) -> Path | None: ...
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(min=1, max=10),
-    retry=retry_if_exception_type((PlaywrightTimeoutError, TimeoutError)),
-    reraise=True,
-)
 async def capture_element(url, selector, return_bytes=False, save=None, wait_until="load", **kwargs):
     """执行元素截图操作
 
@@ -56,10 +50,27 @@ async def capture_element(url, selector, return_bytes=False, save=None, wait_unt
     Returns:
         byte: 若 `return_bytes` 为 `True` 返回截图字节，否则返回保存路径。
     """
-    if save is None:
+    if auto := save is None:
         async with cache_file_sessionmaker(_level=3) as session:
             save = await session.register(timedelta(minutes=10))
 
+    result = None
+    try:
+        result = await _capture_element(url, selector, return_bytes, save, wait_until, **kwargs)
+    finally:
+        if auto and result is None:
+            async with cache_file_sessionmaker(_level=3) as session:
+                await session.unregister(save)
+    return result
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(min=1, max=10),
+    retry=retry_if_exception_type((PlaywrightTimeoutError, TimeoutError)),
+    reraise=True,
+)
+async def _capture_element(url, selector, return_bytes, save, wait_until, **kwargs):
     async with browser_mgr.acquire_page() as page:
         try:
             await page.goto(url, timeout=300000, wait_until=wait_until)

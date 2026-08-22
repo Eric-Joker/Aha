@@ -157,15 +157,12 @@ def _get_fallback_chain(lang_code: str | None):
                 )
 
     for lang in (lang_code, DEFAULT_LANGUAGE):
-        if (
-            lang
-            and add(lang)
-            and (base_lang := lang.split("_")[0]) != lang
-            and add(base_lang)
-            and base_lang in LANGUAGE_FALLBACKS
-        ):
-            for dialect in LANGUAGE_FALLBACKS[base_lang]:
-                add(dialect)
+        if lang and add(lang):
+            if (base_lang := lang.split("_")[0]) != lang:
+                add(base_lang)
+            if base_lang in LANGUAGE_FALLBACKS:
+                for dialect in LANGUAGE_FALLBACKS[base_lang]:
+                    add(dialect)
 
     for lang in ("en", "zh"):
         if add(lang) and lang in LANGUAGE_FALLBACKS:

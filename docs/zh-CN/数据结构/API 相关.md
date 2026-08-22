@@ -124,7 +124,7 @@
 | last_sent_time | datetime \| None | 最后发言时间 |
 | unfriendly | bool | 是否被标记为不友好用户 |
 | is_robot | bool | 是否为机器人账号 |
-| shut_up_time | datetime \| None | 禁言截止时间 |
+| shut_up_time | datetime \| None | 禁言截止时间。从未被禁言过为 Unix 纪元时间；协议不存在此属性时为 None。 |
 | role | [Role](#modelsapirole) | 群权限 |
 | title | str \| None | 群头衔 |
 
@@ -151,7 +151,7 @@
 | manager | str | 管理者平台用户 ID |
 | subordinate | str | 下属平台用户 ID |
 
-**返回**：bool
+**返回**：bool；若成员不存在返回 None。
 
 ### GroupMembers.filter_by_last_sent_time_upto_now()
 

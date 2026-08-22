@@ -2,7 +2,7 @@ from enum import Enum, auto
 from functools import partial
 from random import choice
 from types import FunctionType
-from typing import TYPE_CHECKING, Literal, _overload_dummy, _overload_registry, overload
+from typing import TYPE_CHECKING, Literal, SupportsIndex, _overload_dummy, _overload_registry, overload
 
 from models.api import BaseEvent
 from utils.func import get_arg_names, get_kwonlyarg_count
@@ -39,7 +39,7 @@ class APIMeta(type):
 
     @staticmethod
     def _warpper(*args, _name, **kwargs):
-        if not kwargs.get("bot"):
+        if kwargs.get("bot") is None:
             try:
                 kwargs["bot"] = current_event.get().bot_id
             except AttributeError as e:
@@ -119,7 +119,7 @@ if TYPE_CHECKING:
 
     @overload
     async def select_bot(
-        strategy: Literal[SS.NTH, SS.UNORDERED_NTH] = SS.PREFS, event: BaseEvent = None, *, index: int = 0
+        strategy: Literal[SS.NTH, SS.UNORDERED_NTH] = SS.PREFS, event: BaseEvent = None, *, index: SupportsIndex = 0
     ) -> int: ...
 
     @overload
@@ -127,7 +127,7 @@ if TYPE_CHECKING:
 
     @overload
     async def select_bot(
-        strategy: Literal[SS.PLATFORM_NTH], event: BaseEvent = None, *, platform: str = None, index: int = 0
+        strategy: Literal[SS.PLATFORM_NTH], event: BaseEvent = None, *, platform: str = None, index: SupportsIndex = 0
     ) -> int: ...
 
     @overload
@@ -137,7 +137,7 @@ if TYPE_CHECKING:
         *,
         platform: str = None,
         conv_id: str = None,
-        index: int = 0,
+        index: SupportsIndex = 0,
     ) -> int: ...
 
     @overload
@@ -150,7 +150,7 @@ if TYPE_CHECKING:
     ) -> int: ...
 
     @overload
-    async def select_bot(strategy: Literal[SS.NTH_ANY], *, index: int = 0) -> int: ...
+    async def select_bot(strategy: Literal[SS.NTH_ANY], *, index: SupportsIndex = 0) -> int: ...
 
     @overload
     async def select_bot(strategy: Literal[SS.PREFS, SS.RANDOM, SS.PREFS_ANY, SS.RANDOM_ANY]) -> int: ...
@@ -179,13 +179,10 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
                 data_set = set(deduplicators[event.platform].services_of(event))
                 try:
                     async with bots_lock:
-                        return [v for v in bots if v in data_set][min(prefs, len(data_set) - 1)]
+                        return [v for v in bots if v in data_set][min(prefs - 1, len(data_set) - 1)]
                 except IndexError:
                     raise RuntimeError(_("router.select_bot.event404"))
-            try:
-                return choice(deduplicators[event.platform].services_of(event))
-            except IndexError:
-                raise RuntimeError(_("router.select_bot.event404"))
+            return choice(deduplicators[event.platform].services_of(event))
         case SS.NTH:
             data_set = set(deduplicators[event.platform].services_of(event))
             async with bots_lock:
@@ -204,23 +201,28 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
             except IndexError:
                 raise RuntimeError(_("router.select_bot.event404"))
         case SS.PLATFORM:
-            if prefs := cfg.bot_prefs:
-                data_set = set(platform_bot_map[platform or event.platform])
-                async with bots_lock:
-                    return [v for v in bots if v in data_set][min(prefs, len(data_set) - 1)]
-            return choice(platform_bot_map[platform or event.platform])
+            async with bots_lock:
+                if prefs := cfg.bot_prefs:
+                    data_set = set(platform_bot_map[platform or event.platform])
+                    return [v for v in bots if v in data_set][min(prefs - 1, len(data_set) - 1)]
+                return choice(platform_bot_map[platform or event.platform])
         case SS.PLATFORM_NTH:
-            return platform_bot_map[platform or event.platform][index]
+            async with bots_lock:
+                return platform_bot_map[platform or event.platform][index]
         case SS.PLATFORM_RANDOM:
-            return choice(platform_bot_map[platform or event.platform])
+            async with bots_lock:
+                return choice(platform_bot_map[platform or event.platform])
         case SS.PREFS_ANY:
             if prefs := cfg.bot_prefs:
-                result = bots.key_at(prefs - 1)
+                result = bots.key_at(min(prefs - 1, len(bots) - 1))
             else:
                 async with bots_lock:
                     return choice(tuple(filter(None.__ne__, bots)))
         case SS.NTH_ANY:
-            result = bots.key_at(index)
+            try:
+                result = bots.key_at(index)
+            except IndexError:
+                raise RuntimeError(_("router.select_bot.event404"))
         case SS.RANDOM_ANY:
             async with bots_lock:
                 container = tuple(filter(None.__ne__, bots))
@@ -237,7 +239,7 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
                     if prefs := cfg.bot_prefs:
                         data_set = set(friends[platform][conv_id])
                         async with bots_lock:
-                            return [v for v in bots if v in data_set][min(prefs, len(data_set) - 1)]
+                            return [v for v in bots if v in data_set][min(prefs - 1, len(data_set) - 1)]
                     return choice(friends[platform][conv_id])
             except KeyError as e:
                 raise KeyError(_("router.select_bot.user404") % {"platform": platform, "conv_id": conv_id})
@@ -277,7 +279,7 @@ async def select_bot(strategy=SS.PREFS, event=None, *, index=0, platform=None, c
                     if prefs := cfg.bot_prefs:
                         data_set = set(groups[platform][conv_id])
                         async with bots_lock:
-                            return [v for v in bots if v in data_set][min(prefs, len(data_set) - 1)]
+                            return [v for v in bots if v in data_set][min(prefs - 1, len(data_set) - 1)]
                     return choice(groups[platform][conv_id])
             except KeyError as e:
                 raise KeyError(_("router.select_bot.group404") % {"platform": platform, "conv_id": conv_id})

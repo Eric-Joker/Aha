@@ -21,7 +21,8 @@ class GroupAPI(Utils, BaseGroupAPI):
     async def send_group_msg(self, call_id, group_id, msg=None, at=None, reply=None, image=None):
         # TODO: 检查消息合法性
         if (
-            not isinstance(msg, str)
+            msg
+            and not isinstance(msg, str)
             and isinstance(msg, Sequence)
             and isinstance(forward := msg[0], Forward)
             or isinstance(forward := msg, Forward)
@@ -236,7 +237,7 @@ class GroupAPI(Utils, BaseGroupAPI):
         )
 
     async def process_group_join_request(self, call_id, flag, approve, reason=None):
-        if reason and len(reason.encode("gbk")) > 60:
+        if reason and len(reason) > 30:
             raise ValueError("加群请求拒绝原因过长")
         else:
             return await self._call_api(call_id, "set_group_add_request", {"flag": flag, "approve": approve, "reason": reason})
@@ -260,8 +261,9 @@ class GroupAPI(Utils, BaseGroupAPI):
                 call_id, "get_group_msg_history", {"group_id": group_id, "message_seq": message_id or 0, "number": count}
             )
         )["messages"]:
-            result.append(data := RetrievedMessage.model_validate(await self._msg_event_processor(data)))
-            data.bot_id, data.platform, data.adapter = self.bot_id, self.platform, self.__class__.__name__
+            if data := await self._msg_event_processor(data):
+                result.append(data := RetrievedMessage.model_validate(data))
+                data.bot_id, data.platform, data.adapter = self.bot_id, self.platform, self.__class__.__name__
         return result
 
     def set_essence_msg(self, call_id, message_id):
@@ -305,23 +307,7 @@ class GroupAPI(Utils, BaseGroupAPI):
 
     async def create_group_file_folder(self, call_id, group_id, folder_name, parents=False):
         if parents:
-            folder_id = None
-            for name in folder_name.replace("\\", "/").split("/"):
-                if not name:
-                    continue
-                if folder := next(
-                    (f for f in (await self.get_group_files(call_id, group_id, folder_id)).folders if f.folder_name == name),
-                    None,
-                ):
-                    folder_id = folder.folder_id
-                    continue
-
-                await self._call_api(call_id, "create_group_file_folder", {"group_id": group_id, "folder_name": name})
-                folder_id = next(
-                    (f for f in (await self.get_group_files(call_id, group_id, folder_id)).folders if f.folder_name == name),
-                    None,
-                ).folder_id
-            return folder_id
+            raise NotImplementedError
         await self._call_api(call_id, "create_group_file_folder", {"group_id": group_id, "folder_name": folder_name})
         return next(
             (f for f in (await self.get_group_files(call_id, group_id)).folders if f.folder_name == folder_name), None

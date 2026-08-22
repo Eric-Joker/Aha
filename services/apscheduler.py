@@ -29,7 +29,6 @@ from core.database import db_engine
 from utils.aio import SingletonThreadSafeAsyncMeta
 from utils.misc import SingletonMeta
 
-
 # from wrapt import when_imported
 
 

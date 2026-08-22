@@ -33,7 +33,7 @@ from models.msg import (
     Text,
     Video,
 )
-from utils.aha import aha_code2dict_list, parse_aha_code
+from utils.aha import parse_aha_code
 from utils.aio import AsyncResult
 from utils.misc import AsyncBase64Encoder, stream_async_json
 
@@ -42,7 +42,7 @@ from utils.misc import AsyncBase64Encoder, stream_async_json
 if TYPE_CHECKING:
     from . import NapCat
 
-CQ_CODE_PATTERN = compile(r"\[CQ:([^,\]]+)(?:,([^\]]+))?\]")
+CQ_CODE_PATTERN = compile(r"\[CQ:([^,\]]++)(?:,([^\]]++))?\]")
 
 
 def sticker2cq_face(sticker: Sticker):
@@ -70,14 +70,14 @@ class Utils(BaseAPI):
         finally:
             del self._calls[echo]
 
-    async def _msg_event_processor(self, data: dict):
+    async def _msg_event_processor(self: NapCat, data: dict):
         if "raw" in data:
             self.logger.warning("不建议在生产环境中开启 NapCat 网络配置的调试模式，这会产生成倍的无效数据。")
         if data["message_format"] == "array":
             self._msg_event_processor = self._array_msg_event_processor
         else:
-            self.logger.warning("不建议在 NapCat 的网络配置中选择 String 消息格式，这会严重降低性能。")
-            self._msg_event_processor = self._string_msg_event_processor
+            self.logger.error("不支持 String 消息格式。关闭适配器实例...")
+            return await self.close()
         return await self._msg_event_processor(data)
 
     async def _array_msg_event_processor(self, data: dict):
@@ -88,23 +88,6 @@ class Utils(BaseAPI):
         del data["message_format"]
         if data["sub_type"] == "group":
             data["sub_type"] = "temporary"
-        if data["message"] and data["message"][0]["type"] == "markdown":
-            del data["message"][1:]
-        data["message"] = MsgSeq(
-            [await self.build_msg_seg(item, data["user_id"], data.get("group_id")) for item in data["message"]]
-        )
-        return data
-
-    async def _string_msg_event_processor(self, data: dict):
-        del data["raw_message"]
-        del data["message_seq"]
-        del data["real_id"]
-        del data["sender"]["user_id"]
-        del data["message_format"]
-        if data["sub_type"] == "group":
-            data["sub_type"] = "temporary"
-        if isinstance(data["message"], str):
-            data["message"] = aha_code2dict_list(data["message"], CQ_CODE_PATTERN)
         if data["message"] and data["message"][0]["type"] == "markdown":
             del data["message"][1:]
         data["message"] = MsgSeq(
@@ -198,7 +181,7 @@ class Utils(BaseAPI):
         return Forward(
             id=id,
             content=[await self.event2node(e) for e in content],
-            message_type="group" if content[0].get("group_id") else "private",
+            message_type="group" if content and content[0].get("group_id") else "private",
             bot_id=self.bot_id,
         )
 
@@ -395,8 +378,8 @@ class Utils(BaseAPI):
 
     @classmethod
     def event2node_raw(cls, data: dict[str, list[dict[str, dict]]]):
-        if (chain := data["message"]) and (forward := chain[0])["type"] == "forward":
-            content = [{"type": "forward", "data": cls.raw2forward_data(**forward["data"])}]
+        if (chain := data["message"]) and (forward := chain[0])["type"] == "forward" and (forward := forward["data"]).get("content"):
+            content = [{"type": "forward", "data": cls.raw2forward_data(**forward)}]
         else:
             content = chain
         return {

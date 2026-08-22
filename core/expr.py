@@ -1,3 +1,5 @@
+from itertools import chain
+import operator
 import re
 from abc import abstractmethod
 from collections import defaultdict
@@ -5,7 +7,7 @@ from collections.abc import Callable, Container, Hashable, Iterable, KeysView, M
 from contextlib import suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from functools import partial
+from functools import partial, reduce
 from logging import getLogger
 from pprint import pprint
 from time import localtime, strftime, time
@@ -112,6 +114,8 @@ __all__ = (
     "Equal",
     "NotEqual",
     "fields",
+    "module_fields",
+    "unregister_module_fields",
     "evaluate",
     "modify_expr",
     "field_exists",
@@ -374,7 +378,7 @@ async def _get_field_value(field: FieldClause, event: BaseEvent):
     return await async_run_func(field.field.extractor, event)
 
 
-custom_fields = []
+custom_default_expr = []
 
 
 class FieldClause[Result](Expr[Result]):
@@ -386,10 +390,10 @@ class FieldClause[Result](Expr[Result]):
         if mod := caller_aha_module(pattern=AHA_MODULE_PATTERN):
             self.name = f"{mod}.{name}"
             if field.default is not None:
-                custom_fields.append(self.name)
+                custom_default_expr.append(self.name)
         else:
             self.name = name
-        if self.name in fields:
+        if self.name in fields or self.name in module_fields:
             raise AhaExprFieldDuplicate(_("expr.fields.409"))
 
         self.field = field
@@ -397,7 +401,10 @@ class FieldClause[Result](Expr[Result]):
         super().__init__()
 
         field.clause = self
-        fields[self.name] = field
+        if mod:
+            module_fields[self.name] = field
+        else:
+            fields[self.name] = field
         # 注册具有默认二元表达式的类型
         if field.operand_types:
             for types, operand in field.operand_types.items():
@@ -412,7 +419,7 @@ class FieldClause[Result](Expr[Result]):
         return _get_field_value(self, event)
 
     def __hash__(self):
-        return hash(self.name)
+        return hash(FieldClause) + hash(self.name)
 
     def __repr__(self):
         if self._exp:
@@ -427,6 +434,7 @@ class Field:
     Attributes:
         extractor: 从 `BaseEvent` 中获取值的方法。
         default: 生成默认表达式。若并列表达式中没有该字段 `build_cond` 会自动添加默认表达式。
+        default_condition: 决定是否添加默认表达式的条件。接收两个位置参数：表达式中已使用的字段集合与构建后的原始表达式列表。返回为 `False` 时不会添加默认表达式。
         priority: 在多元表达式评估的优先级，0表示保持原顺序，越大越优先，越小越靠后。
         binary_semantics: `build_cond` 会由此将二元表达式类型转成其他二元表达式类型。第二个参数是二元表达式另一端的值。
         rhs_converter: `build_cond` 会由此转换二元表达式另一端的值，若声明了 `binary_semantics`，第二个参数传递的是转换后的二元表达式类型。
@@ -440,6 +448,7 @@ class Field:
 
     extractor: Callable[[BaseEvent], Any] = None
     default: Callable[[FieldClause], Expr | Any] = None
+    default_condition: Callable[[set[FieldClause], list[Expr]], bool] = None
     priority: int = 0
     binary_semantics: Callable[[type[BinaryExpr], Any], type[BinaryExpr]] = None
     rhs_converter: Callable[[Any, type[BinaryExpr], EventCategory], Any] = None
@@ -453,8 +462,9 @@ class Field:
     clause: FieldClause = field(default=None, init=False, repr=False)
 
 
-_registed_operand_types = {}
-fields: dict[str, Field] = {}
+_registed_operand_types: dict[type, partial] = {}
+fields: dict[str, Field] = {}  # Aha 原生字段
+module_fields: dict[str, Field] = {}  # 模块自定义字段
 
 
 class PatternMatcherMeta(type):
@@ -538,7 +548,11 @@ class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
             debug = debug[self]
 
         # 覆盖
-        if self.left.__class__ is FieldClause and (result := self.left.field.overrides) and (result := result.get(self.right)):
+        if (
+            self.left.__class__ is FieldClause
+            and self.left.field.overrides
+            and (result := self.left.field.overrides.get(self.right, _unset)) is not _unset
+        ):
             if DEBUG:
                 debug["right"] = self.right
 
@@ -1016,6 +1030,20 @@ def _convert_sub_type_rhs(value, __, category):
     return value
 
 
+def _replace_annotation_text(value):
+    """将类型注解参数中的 `Text` 替换为 `str`"""
+    if (args := getattr(value, "__args__", None)) is None:
+        return value
+    new_args = tuple(str if a is Text else a for a in args)
+    if isinstance(value, GenericAlias):
+        return value.__origin__[new_args]
+    if isinstance(value, UnionType):
+        return reduce(operator.or_, new_args)
+    if copy_with := getattr(value, "copy_with", None):
+        return copy_with(new_args)
+    return value
+
+
 def _convert_command_rhs(value, operand, category):
     assert category is EventCategory.CHAT
 
@@ -1026,13 +1054,9 @@ def _convert_command_rhs(value, operand, category):
             value = list(value)
         for i, v in enumerate(value):
             if not isinstance(v, str):
-                if args := getattr(v, "__args__", None):
-                    v.__args__ = tuple(str if a is Text else a for a in args)
-                value[i] = TypeAdapter(v)
+                value[i] = TypeAdapter(_replace_annotation_text(v))
     elif issubclass(operand, IsOnly) and not isinstance(value, str):
-        if args := getattr(value, "__args__", None):
-            value.__args__ = tuple(str if a is Text else a for a in args)
-        value = TypeAdapter(value)
+        value = TypeAdapter(_replace_annotation_text(value))
     return value
 
 
@@ -1059,6 +1083,11 @@ def _convert_to_validate(operator, right):
 cfg.register("limit", 3, _("expr.fields.limit.cfg_comment"), module="aha")
 
 
+def _ldcp2(fields: set[FieldClause]):
+    narrow_fields = {PM.msg, PM.msg_chain, PM.command, PM.type_, PM.sub_type}
+    return any(f in narrow_fields for f in fields)
+
+
 class MsgLimit(dbBase):
     __tablename__ = "message_limit"
     platform = Column(String, primary_key=True)
@@ -1069,7 +1098,7 @@ class MsgLimit(dbBase):
 
 async def _check_rate_limit(event: BaseEvent):
     """被限速 => False，正常状态 => True"""
-    if not cfg.limit or not hasattr(event, "user_id") or await _is_admin(event):
+    if not cfg.get("limit", module="aha") or not hasattr(event, "user_id") or await _is_admin(event):
         return True
     current_time = time()
     async with db_sessionmaker() as session:
@@ -1090,7 +1119,7 @@ async def _check_rate_limit(event: BaseEvent):
             .values(platform=event.platform, user_id=event.user_id, count=1, last_time=current_time)
             .on_conflict_do_update(
                 index_elements=(MsgLimit.platform, MsgLimit.user_id),
-                set_={MsgLimit.count: MsgLimit.count + 1, MsgLimit.last_time: current_time},
+                set_={MsgLimit.count: MsgLimit.count + 1},
             )
             .returning(MsgLimit.count)
         )
@@ -1127,8 +1156,8 @@ def remove_msg_seq_prefix(msg: MessageChain):
     moded = None
     i, text = find_first_instance(msg, Text)
     # 去除@bot前缀
-    if (at := find_first_instance(msg, At, end_index=i)[1]) and at.user_id == event.self_id:
-        del (moded := msg.copy())[0]
+    if (at := find_first_instance(msg, At, end_index=i))[1] and at[1].user_id == event.self_id:
+        del (moded := msg.copy())[at[0]]
         i -= 1
         moded[i] = text = text.model_copy()
         text.text = text.text.lstrip()
@@ -1249,11 +1278,16 @@ def _wrap_conditions(conditions, event_type: EventCategory):
         return expr
 
     # 处理顶层条件
+    has_chat_pattern = False
     processed = []
     root_strings = []
     for cond in conditions:
-        if isinstance(cond, str) and (processed or event_type is not EventCategory.CHAT):
-            root_strings.append(cond)
+        if isinstance(cond, str):
+            if not has_chat_pattern and event_type is EventCategory.CHAT:
+                processed.append(recursion(cond, True))
+                has_chat_pattern = True
+            else:
+                root_strings.append(cond)
         else:
             processed.append(recursion(cond, True))
 
@@ -1355,7 +1389,7 @@ class PM(metaclass=PatternMatcherMeta):
         sub_type: `sub_type`
 
         isgroup: 是否为群聊消息。
-        isprivate: 是否为私聊消息。依据 `cfg.allow_private` 是否默认匹配私聊消息。
+        isprivate: 是否为私聊消息。依据 `cfg.private` 是否默认匹配私聊消息。
         uid: 事件触发者的 Aha ID。
         gid: 事件触发群聊的 Aha ID。
         group: 提取值为 `models.core.Group` 对象，消息来源为群聊时默认限定黑白名单。
@@ -1415,7 +1449,8 @@ class PM(metaclass=PatternMatcherMeta):
     isgroup: FieldClause[bool] = Field(lambda event: bool(getattr(event, "group_id", False)), priority=6)
     isprivate: FieldClause[bool] = Field(
         lambda event: not getattr(event, "group_id", False),
-        None if cfg.register("private", True, _("expr.fields.isprivate.default_cfg"), module="aha") else (lambda v: v == False),
+        lambda v: v == False,
+        lambda _, __: not cfg.private,
         priority=7,
     )
     gid: FieldClause[int] = Field(_gid, priority=3)
@@ -1440,7 +1475,8 @@ class PM(metaclass=PatternMatcherMeta):
     validated: FieldClause[bool] = Field(default=lambda v: v == True, _requires_extractor=True, priority=-10)
     limit: FieldClause[bool] = Field(
         _check_rate_limit,
-        (lambda v: v == True) if cfg.get("limit", module="aha") else None,
+        lambda v: v == True,
+        lambda used_field, _: cfg.get("limit", module="aha") and not _ldcp2(used_field),
         overrides={False: True},
         priority=-999,
     )
@@ -1534,11 +1570,12 @@ def build_cond(
     used_field = {item for cond in conditions for item in _collect_used_fields(cond)}
     default_clauses = [
         default_value
-        for field in fields.values()
+        for field in chain(fields.values(), module_fields.values())
         if field.default is not None
         and not (field.skip_default_on_meta and event_type is EventCategory.META)
         and (not field._requires_extractor or field.extractor)
         and field.clause not in used_field
+        and (not field.default_condition or field.default_condition(used_field, conditions))
         and (default_value := field.default(field.clause)) is not None
     ]
 
@@ -1582,6 +1619,18 @@ def redirect_extractors():
         for key in extractors:
             if (value := cfg._data.get(f"modules.{key}")) and field.name in value:
                 value.pop(field.name)
+
+
+def unregister_module_fields():
+    """取消注册所有模块自定义字段"""
+    for field in module_fields.values():
+        for types in field.operand_types or {}:
+            for type_ in types if isinstance(types, Iterable) else (types,):
+                if (reg := _registed_operand_types.get(type_)) is not None and reg.args and reg.args[0] is field.clause:
+                    del _registed_operand_types[type_]
+        field.clause = None
+    module_fields.clear()
+    custom_default_expr.clear()
 
 
 # endregion

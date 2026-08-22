@@ -1,7 +1,23 @@
 import sys
 from pathlib import Path
 from pypinyin import lazy_pinyin
-from re import compile, sub
+from re import compile
+
+
+def _strip_closed_html_comments(s: str):
+    out = []
+    i = 0
+    while True:
+        if (start := s.find("<!--", i)) < 0:
+            out.append(s[i:])
+            return "".join(out)
+        # 未闭合，或 --> 在换行之后
+        if (end := s.find("-->", start + 4)) < 0 or ((nl := s.find("\n", start + 4)) != -1 and nl < end):
+            out.append(s[i:start])
+            out.append(s[start:])
+            return "".join(out)
+        out.append(s[i:start])
+        i = end + 3
 
 
 def tokenize(s):
@@ -70,7 +86,7 @@ def process(target_dir: str):
                             else:
                                 remaining = ""  # 注释未结束，跳过整行
                         elif "<!--" in remaining:
-                            if (new_remaining := sub(r"<!--.*?-->", "", remaining)) == remaining:
+                            if (new_remaining := _strip_closed_html_comments(remaining)) == remaining:
                                 if prefix := remaining[: remaining.find("<!--")]:
                                     parts.append(prefix)
                                 in_comment = True

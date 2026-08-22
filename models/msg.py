@@ -24,7 +24,7 @@ from pydantic import BeforeValidator, Field, GetCoreSchemaHandler, field_seriali
 from pydantic._internal._model_construction import ModelMetaclass
 from pydantic_core import core_schema
 from ssrjson import loads
-from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_fixed
+from tenacity import AsyncRetrying, before_sleep_log, retry_if_exception_type, stop_after_attempt, wait_fixed
 from xxhash import xxh3_64_intdigest
 
 from utils.network import get_httpx_client
@@ -71,12 +71,12 @@ class MsgSeg(BaseModel, metaclass=MsgSegMeta):
     """消息段基类"""
 
     async def serialize(self):
-        """转换为字典格式，排除空值和None字段"""
+        """转换为字典格式，排除 None"""
         data = {}
         for k, v in self.model_dump(by_alias=True, exclude_none=True).items():
             if v.__class__ is list and (chain := getattr(self, k, None)) and isinstance(chain, MessageChain):
                 data[k] = [await seg.serialize() for seg in chain]
-            elif v:
+            else:
                 data[k] = v
 
         return {"type": self.__class__.__name__.lower(), "data": data}
@@ -342,6 +342,8 @@ class Downloadable(MsgSeg):
         """
         if not self.file:
             return None
+        if not isinstance(self, Image):
+            fix_ext = False
         if not name:
             name = self.name
         if dir_:
@@ -378,7 +380,7 @@ class Downloadable(MsgSeg):
                     response.raise_for_status()
 
                     chunks, byte_iter = [], response.aiter_bytes()
-                    if fix_ext and isinstance(self, Image):
+                    if fix_ext:
                         total = 0
                         while total < 18:
                             try:
@@ -419,11 +421,11 @@ class Downloadable(MsgSeg):
                                 await f.write(c)
                         return path
                     else:
-                        return await session.register(cfg.file_msg_ttl, content_iter() if fix_ext else response.aiter_bytes())
+                        return await session.register(cfg.file_msg_ttl, content_iter() if fix_ext else byte_iter)
             except HTTPStatusError as e:
                 from core.i18n import _
 
-                raise DownloadFileMsgError(_("models.msg.downloadable.http_error") % e) from None
+                raise DownloadFileMsgError(_("models.msg.downloadable.http_error") % e, e.request, e.response) from None
 
     if TYPE_CHECKING:
 
@@ -474,34 +476,35 @@ class Downloadable(MsgSeg):
                     return
 
             # 下载远程文件
-            from utils.aio import AsyncTee
+            # from utils.aio import AsyncTee
 
             try:
                 async with self._http_request() as response:
                     response.raise_for_status()
-
-                    gen1, gen2 = AsyncTee.gen(response.aiter_bytes(size))
-                    task = create_task(session.register(cfg.file_msg_ttl, gen2))
-                    async for chunk in gen1:
+                    # gen1, gen2 = AsyncTee.gen(response.aiter_bytes(size))
+                    # task = create_task(session.register(cfg.file_msg_ttl, gen2))
+                    # async for chunk in gen1:
+                    async for chunk in response.aiter_bytes(size):
                         yield chunk
-                    await task
+                    # await task
             except HTTPStatusError as e:
                 from core.i18n import _
 
-                raise DownloadFileMsgError(_("models.msg.downloadable.http_error") % e) from None
+                raise DownloadFileMsgError(_("models.msg.downloadable.http_error") % e, e.request, e.response) from None
 
     @asynccontextmanager
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_fixed(1),
-        retry=retry_if_exception_type(HTTPStatusError),
-        before_sleep=before_sleep_log(getLogger("Aha (download msg file)"), logging.WARNING),
-        reraise=True,
-    )
     async def _http_request(self):
-        async with get_httpx_client().stream("GET", self.file) as response:
-            response.raise_for_status()
-            yield response
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(3),
+            wait=wait_fixed(1),
+            retry=retry_if_exception_type(HTTPStatusError),
+            before_sleep=before_sleep_log(getLogger("Aha (download msg file)"), logging.WARNING),
+            reraise=True,
+        ):
+            with attempt:
+                async with get_httpx_client().stream("GET", self.file) as response:
+                    response.raise_for_status()
+                    yield response
 
     @classmethod
     async def from_bytes(
@@ -514,7 +517,7 @@ class Downloadable(MsgSeg):
     ):
         from services.file_cache import cache_file_sessionmaker
 
-        async with cache_file_sessionmaker(name, ext if ext and ext.startswith(".") else f".{ext}", 3) as session:
+        async with cache_file_sessionmaker(name, ext if not ext or ext.startswith(".") else f".{ext}", 3) as session:
             return cls(file=(path := await session.register(ttl, data)), name=path.name, summary=summary)
 
 
@@ -829,7 +832,6 @@ class Markdown(Text):
     _MD_parser: ClassVar[Markdown] = create_markdown(
         renderer=None, plugins=[table, task_lists, strikethrough, mark, insert, superscript, subscript]
     )
-    _HTML_TAG_RE: ClassVar[re.Pattern] = re.compile(r"<[^>]+>")
 
     def __str__(self):
         from utils.aha import escape_aha
@@ -864,6 +866,21 @@ class Markdown(Text):
                     # inline_html
         return out
 
+    @staticmethod
+    def _strip_html_tags(s: str):
+        out = []
+        i = 0
+        while True:
+            if (a := s.find("<", i)) < 0:
+                out.append(s[i:])
+                return "".join(out)
+            if (b := s.find(">", a + 1)) < 0 or b == a + 1:  # 无闭合 > 或空标签 <>
+                out.append(s[i : a + 1])
+                i = a + 1
+                continue
+            out.append(s[i:a])
+            i = b + 1
+
     @classmethod
     def _render_blocks(cls, tokens: list[dict], depth=0):
         out = []
@@ -877,7 +894,7 @@ class Markdown(Text):
                 case "block_code":
                     out.extend((tok["raw"], "\n"))
                 case "block_html":
-                    if text := cls._HTML_TAG_RE.sub("", tok["raw"]).strip():
+                    if text := cls._strip_html_tags(tok["raw"]).strip():
                         out.append(text + "\n")
                 case "list":
                     attrs = tok.get("attrs", {})

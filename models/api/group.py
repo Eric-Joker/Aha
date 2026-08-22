@@ -75,6 +75,7 @@ class GroupMemberInfo(FrozenBaseModel):
 
 class GroupMembers[T: GroupMemberInfo, _T_co, _S](frozenset[T]):
     if TYPE_CHECKING:
+
         @overload
         def __new__(cls) -> Self: ...
 
@@ -118,7 +119,9 @@ class GroupMembers[T: GroupMemberInfo, _T_co, _S](frozenset[T]):
                 )
 
     def filter_by_last_sent_time_upto_now(self, seconds: int):
-        return self.__class__(member for member in self if member.last_sent_time.timestamp() > time() - seconds)
+        return self.__class__(
+            member for member in self if member.last_sent_time and member.last_sent_time.timestamp() > time() - seconds
+        )
 
     def filter_by_role(self, role: Role):
         return self.__class__(member for member in self if member.role == role)

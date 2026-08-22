@@ -16,19 +16,18 @@ class BaseSupportAPI(BaseAPI):
 
     async def start_server(self: BaseBot, call_id = None):
         if self._start_server_comm:
-            await (await create_subprocess_shell(self._start_server_comm)).wait()
-            return
+            return await (await create_subprocess_shell(self._start_server_comm)).wait()
         raise NotImplementedError
 
-    async def stop_server(self: BaseBot, call_id = None, close_adapter=True) -> None:
+    async def stop_server(self: BaseBot, call_id = None, close_adapter=True):
         if self._stop_server_comm:
-            await (await create_subprocess_shell(self._stop_server_comm)).wait()
+            result = await (await create_subprocess_shell(self._stop_server_comm)).wait()
             if close_adapter:
                 await self.close()
-            return
+            return result
         raise NotImplementedError
 
-    async def restart_server(self: BaseBot, call_id) -> None:
+    async def restart_server(self: BaseBot, call_id):
         if (self.start_server is not BaseSupportAPI.start_server or self._start_server_comm) and (
             self.stop_server is not BaseSupportAPI.stop_server or self._stop_server_comm
         ):

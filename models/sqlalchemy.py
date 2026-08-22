@@ -8,24 +8,24 @@ with suppress(ImportError):
 
     class YarlURL(TypeDecorator):
         impl = String
-        cache_ok = True  # 避免警告
+        cache_ok = True
 
-        def process_bind_param(self, value: URL | None, _):
-            return str(value)
+        def process_bind_param(self, value, _):
+            return None if value is None else str(value)
 
-        def process_result_value(self, value: str | None, _):
-            return URL(value)
+        def process_result_value(self, value, _):
+            return None if value is None else URL(value)
 
 
 class Iterable(TypeDecorator):
     impl = JSON
-    cache_ok = True  # 避免警告
+    cache_ok = True
 
     def process_bind_param(self, value, _):
-        return list(value) if value else None
+        return None if value is None else list(value)
 
     def process_result_value(self, value, _):
-        return tuple(value) if value else None
+        return None if value is None else tuple(value)
 
 
 class ComparablePath(Path):
@@ -38,10 +38,10 @@ class ComparablePath(Path):
 
 class Path(TypeDecorator):
     impl = String(4096)
-    cache_ok = True  # 避免警告
+    cache_ok = True
 
-    def process_bind_param(self, value: Path | None, _):
-        return str(value)
+    def process_bind_param(self, value, _):
+        return None if value is None else str(value)
 
-    def process_result_value(self, value: str | None, _):
-        return ComparablePath(value)
+    def process_result_value(self, value, _):
+        return None if value is None else ComparablePath(value)

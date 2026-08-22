@@ -4,14 +4,13 @@ from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from secrets import token_hex
 from time import time
-from typing import BinaryIO
 from weakref import WeakValueDictionary
 
 from aiofiles import open
 from aiologic import Lock
 from anyio import Path
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import Column, Integer, select, update
+from sqlalchemy import Column, Integer, delete, select, update
 from xxhash import xxh3_128, xxh3_128_hexdigest
 
 from core.config import cfg
@@ -44,6 +43,7 @@ class CacheFileSession:
     __slots__ = ("db_session", "transaction", "dir", "filename", "fileext", "path", "locks")
 
     LOCKED = WeakValueDictionary()
+    LOCK_MAP_LOCK = Lock()
 
     def __init__(self, dir: Path, name: str, ext: str):
         self.dir = dir
@@ -64,10 +64,11 @@ class CacheFileSession:
         return self
 
     async def _acquire_lock(self, path):
-        if lock := self.LOCKED.get(path):
-            self.locks[path] = lock
-        else:
-            self.locks[path] = self.LOCKED[path] = lock = Lock()
+        async with self.LOCK_MAP_LOCK:
+            if lock := self.LOCKED.get(path):
+                self.locks[path] = lock
+            else:
+                self.locks[path] = self.LOCKED[path] = lock = Lock()
         await lock.async_acquire()
 
     async def get_and_refresh(self, ttl: timedelta | int):
@@ -82,83 +83,36 @@ class CacheFileSession:
     @staticmethod
     async def _write_content(content, file_path, is_tmp):
         """将内容写入文件并返回哈希值（如果需要）"""
-        if is_tmp:
-            hasher = xxh3_128()
+        hasher = xxh3_128() if is_tmp else None
 
         async with open(file_path, "wb") as f:
-            if is_tmp:
-                if isinstance(content, (str, bytes)):
-                    await f.write(data := content.encode("utf-8") if isinstance(content, str) else content)
-                    hasher.update(data)
-
-                elif hasattr(content, "read"):
-                    while chunk := content.read(8192):
-                        await f.write(chunk)
-                        hasher.update(chunk)
-
-                elif hasattr(content, "__aiter__"):
-                    chunk = await anext(content)
-                    if isinstance(chunk, str):
-                        await f.write(chunk := chunk.encode("utf-8"))
-                        hasher.update(chunk)
-                        async for chunk in content:
-                            await f.write(chunk := chunk.encode("utf-8"))
-                            hasher.update(chunk)
-                    else:
-                        await f.write(chunk)
-                        hasher.update(chunk)
-                        async for chunk in content:
-                            await f.write(chunk)
-                            hasher.update(chunk)
-
-                else:  # 同步迭代器
-                    chunk = next(content)
-                    if isinstance(chunk, str):
-                        await f.write(chunk := chunk.encode("utf-8"))
-                        hasher.update(chunk)
-                        for chunk in content:
-                            await f.write(chunk := chunk.encode("utf-8"))
-                            hasher.update(chunk)
-                    else:
-                        await f.write(chunk)
-                        hasher.update(chunk)
-                        for chunk in content:
-                            await f.write(chunk)
-                            hasher.update(chunk)
-
-                return hasher.hexdigest()
-
+            # 字符字节串
             if isinstance(content, (str, bytes)):
                 await f.write(data := content.encode("utf-8") if isinstance(content, str) else content)
+                if hasher:
+                    hasher.update(data)
 
-            elif hasattr(content, "read"):
-                while chunk := content.read(8192):
-                    await f.write(chunk)
-
+            # 异步迭代器
             elif hasattr(content, "__aiter__"):
-                chunk = await anext(content)
-                if isinstance(chunk, str):
-                    await f.write(chunk := chunk.encode("utf-8"))
-                    async for chunk in content:
-                        await f.write(chunk := chunk.encode("utf-8"))
-                else:
-                    await f.write(chunk)
-                    async for chunk in content:
-                        await f.write(chunk)
+                async for chunk in content:
+                    await f.write(data := chunk.encode("utf-8") if isinstance(chunk, str) else chunk)
+                    if hasher:
+                        hasher.update(data)
 
-            else:  # 同步迭代器
-                chunk = next(content)
-                if isinstance(chunk, str):
-                    await f.write(chunk := chunk.encode("utf-8"))
-                    for chunk in content:
-                        await f.write(chunk := chunk.encode("utf-8"))
-                else:
-                    await f.write(chunk)
-                    for chunk in content:
-                        await f.write(chunk)
+            # 可迭代对象
+            elif hasattr(content, "__iter__"):
+                for chunk in content:
+                    await f.write(data := chunk.encode("utf-8") if isinstance(chunk, str) else chunk)
+                    if hasher:
+                        hasher.update(data)
+
+            else:
+                raise 
+
+        return hasher.hexdigest() if hasher else None
 
     async def register(
-        self, ttl: timedelta | int, content: BinaryIO | bytes | str | AsyncIterable[bytes | str] | Iterable[bytes | str] = None
+        self, ttl: timedelta | int, content: bytes | str | AsyncIterable[bytes | str] | Iterable[bytes | str] = None
     ):
         """注册缓存文件
 
@@ -201,6 +155,20 @@ class CacheFileSession:
 
         await self.db_session.execute(upsert(CacheFile, file_path=self.path, expires_at=time() + ttl))
         return self.path
+
+    async def unregister(self, path: Path | None = None):
+        """取消注册缓存文件
+
+        Args:
+            path: 目标文件路径。未提供时使用当前会话路径（`self.path`）。
+        """
+        if not path:
+            if not self.path:
+                return
+            path = self.path
+        with suppress(OSError):
+            await path.unlink(True)
+        await self.db_session.execute(delete(CacheFile).where(CacheFile.file_path == path))
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.transaction.__aexit__(exc_type, exc_val, exc_tb)

@@ -1,4 +1,4 @@
-from asyncio import Lock, create_task, wait_for
+from asyncio import Lock, wait_for
 from base64 import b64decode
 from binascii import Error
 from collections import defaultdict
@@ -43,7 +43,7 @@ def verify(wrapped: Callable = None):
     assert False
 
 
-async def load_public_key(public_key_path: Path) -> Ed25519PublicKey | None:
+async def load_public_key(public_key_path: Path):
     if not await public_key_path.exists():
         return None
 
@@ -51,11 +51,12 @@ async def load_public_key(public_key_path: Path) -> Ed25519PublicKey | None:
         async with open(public_key_path, "rb") as f:
             public_key_data = await f.read()
         from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
         public_key: Ed25519PublicKey = serialization.load_pem_public_key(public_key_data)
-        """if not isinstance(public_key, Ed25519PublicKey):
+        if not isinstance(public_key, Ed25519PublicKey):
             getLogger("AHA (FastAPI)").error("The provided key is not an Ed25519 public key")
-            return None"""
+            return None
         return public_key
     except Exception as e:
         getLogger("AHA (FastAPI)").error(_("fastapi.secrets.invalid") % e)
@@ -119,7 +120,7 @@ class VerificationMiddleware:
             b64decode(nonce := nonce.decode(), validate=True)
             i_timestamp = int.from_bytes(b64decode(timestamp := timestamp.decode(), validate=True))
             b_signature = b64decode(signature := signature.decode(), validate=True)
-        except Error:
+        except Error, UnicodeDecodeError:
             return await reject()
 
         # 验证签名
@@ -165,18 +166,15 @@ class FastAPIConnection(Transport):
         await init_load_mod()
 
         # Uvicorn
-        import uvicorn.lifespan.on
         from uvicorn import Config, Server
+        from uvicorn.lifespan.on import LifespanOn as OLifespanOn
 
-        _original_startup = uvicorn.lifespan.on.LifespanOn.startup
-
-        async def startup(self, *args, **kwargs):
-            await _original_startup(self, *args, **kwargs)
-            await FastAPI().event_post(
-                EventCategory.META, MetaEvent(meta_event_type=MetaEventType.LIFECYCLE, sub_type=LifecycleSubType.CONNECT)
-            )
-
-        uvicorn.lifespan.on.LifespanOn.startup = startup
+        class LifespanOn(OLifespanOn):
+            async def startup(self, *args, **kwargs):
+                await super().startup(*args, **kwargs)
+                await FastAPI().event_post(
+                    EventCategory.META, MetaEvent(event_type=MetaEventType.LIFECYCLE, sub_type=LifecycleSubType.CONNECT)
+                )
 
         log_cfg = {
             "version": 1,
@@ -191,8 +189,9 @@ class FastAPIConnection(Transport):
             },
         }
         drops = {"self", "cls"}
-        args = [n for n in config if n not in drops]
-        self.server = Server(Config(app, log_config=log_cfg, **{k: v for k, v in config.items() if k in args}))
+        (cfg := Config(app, log_config=log_cfg, **{k: v for k, v in config.items() if k not in drops})).load()
+        cfg.lifespan_class = LifespanOn
+        self.server = Server(cfg)
 
     async def _listen_impl(self, _):
         with suppress(SystemExit):
@@ -232,7 +231,8 @@ class FastAPI(BaseBot, metaclass=BaseBotSingletonMeta):
 
     async def set_result(self, _, key, data):
         """API: 设置结果"""
-        self._calls[key].set_result(data)
+        if result := self._calls.get(key):
+            result.set_result(data)
 
     async def send_msg(self, _, *, user_id, msg, **__):
         await self.set_result(_, user_id, msg)

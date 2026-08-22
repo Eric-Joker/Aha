@@ -35,7 +35,7 @@ if __name__ == "__main__":
         from services.playwright import browser_mgr
         from services.file_cache import start_file_cache_service
         from services.data_store import clean_data_store, initialize_all_stores
-        from core.expr import custom_fields, redirect_extractors
+        from core.expr import custom_default_expr, redirect_extractors
         from core.dispatcher import clear_handlers, process_clean, process_start
         from core.api_service import close_bots, start_bots
         from utils.aio import AsyncLoopExecutor, ThreadSafeAsyncMeta
@@ -59,7 +59,7 @@ if __name__ == "__main__":
                 feats.append(_("default_feat.user_blacklist") % len(cfg._default_user_list))
             else:
                 feats.append(_("default_feat.user_whitelist") % len(cfg._default_user_list))
-        feats.append(_("default_feat.private_enabled") if cfg.private else _("default_feat.private_disabled"))
+        feats.append(_("default_feat.private_enabled") if cfg.get("private", module="aha") else _("default_feat.private_disabled"))
         if cfg.limit:
             feats.append(_("default_feat.rate_limit") % cfg.limit)
         if cfg.global_msg_prefix == "":
@@ -68,8 +68,8 @@ if __name__ == "__main__":
             feats.append(_("default_feat.prefix_custom") % cfg.global_msg_prefix)
         if cfg.get("validated", module="expr_extractors"):
             feats.append(_("default_feat.validation_enabled"))
-        if custom_fields:
-            feats.append(_("default_feat.custom_fields") % " ".join(custom_fields))
+        if custom_default_expr:
+            feats.append(_("default_feat.custom_default_expr") % " ".join(custom_default_expr))
         logger.info(_("default_feat.header") % " ".join(feats))
 
         try:
@@ -120,7 +120,7 @@ if __name__ == "__main__":
             # loaded_i10n.clear()
             shutdown_logging()
             if core.status.need_reboot:
-                subprocess.Popen((sys.executable, *sys.argv), creationflags=subprocess.CREATE_NEW_CONSOLE)
+                subprocess.Popen((sys.executable, *sys.argv), creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0)
 
     async def main():
         loop = get_running_loop()

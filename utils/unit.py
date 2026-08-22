@@ -54,7 +54,7 @@ disk_size_units = (
 def tokenize(text):
     tokenized_input = []
     for token in re.split(r"(\d+(?:\.\d+)?)", text):
-        if re.match(r"\d+\.\d+", token := token.strip()):
+        if re.match(r"\d++\.\d++", token := token.strip()):
             tokenized_input.append(float(token))
         elif token.isdigit():
             tokenized_input.append(int(token))

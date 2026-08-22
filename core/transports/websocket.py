@@ -32,8 +32,9 @@ class WebSocketClient(ClientTransport):
             _retry_args |= retry_config
         self._connect = retry(**_retry_args)(self._connect)
         kwargs["additional_headers"] = extra_headers or {}
-        args = set(get_arg_names(connect.__init__))
-        self._connect_args = {k: v for k, v in kwargs.items() if k in args}
+        # args = set(get_arg_names(connect.__init__))
+        # self._connect_args = {k: v for k, v in kwargs.items() if k in args}
+        self._connect_args = kwargs
         self.uri = uri
         self._closed = False
 
@@ -59,7 +60,7 @@ class WebSocketClient(ClientTransport):
 
                 self._logger.warning(_("api.transport.conn_close_retry"))
                 try:
-                    await self._disconnect_cb()
+                    create_task(self._disconnect_cb(), eager_start=True)
                     if not await self._connect():
                         break
                     self._logger.info(_("api.transport.retry_success"))
@@ -86,7 +87,6 @@ class WebSocketClient(ClientTransport):
     def local_srv(self):
         if self._local_srv is None:
             self._local_srv = local_srv(self.uri)
-            return self._local_srv
         return self._local_srv
 
 

@@ -2,10 +2,9 @@ import sys
 from asyncio import create_task
 from collections.abc import Sequence
 from re import compile
-from typing import Any, Literal
 
 from models.api import Message
-from models.msg import At, MsgSeg
+from models.msg import MsgSeg
 
 
 # region re
@@ -21,44 +20,22 @@ def at_or_str(pattern: str = None):
 
 # endregion
 # region aha code
+_ESCAPE_TABLE = str.maketrans({"&": "&amp;", "[": "&#91;", "]": "&#93;", ",": "&#44;"})
+_UNESCAPE_PATTERN = compile(r"&(amp|#91|#93|#44);")
+_UNESCAPE_MAP = {"amp": "&", "#91": "[", "#93": "]", "#44": ","}
+
+
 def escape_aha(text: str):
     """转义 Aha 码中的少数特殊字符为 HTML 实体"""
-    return text.translate(str.maketrans({"&": "&amp;", "[": "&#91;", "]": "&#93;", ",": "&#44;"}))
+    return text.translate(_ESCAPE_TABLE)
 
 
 def unescape_aha(text: str):
     """反转义 Aha 码"""
-    return text.replace("&amp;", "&").replace("&#91;", "[").replace("&#93;", "]").replace("&#44;", ",")
+    return _UNESCAPE_PATTERN.sub(lambda m: _UNESCAPE_MAP[m.group(1)], text)
 
 
 AHA_CODE_PATTERN = compile(r"\[Aha:([^,\]]+)(?:,([^\]]+))?\]")
-
-
-def aha_code2dict_list(string, pattern=AHA_CODE_PATTERN) -> list[dict[Literal["type", "data"], Any]]:
-    """将 Aha 码字符串解析为字典列表"""
-    result = []
-    last_pos = 0
-    # 遍历所有匹配的 Aha 码
-    for match in pattern.finditer(string):
-        # 处理 Aha 码之前的文本
-        if text := string[last_pos : match.start()]:
-            result.append(unescape_aha(text))
-
-        # 解析 Aha 码参数
-        params = {}
-        for param in (match[2] or "").split(","):
-            if "=" in param:
-                key, value = param.split("=", 1)
-                params[key] = aha_code2dict_list(value, pattern)
-
-        result.append({"type": match[1].lower(), "data": params})
-        last_pos = match.end()
-
-    # 处理最后一个 Aha 码之后的文本
-    if text := string[last_pos:]:
-        result.append(unescape_aha(text))
-
-    return result
 
 
 def parse_aha_code(string):

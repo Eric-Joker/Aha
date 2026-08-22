@@ -1,5 +1,6 @@
-from asyncio import Task, create_task, shield
+from asyncio import CancelledError, Task, create_task, shield, sleep
 from collections.abc import Iterable
+from contextlib import suppress
 from functools import partial
 from logging import getLogger
 from typing import TYPE_CHECKING, overload
@@ -37,11 +38,13 @@ async def initialize_all_stores():
 async def clean_data_store():
     if _commit_task:
         _commit_task.cancel()
-        await _commit_task
+        with suppress(CancelledError):
+            await _commit_task
     _created_modules.clear()
 
 
 async def _shield_commit():
+    has_exc = False
     instances_to_commit = [instance for instance in tuple(_instances) if instance._has_changes]
     async with core.database.db_sessionmaker() as session:
         for instance in instances_to_commit:
@@ -51,6 +54,10 @@ async def _shield_commit():
             except Exception:
                 _logger.exception(_("simple_data_store.commit_error") % instance._module)
                 await session.rollback()
+                has_exc = True
+    if has_exc:
+        await sleep(1)
+        _commit_event.set()
 
 
 async def commit_worker():

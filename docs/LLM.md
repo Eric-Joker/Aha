@@ -578,6 +578,42 @@ async def _(event: Message[Image]):
 
 由于这会修改[事件对象](../数据结构/事件对象.md)实例的内容，出于回调间数据隔离的需求，使用本特性会导致在事件匹配前就提前对[事件对象](../数据结构/事件对象.md)实例进行以回调为单位的深拷贝，这会降低性能。
 
+#### 类装饰
+
+注册回调装饰器工厂支持装饰类，类中所有使用**相同**装饰器工厂的**类方法与静态方法**会自动继承类装饰器声明的**部分**参数，其中[事件匹配表达式](./事件匹配表达式.md)参数以逻辑与合并。
+
+会继承的参数有：`exp`、`threadable`、`debug`、`pre_hook`。
+
+声明 `inherit` 参数为 False 使方法忽略类装饰器的默认参数。
+
+> `on_message` 的 `register_help` 参数仅支持在方法（函数）上声明，不得用于类装饰器工厂。
+
+> 不会继承 `on_external` 的 `key` 参数。
+
+```python
+from core.dispatcher import on_message
+from core.expr import Padmin
+from models.api import Message
+
+@on_message(Padmin == True, threadable=False)
+class AdminHandlers:
+    @on_message("ping") # (Padmin == True) & "ping"
+    @classmethod
+    async def ping(cls, event: Message):
+        await event.reply("pong")
+
+    @staticmethod
+    @on_message("hi", inherit=False) # 忽略类装饰器的默认参数，不再继承或合并
+    async def hi(event: Message):
+        await event.reply("hello")
+
+    @staticmethod
+    async def utils(): # 未使用注册回调装饰器的方法不会被注册
+        ...
+```
+
+> `classmethod`、 `staticmethod` 与注册回调装饰器的顺序不影响注册。
+
 #### 线程安全
 
 装饰器本身非线程安全。
@@ -913,7 +949,7 @@ async def _(event: Message, args: Sequence):
 
     from models.core import Point
     async with db_sessionmaker() as session:
-        stmt = select(Point.aha_id, Point.point).order_by(desc(Point.point)).limit(top_n)
+        stmt = select(Point.user_id, Point.points).order_by(desc(Point.points)).limit(top_n)
         result = await session.execute(stmt)
         rows = result.all()
 
@@ -1154,7 +1190,7 @@ async def sign_rank(event: Message, localizer, args: Sequence):
     from models.core import Point
 
     async with db_sessionmaker() as session:
-        stmt = select(Point.aha_id, Point.point).order_by(desc(Point.point)).limit(top_n)
+        stmt = select(Point.user_id, Point.points).order_by(desc(Point.points)).limit(top_n)
         result = await session.execute(stmt)
         rows = result.all()
 
@@ -1506,7 +1542,7 @@ Aha 原生字段：
 - **用户黑白名单**：类似地，`PM.user` 会根据模块配置添加默认黑白名单。
 - **私聊允许**：若配置项 `aha.private`为 `false` 则有 `PM.isprivate == False`。
 - **已验证用户**：当存在为 `PM.validated` 字段[注册提取器](#注册-pmvalidated-提取器)的模块时，则有 `PM.validated == True`。
-- **面向单用户的全局限速**：若配置项 `aha.limit` 不为 `0` 则有 `PM.limit == True`。该默认表达式对 [`Notice` 和 `Request` 事件](./订阅与发布事件.md)同样有效。
+- **面向单用户的全局限速**：若配置项 `aha.limit` 不为 `0`，且表达式中未使用 `msg`、`msg_chain`、`command`、`type_`、`sub_type` 任一字段，则有 `PM.limit == True`。
 
 > 对于通过 `on_meta` 注册的回调，**不会**添加上述 Aha 原生字段的默认表达式。
 
@@ -1650,6 +1686,7 @@ async def _(): ...
 | --- | --- | --- |
 | extractor | Callable[[[BaseEvent](../数据结构/事件对象.md#baseevent)], Any] | 从[事件对象](../数据结构/事件对象.md)中提取值的方法。 |
 | default | Callable[[FieldClause], Expr \| Any] | 默认表达式。若与最高级二元表达式为并列关系的表达式中没有引用过该字段，会自动添加默认表达式。**自该字段诞生起，默认表达式会作用于所有模块之后注册的所有回调。** |
+| default_condition | Callable[[set[FieldClause], list[Expr]], bool] | 决定是否添加默认表达式的条件。接收两个位置参数：表达式中已使用的字段集合与构建后的原始表达式列表。返回为 `False` 时不添加默认表达式。 |
 | priority | int | 优先级。 |
 | binary_semantics | Callable[[type["BinaryExpr"], Any], type["BinaryExpr"]] | [运算符自动调整](#运算符自动调整)的实现，转化二元表达式的类型。第二个参数是另一操作数。 |
 | rhs_converter | Callable[[Any, type["BinaryExpr"], [EventCategory](../数据结构/事件对象.md#modelscoreeventcategory)], Any] | [操作数自动转换](#操作数自动转换)的实现，修正二元表达式另一端的值。若声明了 `binary_semantics`，第二个参数传递的是转换后的二元表达式类型。 |
@@ -2786,7 +2823,7 @@ await API.send_group_msg(group_id=123456, message=forward)
 | last_sent_time | datetime \| None | 最后发言时间 |
 | unfriendly | bool | 是否被标记为不友好用户 |
 | is_robot | bool | 是否为机器人账号 |
-| shut_up_time | datetime \| None | 禁言截止时间 |
+| shut_up_time | datetime \| None | 禁言截止时间。从未被禁言过为 Unix 纪元时间；协议不存在此属性时为 None。 |
 | role | [Role](#modelsapirole) | 群权限 |
 | title | str \| None | 群头衔 |
 
@@ -2813,7 +2850,7 @@ await API.send_group_msg(group_id=123456, message=forward)
 | manager | str | 管理者平台用户 ID |
 | subordinate | str | 下属平台用户 ID |
 
-**返回**：bool
+**返回**：bool；若成员不存在返回 None。
 
 #### GroupMembers.filter_by_last_sent_time_upto_now()
 
@@ -3146,7 +3183,7 @@ curl -X POST "http://127.0.0.1:6550/test" \
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | group_id | str \| int | 群组 ID。 |
-| platform | str| 音乐平台。 |
+| platform | str | 音乐平台名。 |
 | id | str \| int | 音乐 ID。 |
 
 **返回**: 消息 ID (str)
@@ -3385,13 +3422,15 @@ async def _():
 
 ### 实现菜单
 
-`core.dispatcher.help_items` 是一个列表，元素为具有三个元素的元组：
+`core.dispatcher.help_items` 是一个字典，键为功能名称（可触发回调的消息内容），值为具有两个元素的元组：
 
-| 索引 | 类型 | 说明 |
+| 键/索引 | 类型 | 说明 |
 | --- | --- | --- |
-| 0 | str | 功能名称，也就是可触发回调的消息内容。 |
-| 1 | [Expr](../../事件匹配表达式.md#基本概念) | 功能注册时的[事件匹配表达式](../../事件匹配表达式.md)，但剔除了 `PM.command`、`PM.message`、`PM.message_chain`、`PM.limit` 和 `PM.prefix` 字段。可用于验证该项目是否对用户有效。 |
-| 2 | str \| None | 功能简介。 |
+| key | str | 功能名称，也就是可触发回调的消息内容。 |
+| value[0] | [Expr](../../事件匹配表达式.md#基本概念) | 功能注册时的[事件匹配表达式](../../事件匹配表达式.md)，但剔除了 `PM.command`、`PM.message`、`PM.message_chain`、`PM.limit` 和 `PM.prefix` 字段。可用于验证该项目是否对用户有效。 |
+| value[1] | str \| None | 功能简介。 |
+
+> 同名功能被多个模块注册时，后注册者将覆盖先注册者。
 
 涉及该列表的逻辑不保证线程安全。
 
@@ -3799,7 +3838,7 @@ re.Pattern 实例，可匹配 Aha 码。
 
 四舍五入 `Decimal` 到指定小数位。
 
-#### `decimal_to_str`
+#### `decimal2str`
 
 将 `Decimal` 转换为字符串。
 
@@ -3823,16 +3862,6 @@ re.Pattern 实例，可匹配 Aha 码。
 一个同步上下文管理器，实例化后可通过 `wait_until_zero` 异步方法等待计数器归零。
 
 非线程安全。
-
-#### `AsyncTee`
-
-用于分叉异步迭代器。
-
-懒得做线程安全。
-
-```python
-gen1, gen2 = AsyncTee.gen(AsyncIterator())  # 第二个参数为返回的迭代器数量，默认为 2；第三个参数为缓冲区最大长度，为 0 时不限制，默认为 2。
-```
 
 #### `run_with_uvloop`
 
@@ -3935,7 +3964,7 @@ core.status.main_task.cancel()
 
 相同路径的文件每次注册重设过期时间。
 
-文件内容支持 `BinaryIO | bytes | str | AsyncIterable[bytes | str] | Iterable[bytes | str]`，智能流式读取与写入。
+文件内容支持 `bytes | str | AsyncIterable[bytes | str] | Iterable[bytes | str]`，智能流式读取与写入。
 
 本系统线程安全。
 

@@ -95,7 +95,8 @@ class HandlerConfig:
 class AhaHandlerMixin:
     def emit(self: logging.StreamHandler, msg):
         try:
-            self.stream.write(msg + self.terminator)
+            self.stream.write(msg)
+            self.stream.write(self.terminator)
             self.flush()
         except RecursionError:
             raise
@@ -114,7 +115,9 @@ class AhaHandlerMixin:
             sys.stderr.write("--- Logging error ---\n")
             print_exception(t, v, tb, None, sys.stderr)
             sys.stderr.write("Call stack:\n")
-            while (frame := tb.tb_frame) and os.path.dirname(frame.f_code.co_filename) == __path__[0]:
+            while (frame := tb.tb_frame) and os.path.dirname(os.path.abspath(frame.f_code.co_filename)) == os.path.dirname(
+                os.path.abspath(__file__)
+            ):
                 frame = frame.f_back
             if frame:
                 print_stack(frame, file=sys.stderr)
@@ -179,7 +182,7 @@ class TimeRangeRotatingFileHandler(AhaHandlerMixin, BaseRotatingHandler):
                 new_path = Path(self.baseFilename).rename(self.rotation_filename(self.start_time, self.end_time))
                 if self.backupCount > 0:
                     self.backupFiles.append(new_path)
-                    while len(self.backupFiles) > self.backupCount:
+                    while len(self.backupFiles) >= self.backupCount:
                         self.backupFiles.pop(0).unlink(True)
         except Exception:
             self.handleError(f"Cannot rotate log file {self.baseFilename}")
@@ -189,10 +192,10 @@ class TimeRangeRotatingFileHandler(AhaHandlerMixin, BaseRotatingHandler):
         self.baseFilename = str((self.log_dir / self.rotation_filename(self.start_time)).absolute())
         self.stream = None if self.delay else self._open()
 
-    def shouldRollover(self, msg):
+    def shouldRollover(self, msg: str):
         if self.stream is None:  # delay was set...
             self.stream = self._open()
-        return pos + len(msg) >= self.maxBytes if self.maxBytes > 0 and (pos := self.stream.tell()) else False
+        return pos + len(msg.encode("utf-8")) >= self.maxBytes if self.maxBytes > 0 and (pos := self.stream.tell()) else False
 
     def emit(self, data):
         try:
@@ -259,7 +262,7 @@ def _logger_worker(queue: TQueue | PQueue, file, file_kwargs, console, console_k
                 running = False
                 continue
 
-            if (msg := record[1]) is not None:
+            if msg := record[1]:
                 console.emit(msg)
             if record[0] is not None:
                 log_buffer.append(record[0])
@@ -337,11 +340,12 @@ def setup_logging(handler: HandlerConfig = None):
         _log_handler := QueueHandler(
             _log_queue or handler.queue,
             logging.Formatter(
-                os.getenv("LOG_FILE_FORMAT", FILE_FORMAT.get(handler.file_level, logging.INFO)), datefmt="%H:%M:%S"
+                os.getenv("LOG_FILE_FORMAT", FILE_FORMAT.get(handler.file_level, FILE_FORMAT[logging.INFO])), datefmt="%H:%M:%S"
             ),
             handler.file_level,
             LevelNameColoredFormatter(
-                os.getenv("LOG_FORMAT", CONSOLE_FORMAT.get(handler.console_level, logging.INFO)), datefmt="%H:%M:%S"
+                os.getenv("LOG_FORMAT", CONSOLE_FORMAT.get(handler.console_level, CONSOLE_FORMAT[logging.INFO])),
+                datefmt="%H:%M:%S",
             ),
             handler.console_level,
         )

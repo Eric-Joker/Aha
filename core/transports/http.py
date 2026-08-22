@@ -45,7 +45,7 @@ class _HttpMixin(ClientTransport):
 
     @property
     def local_srv(self):
-        return local_srv(self._http_config["base_url"]) and super().local_srv
+        return (local_srv(url) if (url := self._http_config.get("base_url")) else True) and super().local_srv
 
 
 class _SseMixin(ClientTransport):
@@ -72,10 +72,13 @@ class _SseMixin(ClientTransport):
             _retry_args |= retry_config
         self._connect = retry(**_retry_args)(self._connect)
         args = set(get_arg_names(AsyncClient.__init__))
-        self._sse_client = AsyncClient(**{k: v for k, v in sse_client_config.items() if k in args}) if sse_client_config else AsyncClient()
+        self._sse_client = (
+            AsyncClient(**{k: v for k, v in sse_client_config.items() if k in args}) if sse_client_config else AsyncClient()
+        )
         self._closed = False
 
-        await self._connect()
+        if await self._connect():
+            create_task(self._connect_cb(), eager_start=True)
 
     async def _connect(self):
         if self._closed:
@@ -100,7 +103,7 @@ class _SseMixin(ClientTransport):
 
                 self._logger.warning(msg=_("api.transport.conn_close_retry"))
                 try:
-                    await self._disconnect_cb()
+                    create_task(self._disconnect_cb(), eager_start=True)
                     if not await self._connect():
                         break
                     self._logger.info(_("api.transport.retry_success"))
@@ -122,12 +125,15 @@ class _SseMixin(ClientTransport):
     def local_srv(self):
         if self._local_srv is None:
             self._local_srv = local_srv(self._sse_config["url"])
-            return self._local_srv
         return self._local_srv
 
 
 class HttpSse(_HttpMixin, _SseMixin):
     __slots__ = ("_local_srv", "_http_client", "_http_config", "_sse_client", "_sse_config", "sse_connect", "_closed")
+
+    def __init__(self, logger=None):
+        self._logger = logger or logging.getLogger("API Connection (HTTP&SSE)")
+        self._local_srv = None
 
     async def open(
         self,

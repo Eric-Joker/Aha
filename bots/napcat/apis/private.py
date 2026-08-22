@@ -16,7 +16,8 @@ class PrivateAPI(Utils, BasePrivateAPI):
     async def send_private_msg(self, call_id, user_id, msg=None, at=None, reply=None, image=None):
         # TODO: 检查消息合法性
         if (
-            not isinstance(msg, str)
+            msg
+            and not isinstance(msg, str)
             and isinstance(msg, Sequence)
             and isinstance(forward := msg[0], Forward)
             or isinstance(forward := msg, Forward)
@@ -114,7 +115,7 @@ class PrivateAPI(Utils, BasePrivateAPI):
                         "type": "custom_music",
                         "data": {
                             "url": url,
-                            "image": None if image else await self.prepare_upload(image, self.transport.local_srv),
+                            "image": await self.prepare_upload(image, self.transport.local_srv) if image else None,
                             "audio": audio,
                             "title": title,
                             "content": content,
@@ -148,8 +149,9 @@ class PrivateAPI(Utils, BasePrivateAPI):
                 call_id, "get_friend_msg_history", {"user_id": user_id, "message_seq": message_id or 0, "number": count}
             )
         )["messages"]:
-            result.append(data := RetrievedMessage.model_validate(await self._msg_event_processor(data)))
-            data.bot_id, data.platform, data.adapter = self.bot_id, self.platform, self.__class__.__name__
+            if data := await self._msg_event_processor(data):
+                result.append(data := RetrievedMessage.model_validate(data))
+                data.bot_id, data.platform, data.adapter = self.bot_id, self.platform, self.__class__.__name__
         return result
 
     def upload_private_file(self, call_id, user_id, file, name):

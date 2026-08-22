@@ -23,9 +23,9 @@ class AccountAPI(Utils, BaseAccountAPI):
             call_id,
             "set_online_status",
             (
-                {"status": 10, "ext_status": 1000, "battary_status": ext_status}
+                {"status": 10, "ext_status": 1000, "battery_status": ext_status}
                 if status == 10
-                else {"status": status, "ext_status": ext_status, "battary_status": 0}
+                else {"status": status, "ext_status": ext_status, "battery_status": 0}
             ),
         )
 

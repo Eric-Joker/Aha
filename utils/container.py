@@ -279,5 +279,6 @@ class DefaultIndexedDict[_KT, _VT](IndexedDictMixin[_KT, _VT], defaultdict[_KT, 
         ) -> None: ...
 
     def __missing__(self, key: _KT, /) -> _VT:
+        obj = super().__missing__(key)
         self._keys.append(key)  # C defdict_missing 并不会执行覆写的 setitem
-        return super().__missing__(key)
+        return obj

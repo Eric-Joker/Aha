@@ -1,4 +1,4 @@
-from asyncio import Future, Task, create_task, current_task, gather, get_running_loop, sleep
+from asyncio import Future, Task, create_task, current_task, gather, get_running_loop, sleep, to_thread
 from collections import defaultdict
 from contextlib import suppress
 from copy import deepcopy
@@ -22,6 +22,7 @@ from xxhash import xxh3_64
 
 from bots import BaseBot, api_process
 from models.api import BaseEvent, LifecycleSubType, MetaEventType, NoticeEventType, RequestEventType, RequestSubType
+from models.api.events import NoticeSubType
 from models.core import APSTriggerType, EventCategory, ServiceType
 from services.apscheduler import sched
 from utils.aio import AsyncConnection, run_with_uvloop
@@ -134,8 +135,6 @@ def _get_bot_id(bot_class, config):
 
 async def _start_async_bot(bot: BaseBot, server_ok: REvent):
     if not await bot.start():
-        async with bots_lock:
-            _del_bot(bot.bot_id)
         server_ok.set()  # 让启动流程通过
 
 
@@ -239,7 +238,7 @@ def _del_bot(bot_id):
 
 
 async def clean_bot(bot_id):
-    if not bots or not (meta := bots[bot_id]):
+    if not bots or not (meta := bots.get(bot_id)):
         return
     meta.server_ok.clear()
 
@@ -265,21 +264,20 @@ async def close_bots():
     """给 aha.py 用的"""
     async with bots_lock:
         bots_copy = tuple(bots)
-    with suppress(RuntimeError):
-        await gather(*[call_api("close", bot=bot) for bot in bots_copy], return_exceptions=True)
+    await gather(*[call_api("close", bot=bot) for bot in bots_copy], return_exceptions=True)
 
     if IS_PROCESS_MODE:
         async with bots_lock:
-            for p in bots.values():
-                if p:
-                    p.instance.join()
-                    p.instance.close()
+            processes = [p.instance for p in bots.values() if p]
+        await gather(*[to_thread(p.join, 10) for p in processes], return_exceptions=True)
+        for p in processes:
+            with suppress(ValueError):
+                p.close()
 
     if IS_THREAD_MODE:
         async with bots_lock:
-            for p in bots.values():
-                if p:
-                    p.threading.join()
+            threads = [p.threading for p in bots.values() if p]
+        await gather(*[to_thread(t.join, 10) for t in threads], return_exceptions=True)
 
 
 # endregion
@@ -335,17 +333,27 @@ async def event_route(bot_id, event_type, payload):
             create_task(process_message(payload), eager_start=True)
         case EventCategory.NOTICE:
             # 会话列表维护
-            if cfg.cache_conv and payload.event_type is NoticeEventType.FRIEND_ADD:
-                async with friend_conv_lock:
-                    friends[payload.platform][payload.user_id].append(payload.bot_id)
+            if cfg.cache_conv:
+                with suppress(ValueError, KeyError):
+                    match payload.event_type:
+                        case NoticeEventType.FRIEND_ADD:
+                            async with friend_conv_lock:
+                                friends[payload.platform][payload.user_id].append(payload.bot_id)
+                        case NoticeEventType.GROUP_DECREASE:
+                            if payload.sub_type is NoticeSubType.KICK_ME:
+                                async with group_conv_lock:
+                                    groups[payload.platform][payload.group_id].remove(payload.bot_id)
 
             if await deduplicators[payload.platform].is_duplicate(payload):
                 return
             create_task(process_notice(payload), eager_start=True)
         case EventCategory.REQUEST:
             # 会话列表维护
-            if cfg.cache_conv and payload.event_type is RequestEventType.GROUP and payload.sub_type is RequestSubType.INVITE:
-                _flag_mapping[payload.flag] = payload.group_id
+            if cfg.cache_conv:
+                if payload.sub_type is RequestSubType.INVITE:
+                    _flag_mapping[f"group_{payload.flag}"] = payload.group_id
+                elif payload.event_type is RequestEventType.FRIEND:
+                    _flag_mapping[f"friend_{payload.flag}"] = payload.user_id
 
             if await deduplicators[payload.platform].is_duplicate(payload):
                 return
@@ -389,20 +397,20 @@ api_result_caches: dict[str, Cache | WeakValueDictionary] = {
 async def call_api(method: str, *args, bot: int, **kwargs):
     # 缓存
     cache_key = None
-    if (cacher := api_result_caches.get(method)) and (result := cacher.get(cache_key := hash(hashkey(bot, *args, **kwargs)), _unset)) is not _unset:
+    if (cacher := api_result_caches.get(method)) and (
+        result := cacher.get(cache_key := hash(hashkey(bot, *args, **kwargs)), _unset)
+    ) is not _unset:
         return result
 
     is_close = method == "close"
 
     # 服务存活检查
-    try:
-        if not (meta := bots[bot]):
-            if is_close:
-                return
-            raise RuntimeError(_("router.api_closed"))
-    except KeyError:
-        _logger.warning(_("router.bot404"))
-        raise
+    if not (meta := bots.get(bot, _unset)):
+        if is_close:
+            return
+        raise RuntimeError(_("router.api_closed"))
+    elif meta is _unset:
+        raise ValueError(_("router.bot404"))
 
     call_id = token_hex(4)[:7]
     try:
@@ -427,14 +435,16 @@ async def call_api(method: str, *args, bot: int, **kwargs):
 
         if not meta.block_event:
             # 维护联系人列表
-            if (
-                cfg.cache_conv
-                and method == "process_group_join_request"
-                and args[1] is True
-                and (gid := _flag_mapping.get(args[0]))
-            ):
-                async with group_conv_lock:
-                    groups[meta.platform][gid].append(bot)
+            if cfg.cache_conv:
+                match method:
+                    case "process_group_join_request":
+                        if args[1] and (conv_id := _flag_mapping.get(f"group_{args[0]}")):
+                            async with group_conv_lock:
+                                groups[meta.platform][conv_id].append(bot)
+                    case "process_friend_add_request":
+                        if args[1] and (conv_id := _flag_mapping.get(f"friend_{args[0]}")):
+                            async with friend_conv_lock:
+                                friends[meta.platform][conv_id].append(bot)
 
             # 缓存
             if (cacher := api_result_caches.get(method)) is not None:
@@ -442,7 +452,7 @@ async def call_api(method: str, *args, bot: int, **kwargs):
                     result.model_copy(deep=True) if isinstance(result, BaseModel) else deepcopy(result)
                 )
             return result
-    except (BrokenPipeError, EOFError):
+    except BrokenPipeError, EOFError:
         raise RuntimeError(_("router.api_closed"))
     finally:
         async with meta.call_lock:

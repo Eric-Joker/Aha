@@ -43,6 +43,12 @@ if TYPE_CHECKING:
 
 
 async def adjust_point(arg1, arg2=None, arg3=None, /, session=None):
+    if session is None:
+        session = db_sessionmaker()
+        should_close_session = True
+    else:
+        should_close_session = False
+
     if arg2 is None:
         user = await current_event.get().user_aha_id()
         delta = arg1
@@ -50,14 +56,8 @@ async def adjust_point(arg1, arg2=None, arg3=None, /, session=None):
         user = arg1
         delta = arg2
     else:
-        user = await user2aha_id(arg1, arg2)
+        user = await user2aha_id(arg1, arg2, session)
         delta = arg3
-
-    if session is None:
-        session = db_sessionmaker()
-        should_close_session = True
-    else:
-        should_close_session = False
 
     try:
         result = await session.scalar(

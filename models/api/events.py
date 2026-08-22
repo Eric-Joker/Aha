@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from datetime import datetime
+from functools import partial
 from random import getrandbits
 from typing import Annotated, Any
 
@@ -22,7 +23,7 @@ class BaseEvent(BaseModel):
     _user_obj: User = PrivateAttr(None)
     _group_obj: Group = PrivateAttr(None)
 
-    time: datetime = Field(default_factory=datetime.now().astimezone)
+    time: datetime = Field(default_factory=lambda: datetime.now().astimezone())
     self_id: Annotated[str, BeforeValidator(str)] | None = None
 
     event_type: EventType | None = None
@@ -369,9 +370,10 @@ class MetaEvent(BaseEvent):
     sub_type: LifecycleSubType | None = None  # lifecycle
     interval: int | None = None  # heartbeat
     status: HeartbeatStatus | None = None  # heartbeat
+    _hash = PrivateAttr(default_factory=partial(getrandbits, 28))
 
     def __hash__(self):
-        return getrandbits(28)
+        return self._hash
 
 
 # endregion
@@ -384,12 +386,12 @@ class External(BaseEvent):
     @property
     def user_id(self):
         return self.key
-    
+
     def set_result(self, data):
         from core.api_service import call_api
-        
+
         return call_api("set_result", self.key, data, bot=self.bot_id)
-    
+
     def send(self, msg, *_, **__):
         from core.api_service import call_api
 

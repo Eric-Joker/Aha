@@ -112,7 +112,7 @@ async def series_asub(
 # endregion
 # endregion
 with suppress(ImportError):
-    import unicodedata2
+    import unicodedata2 # type: ignore
 
     if is_version_newer(unicodedata2.unicode_version, unicodedata.unicode_version):
         unicodedata = unicodedata2

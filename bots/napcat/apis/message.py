@@ -30,9 +30,10 @@ class MessageAPI(Utils, BaseMessageAPI):
 
     # region 消息获取
     async def get_msg(self: NapCat, call_id, message_id):
-        result = await self._msg_event_processor(await self._call_api(call_id, "get_msg", {"message_id": message_id}))
-        result["reactions"] = [Reactions(emoji_id=r["emoji_id"], count=r["likes_cnt"]) for r in result.pop("emoji_likes_list")]
-        return RetrievedMessage.model_validate(result)
+        if result := await self._msg_event_processor(await self._call_api(call_id, "get_msg", {"message_id": message_id})):
+            result["reactions"] = [Reactions(emoji_id=r["emoji_id"], count=r["likes_cnt"]) for r in result.pop("emoji_likes_list")]
+            return RetrievedMessage.model_validate(result)
+        raise NotImplementedError
 
     async def get_forward_msg(self: NapCat, call_id, message_id, raw_list=False):
         try:
@@ -85,7 +86,7 @@ class MessageAPI(Utils, BaseMessageAPI):
         msg = await self.get_msg(self.gen_id(), message_id)
         self_id = (await self.get_login_info(self.gen_id())).user_id
         if not (
-            (await self.get_group_members(call_id, msg.group_id)).is_manager_of(self_id, msg.user_id) if msg.group_id else False
+            (await self.get_group_members(self.gen_id(), msg.group_id)).is_manager_of(self_id, msg.user_id) if msg.group_id else False
         ):
             if msg.user_id != self_id:
                 raise APIException("无权撤回该消息。")

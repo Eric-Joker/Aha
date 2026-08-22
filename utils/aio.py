@@ -1,7 +1,7 @@
 import asyncio
 import sys
 import threading
-from collections.abc import AsyncGenerator, AsyncIterable, AsyncIterator, Callable, MutableSequence, MutableSet
+from collections.abc import AsyncGenerator, AsyncIterable, Callable, MutableSequence, MutableSet
 from concurrent.futures import Executor
 from concurrent.futures.thread import BrokenThreadPool
 from contextlib import suppress
@@ -360,8 +360,9 @@ class AsyncCounter:
         await self._event
 
 
+""" 缺少上下文管理以防止一个消费者不再被使用时其他消费者完全阻塞
 class AsyncTee[T]:
-    """非线程安全。"""
+    \"""非线程安全。\"""
 
     __slots__ = (
         "ait",
@@ -470,7 +471,7 @@ class AsyncTee[T]:
     def gen[T](cls, agen: AsyncIterator[T], n=2, maxsize=2) -> tuple[AsyncIterator[T], ...]:
         tee = cls(agen, maxsize)
         return tuple(tee.new_consumer() for _ in range(n))
-
+"""
 
 class AsyncResult:
     __slots__ = ("_event", "_flag")
@@ -568,9 +569,11 @@ class AsyncLoopExecutor(Executor):
         if best_info and min_tasks == 0:
             # 空闲线程
             async with best_info.lock:
-                best_info.active_tasks += 1
-            best_info.queue.put(work_item)
-            return result
+                if best_info.active_tasks == 0:
+                    best_info.active_tasks += 1
+                    best_info.queue.put(work_item)
+                    return result
+            best_info = None
 
         if current_count < self._max_workers:
             # 新建线程
@@ -701,12 +704,13 @@ class AsyncConnection:
                 self._recv_queue.put(self._conn.recv())
             except EOFError, OSError:
                 break
-        self._recv_queue.put(None)
+        self._recv_queue.put(_unset)
 
     def _send_worker(self):
         while not self._closed.is_set():
             try:
-                self._conn.send(self._send_queue.green_get())
+                if (data := self._send_queue.green_get()) is not _unset:
+                    self._conn.send(data)
             except EOFError, OSError:
                 break
 
@@ -718,7 +722,7 @@ class AsyncConnection:
     async def recv(self):
         if self._closed.is_set():
             raise EOFError
-        if (data := await self._recv_queue.async_get()) is None:
+        if (data := await self._recv_queue.async_get()) is _unset:
             self.close()
             raise EOFError
         return data
@@ -726,6 +730,7 @@ class AsyncConnection:
     def close(self):
         self._closed.set()
         self._conn.close()
+        self._send_queue.put(_unset)
 
     @property
     def closed(self) -> bool:

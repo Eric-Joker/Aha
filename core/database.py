@@ -1,4 +1,3 @@
-import gzip
 import logging
 import os
 import sys
@@ -8,6 +7,7 @@ from functools import wraps
 from pathlib import Path
 from re import compile
 from shutil import which
+from sqlite3 import connect
 from subprocess import run
 
 import sqlalchemy.sql.schema
@@ -55,14 +55,15 @@ db_engine = create_async_engine(cfg.database["uri"])
 dbBase: DeclarativeBase = declarative_base(metaclass=CustomDeclarativeMeta)
 metadata = dbBase.metadata
 db_sessionmaker = async_sessionmaker(bind=db_engine)
+_sync_engine = None
 
 
 def db_init():
-    global database_initialized
+    global database_initialized, _sync_engine
 
     from services.apscheduler import sched
 
-    with create_engine(cfg.database["green"]).begin() as conn:
+    with (_sync_engine := create_engine(cfg.database["green"])).begin() as conn:
         dbBase.metadata.create_all(conn)
         sched.data_store.get_table_definitions().create_all(conn)
         if db_engine.dialect.name == "sqlite":
@@ -92,6 +93,7 @@ def db_init():
                 _logger.error(_("database.gen_version.error") % e)
             raise
         command.upgrade(alembic_cfg, "head")
+    _sync_engine = None
 
     database_initialized = True
 
@@ -174,24 +176,21 @@ def include_object(obj, name, type_, reflected, _):
 # endregion
 def backup_database():
     try:
+        (backup_dir := Path(cfg.database["backup_dir"])).mkdir(parents=True, exist_ok=True)
         if "sqlite" in (url := make_url(cfg.database["green"])).drivername:
-            if not url.database or url.database == ":memory:":
-                _logger.warning(_("database.backup.not_supported"))
-                return
             _logger.info(_("database.backup.start"))
-            (backup_dir := Path(cfg.database["backup_dir"])).mkdir(parents=True, exist_ok=True)
-            with open(url.database, "rb") as f_in:
-                with gzip.open(
+            try:
+                with connect(
                     backup_dir
-                    / f"{os.path.splitext(os.path.basename(url.database))[0]}_{datetime.now().strftime('%Y%m%d_%H%M%S%f')[:-3]}.db.gz",
-                    "wb",
-                ) as f_out:
-                    f_out.write(f_in.read())
+                    / f"{os.path.splitext(os.path.basename(url.database))[0]}_{datetime.now().strftime('%Y%m%d_%H%M%S%f')[:-3]}.db"
+                ) as bak_conn:
+                    (raw := _sync_engine.raw_connection()).driver_connection.backup(bak_conn)
+            finally:
+                raw.close()
         elif "postgresql" in url.drivername:
             if (pg_dump := which("pg_dump")) is None:
                 raise DatabaseBackupError(_("database.backup.pg_dump404"))
             _logger.info(_("database.backup.start"))
-            (backup_dir := Path(cfg.database["backup_dir"])).mkdir(parents=True, exist_ok=True)
             __, sep, right = cfg.database["green"].partition("://")
             run(
                 [
@@ -202,7 +201,10 @@ def backup_database():
                     "c",
                     "-Z9",
                     "-f",
-                    cfg.database["backup_dir"],
+                    str(
+                        backup_dir
+                        / f"{os.path.splitext(os.path.basename(url.database))[0]}_{datetime.now().strftime('%Y%m%d_%H%M%S%f')[:-3]}.dump"
+                    ),
                 ],
                 check=True,
             )

@@ -1,4 +1,5 @@
-from asyncio import sleep
+from asyncio import CancelledError, current_task, sleep
+from contextlib import suppress
 from datetime import datetime
 from threading import current_thread, main_thread
 from time import time
@@ -91,8 +92,10 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
                 data["time"] = datetime.fromtimestamp(int(data["time"]), ZoneInfo("Asia/Shanghai"))
                 match type_:
                     case "message":
-                        await self._msg_event_processor(data)
-                        cat, data = EventCategory.CHAT, Message.model_validate(data)
+                        if await self._msg_event_processor(data):
+                            cat, data = EventCategory.CHAT, Message.model_validate(data)
+                        else:
+                            return
                     case "notice":
                         now = time()
                         if data["notice_type"] == "group_msg_emoji_like":
@@ -117,6 +120,7 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
                         if data.sub_type is LifecycleSubType.CONNECT:
                             self._sent_connect = True
                     case "message_sent":
+                        return
                         await self._msg_event_processor(data)
                         cat, data = EventCategory.SENT, MessageSent.model_validate(data)
                 await self.event_post(cat, data)
@@ -130,12 +134,17 @@ class NapCat(AccountAPI, GroupAPI, MessageAPI, PrivateAPI, SupportAPI, BaseBot):
             future.set_result(data)
 
     async def _disconnect_cb(self):
+        if self._sent_connect is True:
+            await super()._disconnect_cb()
+        elif self._sent_connect.__class__ is not bool:
+            self._sent_connect.cancel()
         self._sent_connect = False
-        await super()._disconnect_cb()
 
     async def _connect_cb(self):
-        await sleep(3)
-        if not self._sent_connect:
-            await self.event_post(
-                EventCategory.META, MetaEvent(event_type=MetaEventType.LIFECYCLE, sub_type=LifecycleSubType.CONNECT)
-            )
+        with suppress(CancelledError):
+            self._sent_connect = current_task()
+            await sleep(3)
+            if self._sent_connect is not True:
+                await self.event_post(
+                    EventCategory.META, MetaEvent(event_type=MetaEventType.LIFECYCLE, sub_type=LifecycleSubType.CONNECT)
+                )

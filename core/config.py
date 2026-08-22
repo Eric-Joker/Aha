@@ -107,7 +107,7 @@ class Option:
         if self.value is None and self.options:
             object.__setattr__(self, "value", self.options[0])
         elif self.value not in self.options:
-            raise ValueError(_("config.option.invalid") % (self.value, self.options))
+            raise ValueError(f"The value '{self.value}' is not a valid option. Valid options are: {self.options}")
 
 
 class OptionCommentedMap(CommentedMap):
@@ -115,7 +115,7 @@ class OptionCommentedMap(CommentedMap):
         # 如果原值是Option但新值不是，验证新值是否在选项内
         if (old := super().get(key)) and isinstance(old, Option) and not isinstance(value, Option):
             if value not in old.options:
-                raise ValueError(_("config.option.invalid") % (value, old.options))
+                raise ValueError(f"The value '{value}' is not a valid option. Valid options are: {old.options}")
             value = Option(old.options, value)
         super().__setitem__(key, value)
 
@@ -130,15 +130,17 @@ class OptionCommentedSeq(CommentedSeq):
     def _setitem_single(self, idx, val):
         if isinstance(old := super().__getitem__(idx := idx.__index__()), Option) and not isinstance(val, Option):
             if val not in old.options:
-                raise ValueError(_("config.option.invalid") % (val, old.options))
+                raise ValueError(f"The value '{val}' is not a valid option. Valid options are: {old.options}")
             val = Option(old.options, val)
         super().__setitem__(idx, val)
 
     def __setitem__(self, index, value):
-        # 如果原值是Option但新值不是，验证新值是否在选项内
         if isinstance(index, slice):
-            indices = range(len(self))[index]
-            for idx, val in zip(indices, value := tuple(value) if isinstance(value, Iterable) else [value] * len(indices)):
+            if not getattr(value, "__len__", None):
+                value = list(value)
+            if (slice_len := len(indices := range(len(self))[index])) != (val_len := len(value)):
+                raise ValueError(f"attempt to assign sequence of size {val_len} to extended slice of size {slice_len}")
+            for idx, val in zip(indices, value):
                 self._setitem_single(idx, val)
         else:
             self._setitem_single(index, value)
@@ -668,10 +670,7 @@ class Config[
 
         # 获取配置
         key, value = self._type2yaml(key, True)[0], _unset
-        for mod_name, mod_data in (
-            ("aha", aha_data := self._data.get("aha")),
-            (storage_module, self._data.get(storage_module)),
-        ):
+        for mod_name, mod_data in (("aha", self._data.get("aha")), (storage_module, self._data.get(storage_module))):
             if mod_data and key in mod_data:
                 if default is _unset:
                     if not self._is_registered(key, mod_name):
@@ -695,8 +694,6 @@ class Config[
             raise KeyError(key)
 
         # self._check_permission(module, caller)
-        if aha_data and key in aha_data:
-            raise KeyError(f"Key '{key}' is already registered in 'aha' config.")
         self._set_value(key, self._register(key, default, storage_module, comment, True), storage_module)
         return default
 
@@ -791,6 +788,10 @@ class Config[
     @property
     def lang(self) -> str:
         return self.get("lang", module="aha")
+
+    @property
+    def private(self) -> bool:
+        return self.get("private", module="aha")
 
     @property
     def point_feat(self):
@@ -914,7 +915,7 @@ class Config[
             data = {User(**i) for i in data["user_list"]}
             if self._default_user_list_mode == "blacklist":
                 data.update(self._default_user_list)
-                data = frozenset(data)
+            data = frozenset(data)
         else:
             data = frozenset()
         self._user_blacklist[module] = data
@@ -1036,6 +1037,7 @@ def init_base_cfgs():
     database_def.yaml_set_comment_before_after_key("green", _("config.comment.green_db"), 4)
     database_def.yaml_set_comment_before_after_key("backup_dir", _("config.comment.db_backup"), 4)
     cfg.register("database", database_def, module="aha")
+    cfg.register("private", True, _("config.comment.private"), module="aha")
     cfg.register("cache_conv", False, _("config.comment.cache_conv"), module="aha")
     cfg.register("memory_level", Option(("low", "medium", "high"), "medium"), _("config.comment.memory_level"), module="aha")
     cfg.register("base64_buffer", 1919810, _("config.comment.base64_buffer"), module="aha")

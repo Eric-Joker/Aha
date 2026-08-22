@@ -1,3 +1,4 @@
+from contextlib import suppress
 from typing import TYPE_CHECKING, overload
 
 from aiologic import Lock
@@ -30,7 +31,9 @@ class AhaGroup(dbBase):
     aha_id = Column(BigInteger, index=True)
 
 
-CACHER = LRUCache(cfg.register("aha_id", 32768, _("identity.cache.cfg_comment"), module="cache"))
+CACHER: LRUCache[tuple, list[User] | int] = LRUCache(
+    cfg.register("aha_id", 32768, _("identity.cache.cfg_comment"), module="cache")
+)
 CACHER_LOCK = Lock()
 
 
@@ -51,7 +54,7 @@ if TYPE_CHECKING:
     async def user2aha_id(*, session: AsyncSession = None) -> int: ...
 
 
-async def user2aha_id(arg1=None, arg2=None, session=None):
+async def user2aha_id(arg1=None, arg2=None, session=None, _auto_reg=True):
     """获取用户的 Aha ID，如果不存在则自动注册"""
     if arg2:
         platform, user_id = arg1, arg2
@@ -81,16 +84,21 @@ async def user2aha_id(arg1=None, arg2=None, session=None):
         should_close_session = False
 
     try:
-        result = await session.scalar(
-            insert_ignore(AhaUser, platform=platform, user_id=user_id, aha_id=_generate_aha_id(platform, user_id)).returning(
-                AhaUser.aha_id
+        if _auto_reg:
+            result = await session.scalar(
+                insert_ignore(
+                    AhaUser, platform=platform, user_id=user_id, aha_id=_generate_aha_id(platform, user_id)
+                ).returning(AhaUser.aha_id)
             )
-        )
 
-        if should_close_session:
-            await session.commit()
-        async with CACHER_LOCK:
-            CACHER[(User, platform, user_id)] = result
+            if should_close_session:
+                await session.commit()
+                async with CACHER_LOCK:
+                    CACHER[(User, platform, user_id)] = result
+        else:
+            result = await session.scalar(
+                select(AhaUser.aha_id).where(AhaUser.platform == platform, AhaUser.user_id == user_id)
+            )
         return result
     finally:
         if should_close_session:
@@ -117,6 +125,7 @@ async def aha_id2user(aha_id: int) -> list[User]:
 async def map_user(source_platform: str, source_user_id: str, target_platform: str, target_user_id: str):
     """将一个平台的用户映射到另一个用户，建议不得映射自己"""
     async with db_sessionmaker() as session:
+        old_aha_id = await user2aha_id(source_platform, source_user_id, session=session, _auto_reg=False)
         target_aha_id = await user2aha_id(target_platform, target_user_id, session=session)
         # 更新源用户的aha_id
         await session.execute(upsert(AhaUser, platform=source_platform, user_id=source_user_id, aha_id=target_aha_id))
@@ -124,9 +133,13 @@ async def map_user(source_platform: str, source_user_id: str, target_platform: s
 
     async with CACHER_LOCK:
         CACHER[(User, source_platform, source_user_id)] = target_aha_id
-        if (cache := CACHER.get((User, target_aha_id), None)) is None:
-            CACHER[(User, target_aha_id)] = cache = []
-        cache.append(User(source_platform, source_user_id))
+        if old_aha_id is not None and (cache := CACHER.get(old_key := (User, old_aha_id))):
+            with suppress(ValueError):
+                cache.remove(User(source_platform, source_user_id))
+                if not cache:
+                    del CACHER[old_key]
+        if (cache := CACHER.get((User, target_aha_id))) is not None:
+            cache.append(User(source_platform, source_user_id))
     return True
 
 
@@ -135,10 +148,10 @@ async def map_user(source_platform: str, source_user_id: str, target_platform: s
 if TYPE_CHECKING:
 
     @overload
-    async def group2aha_id(platform: str, user_id: str) -> int: ...
+    async def group2aha_id(platform: str, group_id: str) -> int: ...
 
     @overload
-    async def group2aha_id(user_id: str) -> int: ...
+    async def group2aha_id(group_id: str) -> int: ...
 
 
 async def group2aha_id(arg1=None, arg2=None):

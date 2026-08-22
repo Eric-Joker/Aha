@@ -66,7 +66,7 @@ re.Pattern 实例，可匹配 Aha 码。
 
 四舍五入 `Decimal` 到指定小数位。
 
-### `decimal_to_str`
+### `decimal2str`
 
 将 `Decimal` 转换为字符串。
 
@@ -90,16 +90,6 @@ re.Pattern 实例，可匹配 Aha 码。
 一个同步上下文管理器，实例化后可通过 `wait_until_zero` 异步方法等待计数器归零。
 
 非线程安全。
-
-### `AsyncTee`
-
-用于分叉异步迭代器。
-
-懒得做线程安全。
-
-```python
-gen1, gen2 = AsyncTee.gen(AsyncIterator())  # 第二个参数为返回的迭代器数量，默认为 2；第三个参数为缓冲区最大长度，为 0 时不限制，默认为 2。
-```
 
 ### `run_with_uvloop`
 

@@ -101,8 +101,14 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
             self.main_task = get_running_loop().create_future()
 
         await load_locales(self.__class__.__module__)
-        with suppress(NotImplementedError):
+        try:
             await self.start_server()
+        except NotImplementedError:
+            pass
+        except Exception:
+            self.logger.exception()
+            # await self.close()
+            # return False
         try:
             await self.transport.open(**self._get_transport_kwargs(self.config))
         except Exception as e:
@@ -142,6 +148,7 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
                 self.pipe.send((EventCategory.RESPONSE, (call_id, make_exc_picklable(e))))
 
     async def close(self, _=None):  # 参数为 call_id
+        """若需覆写应将基类的本方法调用放在逻辑最后。"""
         if not self._closing:
             self._closing = True
             await self.transport.close()

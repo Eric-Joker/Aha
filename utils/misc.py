@@ -28,7 +28,7 @@ def round_decimal(num: Decimal, digits=2):
     return num.quantize(Decimal(f'0.{"0" * digits}'), rounding=ROUND_HALF_UP).normalize()
 
 
-def decimal_to_str(d):
+def decimal2str(d):
     if len(parts := (formatted := format(d, "f")).split(".")) == 2:
         # 去除右侧的零和小数点
         parts[1] = parts[1].rstrip("0")
@@ -274,6 +274,7 @@ class AsyncBase64Encoder:
         ewma_interval = self._req_intervals[0]
         for interval in list(self._req_intervals)[1:]:
             ewma_interval = self._ewma_alpha * interval + (1 - self._ewma_alpha) * ewma_interval
+        ewma_interval = max(ewma_interval, 1e-6)
 
         if (r_i := sum(self._gen_times) / len(self._gen_times) / ewma_interval) >= 1.2:
             self._chunk_size = max(3, min(self._max_chunk_size, int(self._chunk_size / r_i) // 3 * 3))
@@ -292,6 +293,7 @@ class AsyncBase64Encoder:
         ewma_interval = self._req_intervals[0]
         for interval in list(self._req_intervals)[1:]:
             ewma_interval = self._ewma_alpha * interval + (1 - self._ewma_alpha) * ewma_interval
+        ewma_interval = max(ewma_interval, 1e-6)
 
         if (r_i := sum(self._gen_times) / len(self._gen_times) / ewma_interval) >= 1.2:
             self._chunk_size = max(3, int(self._chunk_size / r_i) // 3 * 3)
@@ -338,7 +340,7 @@ def slots_extend(slots, *items):
 
 
 class PerProcessSingletonMeta(type):
-    """进程内单例元类"""
+    """进程内单例元类。线程不安全。"""
 
     _instances = WeakValueDictionary()
 
@@ -366,7 +368,7 @@ class PerProcessSingletonMeta(type):
 
 
 class SingletonMeta(PerProcessSingletonMeta):
-    """仅主线程可创建单例的元类"""
+    """仅主进程可创建单例的元类。线程不安全。"""
 
     def __call__(cls, *args, **kwargs):
         if current_process().name != "MainProcess":
@@ -398,7 +400,7 @@ if os.name == "nt":
     _winapi.CreateProcess = CreateProcess
 
     _original_create_subprocess_shell = asyncio.subprocess.create_subprocess_shell
-    SET_PATTERN = re.compile(r'(?:^|\s+)set\s+(?:/.\s+)*(("?)[^=]+)=.+?(?:("?)|&|\||\)|>|<|$)', re.IGNORECASE)
+    SET_PATTERN = re.compile(r'(?:^|\s+)set\s+(?:/.\s+)*(("?)[^=]++)=.+?(?:("?)|&|\||\)|>|<|$)', re.IGNORECASE)
 
     @wraps(asyncio.subprocess.create_subprocess_shell)
     async def create_subprocess_shell(cmd: str, *args, **kwargs):
@@ -406,7 +408,7 @@ if os.name == "nt":
             declared_vars = set()
             for line in lines:
                 if m := SET_PATTERN.search(line):
-                    declared_vars.add(re.escape(m[1] if m[3] else m[1].lstrip(m[2])))
+                    declared_vars.add(re.escape(m[1].lstrip(m[2]) if m[3] else m[1]))
             replaced = re.sub(rf'%({"|".join(declared_vars)})%', r"!\1!", cmd)
             cmd = " & ".join(f"({x})" for x in replaced.splitlines())
 

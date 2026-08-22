@@ -19,11 +19,10 @@ async def disable_modules(*mods: str):
     for root in __path__:
         root = Path(root)
         for mod in mods:
-            with suppress(OSError):
-                tasks.append((root / mod).rename(root / f"DISABLED{mod}"))
-            with suppress(OSError):
-                tasks.append((root / f"{mod}.py").rename(root / f"DISABLED{mod}.py"))
-    await gather(*tasks)
+            tasks.append((root / mod).rename(root / f"DISABLED{mod}"))
+            tasks.append((root / f"{mod}.py").rename(root / f"DISABLED{mod}.py"))
+    with suppress(OSError):
+        await gather(*tasks)
 
 
 async def enable_modules(*mods: str):
@@ -31,11 +30,10 @@ async def enable_modules(*mods: str):
     for root in __path__:
         root = Path(root)
         for mod in mods:
-            with suppress(OSError):
-                tasks.append((root / f"DISABLED{mod}").rename(root / mod))
-            with suppress(OSError):
-                tasks.append((root / f"DISABLED{mod}.py").rename(root / f"{mod}.py"))
-    await gather(*tasks)
+            tasks.append((root / f"DISABLED{mod}").rename(root / mod))
+            tasks.append((root / f"DISABLED{mod}.py").rename(root / f"{mod}.py"))
+    with suppress(OSError):
+        await gather(*tasks)
 
 
 async def init_load_mod(exclude: set = None):
@@ -59,7 +57,7 @@ async def init_load_mod(exclude: set = None):
             or module_name in exclude
             or persist_whitelist
             and module_name not in persist_whitelist
-            or module_name in globals()
+            or (f"{__name__}.{module_name}") in globals()
         ):
             continue
         if (module_path := os.path.join(finder.path, module_name if is_pkg else f"{module_name}.py")) in _checked_paths:
@@ -84,7 +82,7 @@ async def init_load_mod(exclude: set = None):
 async def reload_modules(disable: set[str] = None):
     from core.cache import clear_all_cache
     from core.config import cfg
-    from core.expr import extractor_registrations, redirect_extractors
+    from core.expr import extractor_registrations, redirect_extractors, unregister_module_fields
     from core.i18n import _, load_locales
     from core.dispatcher import clear_handlers, process_clean, process_start
     from services.apscheduler import sched
@@ -96,6 +94,7 @@ async def reload_modules(disable: set[str] = None):
     await sched.reset_temp_sched()
     await clean_data_store()
     extractor_registrations.clear()
+    unregister_module_fields()
     clear_all_cache()
     await cfg.reload_and_save()
 

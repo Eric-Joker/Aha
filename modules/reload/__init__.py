@@ -29,17 +29,22 @@ async def reload_or_restart():
 
 @on_start
 async def post_msg():
-    if cfg.bot_prefs:
-        async with db_sessionmaker() as session:
-            for row in (await session.execute(delete(Status).returning(Status))).scalars().all():
-                await API.send_msg(
-                    user_id=row.user_id,
-                    group_id=row.group_id or None,
-                    msg=_("reloaded"),
-                    reply=row.message_id,
-                    bot=row.bot_id or await select_bot(SS.GROUP, platform=row.platform, conv_id=row.group_id),
-                )
-            await session.commit()
+    async with db_sessionmaker() as session:
+        for row in (await session.execute(delete(Status).returning(Status))).scalars().all():
+            await API.send_msg(
+                user_id=row.user_id,
+                group_id=row.group_id or None,
+                msg=_("reloaded"),
+                reply=row.message_id,
+                bot=(
+                    await select_bot(
+                        SS.GROUP if row.group_id else SS.FRIEND, platform=row.platform, conv_id=row.group_id or row.user_id
+                    )
+                    if row.bot_id is None
+                    else row.bot_id
+                ),
+            )
+        await session.commit()
 
 
 @on_message(PM.message == _("reload"), PM.prefix == True, PM.super == True)
@@ -61,7 +66,7 @@ async def msg_entry(event: Message):
     await reload_or_restart()
 
 
-@on_external("reload")
+@on_external("reload_aha_modules")
 async def api_entry():
     async with db_sessionmaker() as session:
         for s in cfg.super:

@@ -2,7 +2,6 @@ import asyncio
 import sys
 import threading
 from collections.abc import AsyncGenerator, AsyncIterable, Callable, MutableSequence, MutableSet
-from concurrent.futures import Executor
 from concurrent.futures.thread import BrokenThreadPool
 from contextlib import suppress
 from contextvars import copy_context
@@ -508,7 +507,7 @@ class AsyncResult:
         return self._event.is_set()
 
 
-class AsyncLoopExecutor(Executor):
+class AsyncLoopExecutor:
     _counter = count().__next__
     BROKEN = BrokenThreadPool
 
@@ -681,6 +680,13 @@ class AsyncLoopExecutor(Executor):
                     except aiologic.QueueEmpty:
                         break
             meta.queue.put(None)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        await self.shutdown(wait=True)
+        return False
 
 
 class AsyncConnection:

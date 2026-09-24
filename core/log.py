@@ -309,7 +309,10 @@ def setup_logging(handler: HandlerConfig = None):
                 args=(
                     (_log_queue := PQueue()),
                     TimeRangeRotatingFileHandler,
-                    {"backupCount": cfg.max_log_files, "maxBytes": parse_size(cfg.log_file_max_size)},
+                    {
+                        "backupCount": cfg.get("max_files", module="log"),
+                        "maxBytes": parse_size(cfg.get("max_size", module="log")),
+                    },
                     ConsoleHandler,
                     {},
                 ),
@@ -321,7 +324,10 @@ def setup_logging(handler: HandlerConfig = None):
                 args=(
                     (_log_queue := TQueue()),
                     TimeRangeRotatingFileHandler,
-                    {"backupCount": cfg.max_log_files, "maxBytes": parse_size(cfg.log_file_max_size)},
+                    {
+                        "backupCount": cfg.get("max_files", module="log"),
+                        "maxBytes": parse_size(cfg.get("max_size", module="log")),
+                    },
                     ConsoleHandler,
                     {},
                 ),
@@ -331,8 +337,8 @@ def setup_logging(handler: HandlerConfig = None):
 
         handler = log_config = HandlerConfig(
             _log_queue,
-            (level_map := logging._nameToLevel)[os.getenv("LOG_LEVEL", cfg.file_log_level)],
-            level_map[os.getenv("LOG_LEVEL", cfg.console_log_level)],
+            (level_map := logging._nameToLevel)[os.getenv("LOG_LEVEL", cfg.get("file_level", module="log"))],
+            level_map[os.getenv("LOG_LEVEL", cfg.get("console_level", module="log"))],
         )
 
     # 配置根 Logger

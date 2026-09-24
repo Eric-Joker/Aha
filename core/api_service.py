@@ -108,7 +108,7 @@ class Deduplicator:
         from .cache import MemTTLCache
         from .config import cfg
 
-        cache_cfg = cfg.event_cache
+        cache_cfg = cfg.get("event", module="cache")
         self.cache: Cache[int, Deduplicator.Bucket] = MemTTLCache(parse_size(cache_cfg["size"]), cache_cfg["ttl"])
         self._lock = Lock()
         super().__init__()

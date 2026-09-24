@@ -284,9 +284,9 @@ class Scheduler(metaclass=SingletonThreadSafeAsyncMeta if cfg.execution_mode == 
         """
         return await self.persistent_scheduler.remove_schedule(id)
 
-    async def rm_persist_schedules_by_meta(self, metadata: MetadataType):
+    async def rm_persist_pending_schedules_by_meta(self, metadata: MetadataType):
         # try:
-        for schedule in (schedules := await self.get_persist_schedules(metadata=metadata)):
+        for schedule in (schedules := [s for s in await self.get_persist_schedules(metadata=metadata) if s.next_fire_time is not None]):
             await self.persistent_scheduler.remove_schedule(schedule.id)
         # except:
         #    await post_msg_to_supers(f"删除计划任务时出现异常，为防止意外情况，终止机器人运行。\n{format_exc()}")
@@ -587,9 +587,9 @@ class Scheduler(metaclass=SingletonThreadSafeAsyncMeta if cfg.execution_mode == 
         """
         return await self.transient_scheduler.remove_schedule(id)
 
-    async def rm_schedules_by_meta(self, metadata: MetadataType):
+    async def rm_pending_schedules_by_meta(self, metadata: MetadataType):
         # try:
-        for schedule in (schedules := await self.get_schedules(metadata=metadata)):
+        for schedule in (schedules := [s for s in await self.get_schedules(metadata=metadata) if s.next_fire_time is not None]):
             await self.transient_scheduler.remove_schedule(schedule.id)
         # except:
         #    await post_msg_to_supers(f"删除计划任务时出现异常，为防止意外情况，终止机器人运行。\n{format_exc()}")

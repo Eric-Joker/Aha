@@ -49,23 +49,23 @@ if __name__ == "__main__":
         db_init()
 
         feats = []
-        if cfg._default_group_list:
-            if cfg._default_group_list_mode == "blacklist":
-                feats.append(_("default_feat.group_blacklist") % len(cfg._default_group_list))
+        if cfg.group_list:
+            if cfg.group_list_mode == "blacklist":
+                feats.append(_("default_feat.group_blacklist") % len(cfg.group_list))
             else:
-                feats.append(_("default_feat.group_whitelist") % len(cfg._default_group_list))
-        if cfg._default_user_list:
-            if cfg._default_user_list_mode == "blacklist":
-                feats.append(_("default_feat.user_blacklist") % len(cfg._default_user_list))
+                feats.append(_("default_feat.group_whitelist") % len(cfg.group_list))
+        if cfg.user_list:
+            if cfg.user_list_mode == "blacklist":
+                feats.append(_("default_feat.user_blacklist") % len(cfg.user_list))
             else:
-                feats.append(_("default_feat.user_whitelist") % len(cfg._default_user_list))
+                feats.append(_("default_feat.user_whitelist") % len(cfg.user_list))
         feats.append(_("default_feat.private_enabled") if cfg.get("private", module="aha") else _("default_feat.private_disabled"))
         if cfg.limit:
             feats.append(_("default_feat.rate_limit") % cfg.limit)
-        if cfg.global_msg_prefix == "":
+        if cfg.msg_prefix == "":
             feats.append(_("default_feat.prefix_at_only"))
-        elif cfg.global_msg_prefix:
-            feats.append(_("default_feat.prefix_custom") % cfg.global_msg_prefix)
+        elif cfg.msg_prefix:
+            feats.append(_("default_feat.prefix_custom") % cfg.msg_prefix)
         if cfg.get("validated", module="expr_extractors"):
             feats.append(_("default_feat.validation_enabled"))
         if custom_default_expr:
@@ -75,7 +75,8 @@ if __name__ == "__main__":
         try:
             logger.info(_("main.start_api_services"))
             ThreadSafeAsyncMeta.init_instance(ThreadSafeAsyncMeta)
-            core.status.async_loop_executor = AsyncLoopExecutor()
+            if cfg.execution_mode == "thread":
+                core.status.async_loop_executor = AsyncLoopExecutor()
             await start_bots()
             logger.info(_("main.start_extra_services"))
             await initialize_all_stores()
@@ -108,13 +109,10 @@ if __name__ == "__main__":
                 await utils.network._httpx_client.aclose()
             # clear_all_cache()
             await clean_data_store()
-            await gather(
-                browser_mgr.close(),
-                db_engine.dispose(),
-                cfg.reload_and_save(),
-                close_bots(),
-                core.status.async_loop_executor.shutdown(),
-            )
+            coroutines = [browser_mgr.close(), db_engine.dispose(), cfg.reload_and_save(), close_bots()]
+            if core.status.async_loop_executor:
+                coroutines.append(core.status.async_loop_executor.shutdown())
+            await gather(*coroutines)
             await sleep(0)  # 让日志打印出来
             # cfg.clean()
             # loaded_i10n.clear()

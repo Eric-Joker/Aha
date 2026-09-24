@@ -138,7 +138,7 @@ class AhaHandlerMixin:
 class TimeRangeRotatingFileHandler(AhaHandlerMixin, BaseRotatingHandler):
     FILE_PATTERN = compile(r"(\d{8}_\d{6})(?:_to_\d{8}_\d{6})?\.log$")
 
-    def __init__(self, backupCount=5, maxBytes=16 * 1024 * 1024, encoding="utf-8", delay=False, errors=None):
+    def __init__(self, backupCount=5, maxBytes=16 * 1024 * 1024, encoding="utf-8", delay=False, errors="backslashreplace"):
         self.backupCount = backupCount
         self.maxBytes = maxBytes
         self.start_time = time()
@@ -195,7 +195,9 @@ class TimeRangeRotatingFileHandler(AhaHandlerMixin, BaseRotatingHandler):
     def shouldRollover(self, msg: str):
         if self.stream is None:  # delay was set...
             self.stream = self._open()
-        return pos + len(msg.encode("utf-8")) >= self.maxBytes if self.maxBytes > 0 and (pos := self.stream.tell()) else False
+        if self.maxBytes <= 0 or not (pos := self.stream.tell()):
+            return False
+        return pos + len(msg.encode(self.encoding or "utf-8", self.errors or "strict")) >= self.maxBytes
 
     def emit(self, data):
         try:
@@ -309,7 +311,10 @@ def setup_logging(handler: HandlerConfig = None):
                 args=(
                     (_log_queue := PQueue()),
                     TimeRangeRotatingFileHandler,
-                    {"backupCount": cfg.max_log_files, "maxBytes": parse_size(cfg.log_file_max_size)},
+                    {
+                        "backupCount": cfg.get("max_files", module="log"),
+                        "maxBytes": parse_size(cfg.get("max_size", module="log")),
+                    },
                     ConsoleHandler,
                     {},
                 ),
@@ -321,7 +326,10 @@ def setup_logging(handler: HandlerConfig = None):
                 args=(
                     (_log_queue := TQueue()),
                     TimeRangeRotatingFileHandler,
-                    {"backupCount": cfg.max_log_files, "maxBytes": parse_size(cfg.log_file_max_size)},
+                    {
+                        "backupCount": cfg.get("max_files", module="log"),
+                        "maxBytes": parse_size(cfg.get("max_size", module="log")),
+                    },
                     ConsoleHandler,
                     {},
                 ),
@@ -331,8 +339,8 @@ def setup_logging(handler: HandlerConfig = None):
 
         handler = log_config = HandlerConfig(
             _log_queue,
-            (level_map := logging._nameToLevel)[os.getenv("LOG_LEVEL", cfg.file_log_level)],
-            level_map[os.getenv("LOG_LEVEL", cfg.console_log_level)],
+            (level_map := logging._nameToLevel)[os.getenv("LOG_LEVEL", cfg.get("file_level", module="log"))],
+            level_map[os.getenv("LOG_LEVEL", cfg.get("console_level", module="log"))],
         )
 
     # 配置根 Logger

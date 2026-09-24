@@ -133,8 +133,9 @@ class SetArray[_T](SetSeqMixin[_T], array[_T]):
         @overload
         def __new__(cls, typecode: str, initializer: bytes | bytearray = b"", /) -> Self: ...
     def __new__(cls, typecode, initializer=b"", /):
-        obj = super().__new__(cls, typecode, initializer := set(initializer))
-        obj._set = initializer
+        set_ = set(initializer)
+        obj = super().__new__(cls, typecode, set_)
+        obj._set = set_
         return obj
 
     __buffer__ = __release_buffer__ = itemsize = buffer_info = byteswap = frombytes = fromfile = fromlist = fromunicode = None
@@ -150,8 +151,8 @@ class SetList[_T](SetSeqMixin[_T], list[_T]):
     """支持O(1)存在性检查的 list"""
 
     def __init__(self, iterable: Iterable[_T] = None, /):
-        super().__init__(iterable)
-        self._set = set() if iterable is None else set(self)
+        self._set = set() if iterable is None else set(iterable)
+        super().__init__(self._set)
 
     def copy(self):
         return self.__class__(self)

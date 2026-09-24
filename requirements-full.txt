@@ -13,15 +13,15 @@ uvicorn
 httpx[http2,socks,zstd]
 # httpx[http2,socks,zstd,brotli]
 httpx-sse
-lxml >= 7.0.0a2
+lxml >= 7.0.0b1
 mistune >= 3
 ssrjson
 playwright >= 1
 pydantic > 2
 ruamel.yaml
 # ruamel.yaml[libyaml]
-SQLAlchemy[asyncio, aiosqlite, postgresql-psycopg] >= 2.1.0b1
+SQLAlchemy[asyncio, aiosqlite, postgresql-psycopg] >= 2.1.0
 tenacity >= 9
-git+https://github.com/samypr100/uvloop@eager; sys_platform == 'linux'
+uvloop >= 0.23; sys_platform == 'linux'
 websockets >= 15
-xxhash >= 3
+xxhash >= 4

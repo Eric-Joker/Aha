@@ -271,11 +271,7 @@ class AsyncBase64Encoder:
 
     def _adjust_chunk_size_bounded(self):
         """有最大限制的chunk大小调整"""
-        ewma_interval = self._req_intervals[0]
-        for interval in list(self._req_intervals)[1:]:
-            ewma_interval = self._ewma_alpha * interval + (1 - self._ewma_alpha) * ewma_interval
-        ewma_interval = max(ewma_interval, 1e-6)
-
+        ewma_interval = self._ewma_interval()
         if (r_i := sum(self._gen_times) / len(self._gen_times) / ewma_interval) >= 1.2:
             self._chunk_size = max(3, min(self._max_chunk_size, int(self._chunk_size / r_i) // 3 * 3))
             self._CAing = True
@@ -290,11 +286,7 @@ class AsyncBase64Encoder:
 
     def _adjust_chunk_size_unbounded(self):
         """无最大限制的chunk大小调整"""
-        ewma_interval = self._req_intervals[0]
-        for interval in list(self._req_intervals)[1:]:
-            ewma_interval = self._ewma_alpha * interval + (1 - self._ewma_alpha) * ewma_interval
-        ewma_interval = max(ewma_interval, 1e-6)
-
+        ewma_interval = self._ewma_interval()
         if (r_i := sum(self._gen_times) / len(self._gen_times) / ewma_interval) >= 1.2:
             self._chunk_size = max(3, int(self._chunk_size / r_i) // 3 * 3)
             self._CAing = True
@@ -302,6 +294,12 @@ class AsyncBase64Encoder:
             self._chunk_size = max(
                 3, (self._chunk_size + int(self.MSS * (1 + r_i)) if self._CAing else self._chunk_size * 2) // 3 * 3
             )
+
+    def _ewma_interval(self):
+        result = self._req_intervals[0]
+        for interval in list(self._req_intervals)[1:]:
+            result = self._ewma_alpha * interval + (1 - self._ewma_alpha) * result
+        return max(result, 1e-06)
 
     def __aiter__(self) -> AsyncIterator[bytes]:
         return self

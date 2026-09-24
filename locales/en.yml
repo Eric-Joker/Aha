@@ -23,29 +23,29 @@ config.comment.cache_conv: "Maintains the bot's group and contact list for API c
 config.comment.database: "Database URI for SQLAlchemy async engine; only sqlite or postgreSQL are recommended."
 config.comment.db_backup: "Automatic backup database directory."
 config.comment.debug: "Enables debugging."
-config.comment.default_group_list_mode: "The group list mode. Module whitelists will completely supersede this setting, while blacklists will form a union with it. This setting is ineffective when set to an empty list."
-config.comment.default_user_list_mode: "The user list mode. Module whitelists will completely supersede this setting, while blacklists will form a union with it. This setting is ineffective when set to an empty list."
 config.comment.event_cache: "Event cache for each bot protocol. Powers the Deduplicator and event-based API routing."
 config.comment.execution_mode.title: "Defines the execution mode for adapters and module callbacks in the framework"
 config.comment.execution_mode.async: "All adapters and module callbacks share a single thread."
 config.comment.execution_mode.thread: "Module callbacks use an asynchronous loop pool, while adapters decide their own execution mode. (free threading only)"
 config.comment.execution_mode.process: "Each adapters runs in its own process, all module callbacks share a single thread."
 config.comment.file_msg_ttl: "Normally, the minimum lifetime (in seconds) for caching file messages. Actual duration depends on file_cache.cleanup_cron."
-config.comment.global_msg_prefix: |
-  The message prefix used when matching messages, @bot is also considered a prefix; if it is a single special symbol, both full-width and half-width forms act as prefixes.
-  When set to an empty string, only @bot is recognized as a prefix; when set to null, this feature is disabled.
-  By default, messages with or without a prefix are matched.
-  This configuration can be overridden by the module configuration item msg_prefix.
 config.comment.green_db: "URI for database that only supports synchronous logic, which must point to the same database as the `database` key value."
+config.comment.group_list_mode: "The group list mode. Module whitelists will completely supersede this setting, while blacklists will form a union with it. This setting is ineffective when set to an empty list."
 config.comment.lang: "Language."
 config.comment.log.console.level: "Console log level."
 config.comment.log.file.level: "File log level."
 config.comment.log.file.max_files: "Maximum number of log files."
 config.comment.log.file.max_size: "Maximum size per log file."
 config.comment.memory_level: "Memory usage level, which enables certain logic for optimizations."
+config.comment.msg_prefix: |
+  The message prefix used when matching messages, @bot is also considered a prefix; if it is a single special symbol, both full-width and half-width forms act as prefixes.
+  When set to an empty string, only @bot is recognized as a prefix; when set to null, this feature is disabled.
+  By default, messages with or without a prefix are matched.
+  This configuration can be overridden by the module configuration item msg_prefix.
 config.comment.playwright: "Whether to enable Playwright."
 config.comment.point_feat: "Enables point-related features in the notification module. The actual activation is determined by each individual module."
 config.comment.private: "Whether to match private message events by default."
+config.comment.user_list_mode: "The user list mode. Module whitelists will completely supersede this setting, while blacklists will form a union with it. This setting is ineffective when set to an empty list."
 config.green_in_aio: "Do not use the get method in an asynchronous environment; please use get_async instead."
 config.new: "Configuration additions or changes have been detected and written to the configuration file. Please restart after modifications."
 config.not_in_options: "The value '%(value)s' for configuration item '%(key)s' in %(mod)s is not among the options '%(options)s'. It has been set to the default value '%(def)s'."

@@ -25,7 +25,7 @@ __all__ = ("API", "SS", "select_bot")
 
 class APIMeta(type):
     @staticmethod
-    def _warpper_with_overload(*args, _name, _args, **kwargs):
+    def _wrapper_with_overload(*args, _name, _args, **kwargs):
         if event := current_event.get():
             if "user_id" not in kwargs and "group_id" not in kwargs:
                 if (value := getattr(event, "user_id", None)) is not None:
@@ -38,7 +38,7 @@ class APIMeta(type):
         return call_api(_name, **kwargs)
 
     @staticmethod
-    def _warpper(*args, _name, **kwargs):
+    def _wrapper(*args, _name, **kwargs):
         if kwargs.get("bot") is None:
             try:
                 kwargs["bot"] = current_event.get().bot_id
@@ -56,11 +56,11 @@ class APIMeta(type):
             setattr(
                 new_class,
                 attr_name,
-                partial(cls._warpper_with_overload, _name=attr_name, _args=get_arg_names(v)),
+                partial(cls._wrapper_with_overload, _name=attr_name, _args=get_arg_names(v)),
             )
         else:
 
-            setattr(new_class, attr_name, partial(cls._warpper, _name=attr_name))
+            setattr(new_class, attr_name, partial(cls._wrapper, _name=attr_name))
 
     def __new__(mcs, name, bases, namespace, **kwargs):
         new_class = super().__new__(mcs, name, bases, namespace, **kwargs)
@@ -85,7 +85,7 @@ class APIMeta(type):
         return new_class
 
     def __getattr__(cls, name):
-        setattr(cls, name, method := partial(cls._warpper, _name=name))
+        setattr(cls, name, method := partial(cls._wrapper, _name=name))
         return method
 
 

@@ -59,7 +59,7 @@ _sync_engine = None
 
 
 def db_init():
-    global database_initialized, _sync_engine
+    global database_initialized, _sync_engine, command, compare_metadata, Config, MigrationContext, _table_for_constraint, alembic_cfg
 
     from services.apscheduler import sched
 
@@ -99,6 +99,7 @@ def db_init():
 
     for name in {name for name in sys.modules if name == "alembic" or name.startswith("alembic.")}:
         del sys.modules[name]
+    command, compare_metadata, Config, MigrationContext, _table_for_constraint, alembic_cfg = None, None, None, None, None, None
 
 
 # region alembic

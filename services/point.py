@@ -2,7 +2,7 @@ from decimal import Decimal
 from numbers import Number
 from typing import TYPE_CHECKING, overload
 
-from sqlalchemy import BigInteger, Column, Numeric, insert, select
+from sqlalchemy import BigInteger, Column, Numeric, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import db_sessionmaker, dbBase
@@ -21,28 +21,36 @@ class Point(dbBase):
 if TYPE_CHECKING:
 
     @overload
-    async def adjust_point(delta: Number, /, *, session: AsyncSession = None) -> Decimal:
-        """调整点数，自动从上下文获取事件触发用户"""
+    async def adjust_point(delta: Number, /, *, session: AsyncSession = None, minimum: Number = 0) -> Decimal | None:
+        """调整点数，自动从上下文获取事件触发用户
+
+        Args:
+            minimum: 乐观锁下限，调整后的点数低于该值时不做任何修改并返回 `None`。默认为 0，即不允许透支。
+        """
 
     @overload
-    async def adjust_point(platform: str, user: str, delta: Number, /, session: AsyncSession = None) -> Decimal:
+    async def adjust_point(
+        platform: str, user: str, delta: Number, /, session: AsyncSession = None, minimum: Number = 0
+    ) -> Decimal | None:
         """调整点数
 
         Args:
             platform (str): 平台。
             user (str): 平台的用户 ID。
+            minimum: 乐观锁下限，调整后的点数低于该值时不做任何修改并返回 `None`。默认为 0，即不允许透支。
         """
 
     @overload
-    async def adjust_point(user: int, delta: Number, /, *, session: AsyncSession = None) -> Decimal:
+    async def adjust_point(user: int, delta: Number, /, *, session: AsyncSession = None, minimum: Number = 0) -> Decimal | None:
         """调整点数
 
         Args:
             user (int): User's Aha ID.
+            minimum: 乐观锁下限，调整后的点数低于该值时不做任何修改并返回 `None`。默认为 0，即不允许透支。
         """
 
 
-async def adjust_point(arg1, arg2=None, arg3=None, /, session=None):
+async def adjust_point(arg1, arg2=None, arg3=None, /, session=None, minimum=0):
     if session is None:
         session = db_sessionmaker()
         should_close_session = True
@@ -60,12 +68,25 @@ async def adjust_point(arg1, arg2=None, arg3=None, /, session=None):
         delta = arg3
 
     try:
-        result = await session.scalar(
-            insert(Point)
-            .values(user_id=user, points=delta)
-            .on_conflict_do_update(index_elements=(Point.user_id,), set_={Point.points: Point.points + delta})
-            .returning(Point.points)
-        )
+        if delta < minimum:
+            statement = (
+                update(Point)
+                .where(Point.user_id == user, Point.points + delta >= minimum)
+                .values(points=Point.points + delta)
+                .returning(Point.points)
+            )
+        else:
+            statement = (
+                insert(Point)
+                .values(user_id=user, points=delta)
+                .on_conflict_do_update(
+                    index_elements=(Point.user_id,),
+                    set_={Point.points: Point.points + delta},
+                    where=Point.points + delta >= minimum,
+                )
+                .returning(Point.points)
+            )
+        result = await session.scalar(statement)
         if should_close_session:
             await session.commit()
         return result

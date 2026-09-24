@@ -2,20 +2,19 @@ import asyncio
 import sys
 import threading
 from collections.abc import AsyncGenerator, AsyncIterable, Callable, MutableSequence, MutableSet
-from concurrent.futures import Executor
 from concurrent.futures.thread import BrokenThreadPool
 from contextlib import suppress
 from contextvars import copy_context
 from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import wraps
-from inspect import isasyncgenfunction, iscoroutinefunction
+from inspect import getmodule, isasyncgenfunction, iscoroutinefunction, unwrap
 from itertools import count
 from multiprocessing.connection import _ConnectionBase
 from os import process_cpu_count
 from types import CoroutineType
 from typing import TYPE_CHECKING, overload
-from weakref import WeakSet, finalize, ref
+from weakref import WeakKeyDictionary, WeakSet, finalize, ref
 
 import aiologic
 from tenacity import _unset
@@ -54,6 +53,44 @@ async def async_any(ait: AsyncIterable):
         if item:
             return True
     return False
+
+
+@overload
+def exclusive[F: Callable](func: F) -> F: ...
+@overload
+def exclusive[F: Callable](*, per_instance: bool = ...) -> Callable[[F], F]: ...
+
+_exclusive_locks: WeakKeyDictionary = WeakKeyDictionary()
+
+def exclusive(func=None, *, per_instance=True):
+    """
+    若被装饰的函数为实例异步方法，使该方法所在实例中所有应用该装饰器的绑定方法同一时间只有一个协程在执行。
+    若被装饰的函数为其他异步方法/函数，使该方法所在 Python 模块中所有应用该装饰器的方法/函数同一时间只有一个协程在执行。
+    """
+
+    def decorate(fn):
+        fn = unwrap(fn)
+        if per_instance and fn.__code__.co_argcount and fn.__code__.co_varnames[0] == "self":
+            @wraps(fn)
+            async def wrapper(self, *args, **kwargs):
+                if not (lock := _exclusive_locks.get(id(self))):
+                    _exclusive_locks[id(self)] = lock = aiologic.RLock()
+                async with lock:
+                    return await fn(self, *args, **kwargs)
+
+        else:
+            @wraps(fn)
+            async def wrapper(*args, __fn=fn, **kwargs):
+                if not (lock := _exclusive_locks.get(module := getmodule(__fn))):
+                    _exclusive_locks[module] = lock = aiologic.RLock()
+                async with lock:
+                    return await fn(*args, **kwargs)
+
+        return wrapper
+
+    if func is None:
+        return decorate
+    return decorate(func)
 
 
 def try_get_loop():
@@ -473,6 +510,7 @@ class AsyncTee[T]:
         return tuple(tee.new_consumer() for _ in range(n))
 """
 
+
 class AsyncResult:
     __slots__ = ("_event", "_flag")
 
@@ -508,7 +546,7 @@ class AsyncResult:
         return self._event.is_set()
 
 
-class AsyncLoopExecutor(Executor):
+class AsyncLoopExecutor:
     _counter = count().__next__
     BROKEN = BrokenThreadPool
 
@@ -681,6 +719,13 @@ class AsyncLoopExecutor(Executor):
                     except aiologic.QueueEmpty:
                         break
             meta.queue.put(None)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        await self.shutdown(wait=True)
+        return False
 
 
 class AsyncConnection:

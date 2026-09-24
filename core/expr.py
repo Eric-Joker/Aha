@@ -525,15 +525,19 @@ class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
         self.right = right
         self.negate = _negate
         if isinstance(self.left, FieldClause):
-            self.priority = self.left.priority
             self._cache_config: CacheConfig = self.left.field.cache
             if self._cache_config:
                 self._cached_evaluate = async_cached(
                     self._cache_config.cache, ignore=self._cache_config.ignore_cache, func=self._evaluate_wrapper
                 )
         else:
-            self.priority = 0
             self._cache_config = None
+        if (pri := getattr(self.left, "priority", None)) is not None:
+            self.priority = pri
+        elif (pri := getattr(self.right, "priority", None)) is not None:
+            self.priority = pri
+        else:
+            self.priority = 0
         super().__init__()
 
     def __repr__(self):
@@ -1147,7 +1151,7 @@ def get_msg_str_without_prefix(msg: MessageChain):
 def remove_msg_seq_prefix(msg: MessageChain):
     from .dispatcher import cugp, current_event, current_module
 
-    if (prefix := cfg.global_msg_prefix if cugp.get() else cfg.get_msg_prefix(current_module.get())) is None:
+    if (prefix := cfg.msg_prefix if cugp.get() else cfg.get_msg_prefix(current_module.get())) is None:
         return msg
     # 缓存
     if (cache := (event := current_event.get()).message is msg) and (moded := cprmc.get()) is not None:
@@ -1190,7 +1194,7 @@ def _has_msg_prefix(event: Message):
     from .dispatcher import cugp, current_module
 
     if event.message:
-        if (prefix := cfg.global_msg_prefix if cugp.get() else cfg.get_msg_prefix(current_module.get())) is None:
+        if (prefix := cfg.msg_prefix if cugp.get() else cfg.get_msg_prefix(current_module.get())) is None:
             return True
         i, text = find_first_instance(event.message, Text)
         if (at := find_first_instance(event.message, At, end_index=i)[1]) and at.user_id == event.self_id:
@@ -1251,7 +1255,11 @@ def _wrap_conditions(conditions, event_type: EventCategory):
             return Or(*[converted for c in expr.clauses if (converted := recursion(c)) is not None])
 
         elif isinstance(expr, Not):
-            return None if (converted := recursion(expr.clause)) is None else Not(converted)
+            if (converted := recursion(expr.clause)) is None:
+                return None
+            if converted.__class__ is Not:
+                return expr.clause
+            return Not(converted)
 
         elif isinstance(expr, BinaryExpr):
             expr.left, expr.right = _adjust_binary_field(expr.left, expr.right)

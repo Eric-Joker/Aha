@@ -354,7 +354,7 @@ class Downloadable(MsgSeg):
 
         async with cache_file_sessionmaker(name) as session:
             # 在标准文件缓存的远程文件
-            if not dir_ and (path := await session.get_and_refresh(cfg.file_msg_ttl)):
+            if not dir_ and (path := await session.get_and_refresh(cfg.get("file_msg_ttl", module="cache"))):
                 return path
 
             # 源文件就是本地文件
@@ -371,7 +371,7 @@ class Downloadable(MsgSeg):
 
                 # 缓存 bytes
                 if self.file.__class__ is bytes:
-                    self.file = await session.register(cfg.file_msg_ttl, self.file)
+                    self.file = await session.register(cfg.get("file_msg_ttl", module="cache"), self.file)
                     return await self.file.copy(dir_ / name) if dir_ else self.file
 
             # 下载远程文件
@@ -421,7 +421,9 @@ class Downloadable(MsgSeg):
                                 await f.write(c)
                         return path
                     else:
-                        return await session.register(cfg.file_msg_ttl, content_iter() if fix_ext else byte_iter)
+                        return await session.register(
+                            cfg.get("file_msg_ttl", module="cache"), content_iter() if fix_ext else byte_iter
+                        )
             except HTTPStatusError as e:
                 from core.i18n import _
 
@@ -446,7 +448,7 @@ class Downloadable(MsgSeg):
 
         async with cache_file_sessionmaker(self.name) as session:
             # 在标准文件缓存的远程文件
-            if path := await session.get_and_refresh(cfg.file_msg_ttl):
+            if path := await session.get_and_refresh(cfg.get("file_msg_ttl", module="cache")):
                 async with open(path, "rb") as f:
                     while chunk := await f.read(size):
                         yield chunk
@@ -470,7 +472,7 @@ class Downloadable(MsgSeg):
                 # 缓存 bytes
                 if self.file.__class__ is bytes:
                     data = self.file
-                    self.file = await session.register(cfg.file_msg_ttl, self.file)
+                    self.file = await session.register(cfg.get("file_msg_ttl", module="cache"), self.file)
                     for i in range(0, len(data), size):
                         yield data[i : i + size]
                     return
@@ -482,7 +484,7 @@ class Downloadable(MsgSeg):
                 async with self._http_request() as response:
                     response.raise_for_status()
                     # gen1, gen2 = AsyncTee.gen(response.aiter_bytes(size))
-                    # task = create_task(session.register(cfg.file_msg_ttl, gen2))
+                    # task = create_task(session.register(cfg.get("file_msg_ttl", module="cache"), gen2))
                     # async for chunk in gen1:
                     async for chunk in response.aiter_bytes(size):
                         yield chunk

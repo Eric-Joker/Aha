@@ -4,7 +4,7 @@ from types import FunctionType
 
 
 def is_instance_method(method):
-    """检查方法对象是否是类方法或实例方法"""
+    """检查方法对象是否是非嵌套类的方法或实例方法"""
 
     # 绑定方法
     if getattr(method, "__self__", None) is not None:

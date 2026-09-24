@@ -194,6 +194,7 @@ class Config[
     | tuple[type, dict[Hashable, tuple[type | tuple, type | tuple]]]
 ](metaclass=SingletonThreadSafeMeta):
     BASE_TYPES = (str, int, float, type(None), date)
+    # 模块自身的键值优先，不存在时回退到通用模块（`expr_extractors` 见 `register`）
 
     __slots__ = (
         "_yaml",
@@ -585,7 +586,10 @@ class Config[
             self._group_blacklist.pop(module, None)
             self._group_whitelist.pop(module, None)
         if key == "msg_prefix":
-            self._msg_prefix.pop(module, None)
+            if module == "aha":  # aha 的 msg_prefix 是所有模块的默认前缀，需清空全部缓存
+                self._msg_prefix.clear()
+            else:
+                self._msg_prefix.pop(module, None)
 
         return value.value if isinstance(value, Option) else value
 
@@ -660,42 +664,49 @@ class Config[
     def register(self, key, default=_unset, comment=None, noneable=False, module=None):
         """获取配置值，如果键值不存在则使用默认值初始化
 
+        模块可注册与通用模块（`aha`、`cache`、`log`、`expr_extractors`）同名的配置项，自身的同名键值优先于通用模块的键值。
+
         Args:
             default: 默认值
             comment: 注释
         """
         # if (storage_module := module or caller) is None:
+        # self._check_permission(module, caller)
         if (storage_module := module or caller_aha_module()) is None:
             raise RuntimeError(_("cannot_get_caller_aha_module"))
 
-        # 获取配置
-        key, value = self._type2yaml(key, True)[0], _unset
-        for mod_name, mod_data in (("aha", self._data.get("aha")), (storage_module, self._data.get(storage_module))):
-            if mod_data and key in mod_data:
-                if default is _unset:
-                    if not self._is_registered(key, mod_name):
-                        raise KeyError(key)
-                    value = self._type2registed(mod_data[key], None, self._default_types[mod_name][key], key, noneable=noneable)
-                else:
-                    value = self._type2registed(
+        key = self._type2yaml(key, True)[0]
+
+        # 模块自身的键值
+        if (mod_data := self._data.get(storage_module)) and key in mod_data:
+            if default is not _unset:  # 更新注册的类型与注释
+                return deepcopy(
+                    self._type2registed(
                         mod_data[key],
-                        self._register(key, default, mod_name, comment, True),
-                        self._default_types[mod_name][key],
+                        self._register(key, default, storage_module, comment, True),
+                        self._default_types[storage_module][key],
                         key,
                         noneable,
                     )
-                break
+                )
+            if self._is_registered(key, storage_module):
+                return deepcopy(
+                    self._type2registed(mod_data[key], None, self._default_types[storage_module][key], key, noneable=noneable)
+                )
+        elif default is not _unset:  # 注册新的配置项（允许与通用模块的键同名）
+            self._set_value(key, self._register(key, default, storage_module, comment, True), storage_module)
+            return default
 
-        if value is not _unset:
-            return deepcopy(value)
+        # 通用模块的键值
+        if module and (common_data := self._data.get("aha")) and self._is_registered(key, "aha"):
+            return deepcopy(
+                self._type2registed(common_data[key], None, self._default_types["aha"][key], key, noneable=noneable)
+            )
+
+        # 表达式字段提取器
         if (ee := self._data.get("expr_extractors")) and (ee := ee.get(key)) is not None:
             return ee == storage_module.removeprefix("modules.")
-        if default is _unset:
-            raise KeyError(key)
-
-        # self._check_permission(module, caller)
-        self._set_value(key, self._register(key, default, storage_module, comment, True), storage_module)
-        return default
+        raise KeyError(key)
 
     # endregion
     async def reload_and_save(self):
@@ -751,14 +762,6 @@ class Config[
     """
 
     # region 公共属性
-    @property
-    def super(self) -> tuple[User]:
-        return self.get("super", module="aha")
-
-    @property
-    def global_msg_prefix(self) -> str | None:
-        return self.get("global_msg_prefix", module="aha")
-
     @ThreadSafeMeta.allow_non_main
     def get_msg_prefix(self, module: str = None) -> str | None:
         """若只有单特殊字符则返回半角"""
@@ -771,7 +774,7 @@ class Config[
         if module and "msg_prefix" in (data := self._data.get(module, {})):
             data = data["msg_prefix"]
         else:
-            data = self.global_msg_prefix
+            data = self.get("msg_prefix", module="aha")
 
         if data and len(data) == 1:
             from utils.string import halfwidth
@@ -780,74 +783,6 @@ class Config[
 
         self._msg_prefix[module] = data
         return data
-
-    @property
-    def database(self) -> dict:
-        return self.get("database", module="aha")
-
-    @property
-    def lang(self) -> str:
-        return self.get("lang", module="aha")
-
-    @property
-    def private(self) -> bool:
-        return self.get("private", module="aha")
-
-    @property
-    def point_feat(self):
-        return self.register("point_feat", False, _("config.comment.point_feat"), module="aha")
-
-    @property
-    def memory_level(self) -> Literal["low", "medium", "high"]:
-        return self.get("memory_level", module="aha")
-
-    @property
-    def base64_buffer(self) -> int:
-        return self.get("base64_buffer", module="aha")
-
-    @property
-    def playwright(self):
-        return self.register("playwright", False, _("config.comment.playwright"), module="aha")
-
-    @property
-    def cache_conv(self) -> bool:
-        return self.get("cache_conv", module="aha")
-
-    @property
-    def execution_mode(self) -> Literal["async", "thread", "process"]:
-        return self.get("execution_mode", module="aha")
-
-    @property
-    def bot_prefs(self) -> int:
-        return self.get("bot_prefs", module="aha")
-
-    @property
-    def file_msg_ttl(self) -> int:
-        return self.get("file_msg_ttl", module="cache")
-
-    @property
-    def event_cache(self) -> dict:
-        return self.get("event", module="cache")
-
-    @property
-    def debug(self) -> bool:
-        return self.get("debug", module="aha")
-
-    @property
-    def _default_group_list_mode(self) -> Literal["blacklist", "whitelist"]:
-        return self.get("default_group_list_mode", module="aha")
-
-    @property
-    def _default_group_list(self) -> frozenset[Group]:
-        return self.get("default_group_list", module="aha")
-
-    @property
-    def _default_user_list_mode(self) -> Literal["blacklist", "whitelist"]:
-        return self.get("default_user_list_mode", module="aha")
-
-    @property
-    def _default_user_list(self) -> frozenset[User]:
-        return self.get("default_user_list", module="aha")
 
     _USER_LIST_KEYS = {"user_list_mode", "user_list"}
     _GROUP_LIST_KEYS = {"group_list_mode", "group_list"}
@@ -859,16 +794,20 @@ class Config[
 
         if (data := self._group_blacklist.get(module)) is not None:  # 缓存
             return data
+
+        default_mode = self.get("group_list_mode", module="aha")
+        default_list = self.get("group_list", module="aha")
+
         if not module:  # 短路
-            return self._default_group_list if self._default_group_list_mode == "blacklist" else frozenset()
+            return default_list if default_mode == "blacklist" else frozenset()
 
         # 获取
         if (mode := (data := self._data.get(module, {})).get("group_list_mode")) is None:
-            data = self._default_group_list if self._default_group_list_mode == "blacklist" else frozenset()
+            data = default_list if default_mode == "blacklist" else frozenset()
         elif mode == "blacklist":
             data = {Group(**i) for i in data["group_list"]}
-            if self._default_group_list_mode == "blacklist":
-                data.update(self._default_group_list)
+            if default_mode == "blacklist":
+                data.update(default_list)
             data = frozenset(data)
         else:
             data = frozenset()
@@ -882,11 +821,15 @@ class Config[
 
         if (data := self._group_whitelist.get(module)) is not None:  # 缓存
             return data
+
+        default_mode = self.get("group_list_mode", module="aha")
+        default_list = self.get("group_list", module="aha")
+
         if not module:  # 短路
-            return self._default_group_list if self._default_group_list_mode == "whitelist" else frozenset()
+            return default_list if default_mode == "whitelist" else frozenset()
 
         if (mode := (data := self._data.get(module, {})).get("group_list_mode")) is None:
-            data = self._default_group_list if self._default_group_list_mode == "whitelist" else frozenset()
+            data = default_list if default_mode == "whitelist" else frozenset()
         else:
             data = frozenset(Group(**i) for i in data["group_list"]) if mode == "whitelist" else frozenset()
         self._group_whitelist[module] = data
@@ -905,16 +848,20 @@ class Config[
 
         if (data := self._user_blacklist.get(module)) is not None:  # 缓存
             return data
+
+        default_mode = self.get("user_list_mode", module="aha")
+        default_list = self.get("user_list", module="aha")
+
         if not module:  # 短路
-            return self._default_user_list if self._default_user_list_mode == "blacklist" else frozenset()
+            return default_list if default_mode == "blacklist" else frozenset()
 
         # 获取
         if (mode := (data := self._data.get(module, {})).get("user_list_mode")) is None:
-            data = self._default_user_list if self._default_user_list_mode == "blacklist" else frozenset()
+            data = default_list if default_mode == "blacklist" else frozenset()
         elif mode == "blacklist":
             data = {User(**i) for i in data["user_list"]}
-            if self._default_user_list_mode == "blacklist":
-                data.update(self._default_user_list)
+            if default_mode == "blacklist":
+                data.update(default_list)
             data = frozenset(data)
         else:
             data = frozenset()
@@ -928,11 +875,15 @@ class Config[
 
         if (data := self._user_whitelist.get(module)) is not None:  # 缓存
             return data
+
+        default_mode = self.get("user_list_mode", module="aha")
+        default_list = self.get("user_list", module="aha")
+
         if not module:  # 短路
-            return self._default_user_list if self._default_user_list_mode == "whitelist" else frozenset()
+            return default_list if default_mode == "whitelist" else frozenset()
 
         if (mode := (data := self._data.get(module, {})).get("user_list_mode")) is None:
-            data = self._default_user_list if self._default_user_list_mode == "whitelist" else frozenset()
+            data = default_list if default_mode == "whitelist" else frozenset()
         else:
             data = frozenset(User(**i) for i in data["user_list"]) if mode == "whitelist" else frozenset()
         self._user_whitelist[module] = data
@@ -974,22 +925,6 @@ taskkill /F /PID %TARGET_PID% 2>nul"""
             self._default_used = True
         return self._data["bots"]
 
-    @property
-    def console_log_level(self) -> str:
-        return self.get("console_level", module="log")
-
-    @property
-    def file_log_level(self) -> str:
-        return self.get("file_level", module="log")
-
-    @property
-    def max_log_files(self) -> int:
-        return self.get("max_files", module="log")
-
-    @property
-    def log_file_max_size(self) -> str:
-        return self.get("max_size", module="log")
-
     # endregion
 
 
@@ -1029,7 +964,7 @@ def init_base_cfgs():
     cfg.set_comment("max_size", _("config.comment.log.file.max_size"), "log")
 
     cfg.register("super", (User("QQ", "114514"),), "Super user ID.", module="aha")
-    cfg.register("global_msg_prefix", "~", _("config.comment.global_msg_prefix"), True, "aha")
+    cfg.register("msg_prefix", "~", _("config.comment.msg_prefix"), True, "aha")
     database_def = CommentedMap(
         {"uri": "sqlite+aiosqlite:///data.db", "green": "sqlite:///data.db", "backup_dir": os.path.abspath("db_backup")}
     )
@@ -1044,19 +979,20 @@ def init_base_cfgs():
     cfg.register("bot_prefs", 1, _("config.comment.bot_prefs"), module="aha")
     cfg.register("file_msg_ttl", 3600, _("config.comment.file_msg_ttl"), module="cache")
     cfg.register("event", {"size": "16MiB", "ttl": 86400}, _("config.comment.event_cache"), module="cache")
-    cfg.point_feat
+    cfg.register("point_feat", False, _("config.comment.point_feat"), module="aha")
+    cfg.register("playwright", False, _("config.comment.playwright"), module="aha")
     cfg.register(
-        "default_group_list_mode",
+        "group_list_mode",
         Option(("whitelist", "blacklist")),
-        _("config.comment.default_group_list_mode"),
+        _("config.comment.group_list_mode"),
         module="aha",
     )
-    cfg.register("default_group_list", frozenset((Group("NapCat", "1919810"),)), module="aha")
+    cfg.register("group_list", frozenset((Group("QQ", "1919810"),)), module="aha")
     cfg.register(
-        "default_user_list_mode",
+        "user_list_mode",
         Option(("whitelist", "blacklist")),
-        _("config.comment.default_user_list_mode"),
+        _("config.comment.user_list_mode"),
         module="aha",
     )
-    cfg.register("default_user_list", frozenset((User("NapCat", "114514"),)), module="aha")
+    cfg.register("user_list", frozenset((User("QQ", "114514"),)), module="aha")
     cfg.register("debug", False, _("config.comment.debug"), module="aha")

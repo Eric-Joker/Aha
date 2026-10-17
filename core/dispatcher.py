@@ -40,6 +40,8 @@ from .expr import (
 )
 from .i18n import _, create_translator
 
+lazy from .api_service import MAX_WAITING_TASKS, bots
+
 __all__ = ("on_message", "on_notice", "on_request", "on_meta", "on_start", "on_cleanup", "clear_handlers", "help_items")
 
 _logger = getLogger("AHA (Dispatcher)")
@@ -675,8 +677,6 @@ def _processer[T](func: T = None) -> T:
         **kwargs,
     ):
         global _waiting_event_calls
-        from .api_service import MAX_WAITING_TASKS, bots
-
         if event.bot_id is not None:
             if not (bot := bots[event.bot_id]) or bot.block_event:
                 return

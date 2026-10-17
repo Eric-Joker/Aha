@@ -9,7 +9,7 @@ if __name__ == "__main__":
     import subprocess
     import sys
     from asyncio import create_task, gather, get_running_loop, sleep
-    from contextlib import suppress
+    lazy from contextlib import suppress
     from logging import getLogger
 
     import core.status
@@ -23,13 +23,13 @@ if __name__ == "__main__":
     logger = getLogger("AHA")
 
     async def main_workflow():
+        global core
         await load_locales()
         await process_args()
         init_base_cfgs()
 
         # isort: skip_file
         import core.api
-        import core.status
         from core.database import db_engine, db_init
         from services.apscheduler import aps_log_warn, sched
         from services.playwright import browser_mgr

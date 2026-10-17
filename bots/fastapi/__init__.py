@@ -19,11 +19,19 @@ from utils.aio import AsyncResult
 
 from ..base import BaseBot, BaseBotSingletonMeta
 
+lazy from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+lazy from cryptography.hazmat.primitives import serialization
+lazy from fastapi.routing import APIRoute, APIWebSocketRoute
+lazy from fastapi import status, FastAPI as fastapi_FastAPI
+lazy from fastapi.responses import JSONResponse, Response
+lazy from fastapi_modules import init_load_mod
+lazy from uvicorn import Config, Server
+lazy from uvicorn.lifespan.on import LifespanOn as OLifespanOn
+
+
+
 if TYPE_CHECKING:
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-    from fastapi import FastAPI as fastapi_FastAPI
     from starlette.types import Scope
-    from uvicorn import Server
 
 __all__ = ("app", "FastAPI", "verify")
 
@@ -33,8 +41,6 @@ app: fastapi_FastAPI = None
 def verify(wrapped: Callable = None):
     if wrapped is None:
         return verify
-    from fastapi.routing import APIRoute, APIWebSocketRoute
-
     for r in app.routes:
         if (r.__class__ is APIRoute or r.__class__ is APIWebSocketRoute) and r.endpoint is wrapped:
             VerificationMiddleware.paths.add(r.path)
@@ -50,8 +56,6 @@ async def load_public_key(public_key_path: Path):
     try:
         async with open(public_key_path, "rb") as f:
             public_key_data = await f.read()
-        from cryptography.hazmat.primitives import serialization
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
         public_key: Ed25519PublicKey = serialization.load_pem_public_key(public_key_data)
         if not isinstance(public_key, Ed25519PublicKey):
@@ -77,9 +81,6 @@ class VerificationMiddleware:
         self._cache_lock = Lock()
 
     async def __call__(self, scope: Scope, receive, send):
-        from fastapi import status
-        from fastapi.responses import JSONResponse, Response
-
         is_http = scope.get("type") == "http"
 
         async def reject(code=status.HTTP_401_UNAUTHORIZED, content=None, res_cls=Response):
@@ -155,20 +156,14 @@ class FastAPIConnection(Transport):
     async def open(self, config: dict):
         global app
         # FastAPI
-        from fastapi import FastAPI as fastapi_FastAPI
-
         app = fastapi_FastAPI()
         VerificationMiddleware.public_key = await load_public_key(config.pop("public_key", await Path.cwd() / "ed25519.pem"))
         app.add_middleware(VerificationMiddleware)
-        from fastapi_modules import init_load_mod
 
         # modules
         await init_load_mod()
 
         # Uvicorn
-        from uvicorn import Config, Server
-        from uvicorn.lifespan.on import LifespanOn as OLifespanOn
-
         class LifespanOn(OLifespanOn):
             async def startup(self, *args, **kwargs):
                 await super().startup(*args, **kwargs)

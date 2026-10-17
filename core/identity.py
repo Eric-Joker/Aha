@@ -14,6 +14,8 @@ from .cache import LRUCache
 from .config import cfg
 from .i18n import _
 
+lazy from .dispatcher import current_event
+
 
 class AhaUser(dbBase):
     __tablename__ = "aha_users"
@@ -59,8 +61,6 @@ async def user2aha_id(arg1=None, arg2=None, session=None, _auto_reg=True):
     if arg2:
         platform, user_id = arg1, arg2
     else:
-        from .dispatcher import current_event
-
         try:
             event = current_event.get()
         except AttributeError as e:
@@ -159,8 +159,6 @@ async def group2aha_id(arg1=None, arg2=None):
     if arg2:
         platform, group_id = arg1, arg2
     else:
-        from .dispatcher import current_event
-
         try:
             event = current_event.get()
         except AttributeError as e:

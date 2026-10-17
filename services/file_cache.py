@@ -87,22 +87,27 @@ class CacheFileSession:
 
         async with open(file_path, "wb") as f:
             # 字符字节串
-            if isinstance(content, (str, bytes)):
-                await f.write(data := content.encode("utf-8") if isinstance(content, str) else content)
+            if isinstance(content, bytes):
+                await f.write(content)
+                if hasher:
+                    hasher.update(content)
+
+            elif isinstance(content, str):
+                await f.write(data := content.encode())
                 if hasher:
                     hasher.update(data)
 
             # 异步迭代器
             elif hasattr(content, "__aiter__"):
                 async for chunk in content:
-                    await f.write(data := chunk.encode("utf-8") if isinstance(chunk, str) else chunk)
+                    await f.write(data := chunk.encode() if isinstance(chunk, str) else chunk)
                     if hasher:
                         hasher.update(data)
 
             # 可迭代对象
             elif hasattr(content, "__iter__"):
                 for chunk in content:
-                    await f.write(data := chunk.encode("utf-8") if isinstance(chunk, str) else chunk)
+                    await f.write(data := chunk.encode() if isinstance(chunk, str) else chunk)
                     if hasher:
                         hasher.update(data)
 

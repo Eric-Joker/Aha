@@ -39,6 +39,9 @@ from .dispatcher import process_external, process_message, process_meta, process
 from .i18n import _
 from .log import log_config
 
+lazy from .cache import MemTTLCache
+lazy from .config import cfg
+
 bots: IndexedDict[int, BotInstance | None] = IndexedDict()  # 操作该对象需要拿 bots_lock
 platform_bot_map = defaultdict(partial(SetArray, "q"))  # 不论深度操作需要拿 bots_lock
 deduplicators: dict[str, Deduplicator] = {}  # 操作该对象需要拿 bots_lock，但操作去重器实例无需拿锁
@@ -105,9 +108,6 @@ class Deduplicator:
             return bool(self._counts)
 
     def __init__(self):
-        from .cache import MemTTLCache
-        from .config import cfg
-
         cache_cfg = cfg.get("event", module="cache")
         self.cache: Cache[int, Deduplicator.Bucket] = MemTTLCache(parse_size(cache_cfg["size"]), cache_cfg["ttl"])
         self._lock = Lock()
@@ -129,7 +129,7 @@ class Deduplicator:
 
 # region instance manager
 def _get_bot_id(bot_class, config):
-    (hasher := xxh3_64(dumps_to_bytes(config))).update(bot_class)
+    (hasher := xxh3_64(dumps_to_bytes(config))).update(bot_class.encode())
     return int.from_bytes(hasher.digest(), signed=True)
 
 

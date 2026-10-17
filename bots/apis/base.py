@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 from core.log import AhaLogger
 from models.core import AddScheduleArgs, EventCategory, ServiceType
 
+lazy from core.api_service import process_service_request
+
 if TYPE_CHECKING:
     from .. import BaseBot
 
@@ -21,8 +23,6 @@ class BaseAPI:
         if self.is_process_mode:
             await self.event_post(EventCategory.SERVICE_REQUEST, (service_type, args))
         else:
-            from core.api_service import process_service_request
-
             process_service_request(service_type, args, self.bot_id)
 
     async def add_schedule(self, args: AddScheduleArgs):

@@ -16,6 +16,8 @@ from tenacity import _unset
 import core.status
 from utils.aha import caller_aha_module
 
+lazy from .config import cfg
+
 __all__ = ("create_translator", "gettext", "_")
 
 # fmt: off
@@ -147,8 +149,6 @@ def _get_fallback_chain(lang_code: str | None):
 
     if DEFAULT_LANGUAGE is None:
         if current_process().name == "MainProcess":
-            from .config import cfg
-
             DEFAULT_LANGUAGE = cfg.lang
         else:
             if (DEFAULT_LANGUAGE := core.status.def_lang) is None:
@@ -209,7 +209,7 @@ async def _process_locales_directory(module: str | None, locales_path: Path):
 
 async def _process_locale_file(module: str | None, file_path: Path):
     try:
-        async with open(file_path, "r", encoding="utf-8") as f:
+        async with open(file_path, "r") as f:
             content = await f.read()
 
         if (lang_code := file_path.stem) not in loaded_i10n[module]:

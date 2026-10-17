@@ -1,5 +1,4 @@
 import signal
-import sys
 from abc import abstractmethod
 from asyncio import CancelledError, create_task, get_running_loop
 from contextlib import suppress
@@ -20,24 +19,26 @@ from utils.misc import PerProcessSingletonMeta, make_exc_picklable
 
 from .apis import BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, BaseSupportAPI
 
-if TYPE_CHECKING:
-    from core.api_service import event_route
+lazy from core.bot_register import register
+lazy from core.api_service import event_route, clean_bot
 
-RetryConfigKey = Literal[
-    "stop_any",
-    "stop_all",
-    "stop_after_attempt",
-    "stop_after_delay",
-    "stop_before_delay",
-    "wait_fixed",
-    "wait_random",
-    "wait_incrementing",
-    "wait_exponential",
-    "wait_random_exponential",
-    "wait_exponential_jitter",
-    "wait_chain",
-    "wait_combine",
-]
+
+if TYPE_CHECKING:
+    RetryConfigKey = Literal[
+        "stop_any",
+        "stop_all",
+        "stop_after_attempt",
+        "stop_after_delay",
+        "stop_before_delay",
+        "wait_fixed",
+        "wait_random",
+        "wait_incrementing",
+        "wait_exponential",
+        "wait_random_exponential",
+        "wait_exponential_jitter",
+        "wait_chain",
+        "wait_combine",
+    ]
 
 
 def api_process(bot_class: type[BaseBot], bot_id, pipe, config, base64_buffer, lang, log):
@@ -56,8 +57,6 @@ class BaseBotMeta(type):
     """注册所有API子类"""
 
     def __new__(mcs, name, *args):
-        from core.bot_register import register
-
         cls = super().__new__(mcs, name, *args)
         if name != "BaseBot":
             cls.logger = getLogger(name)
@@ -95,8 +94,6 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
             await load_locales()
             self.main_task = create_task(self._handle_requests(), eager_start=True)
         else:
-            from core.api_service import event_route
-
             globals()["event_route"] = event_route
             self.main_task = get_running_loop().create_future()
 
@@ -156,10 +153,9 @@ class BaseBot(BaseAccountAPI, BaseGroupAPI, BaseMessageAPI, BasePrivateAPI, Base
                 self.pipe.close()
             else:
                 # TODO: 重写这里超越界限的逻辑
-                from core.api_service import clean_bot
-
                 await clean_bot(self.bot_id)
-            self.main_task.cancel()
+            with suppress(AttributeError):
+                self.main_task.cancel()
 
     @classmethod
     def parse_retry_config(cls, config: dict[RetryConfigKey, int | float | list[dict[RetryConfigKey, Any] | Any]]):

@@ -16,6 +16,11 @@ from tenacity import _unset
 from utils.aio import async_run_func
 from utils.asizeof import asizeof
 
+lazy from apscheduler.triggers.cron import CronTrigger
+
+lazy from core.dispatcher import on_start
+lazy from services.apscheduler import sched
+
 __all__ = (
     "Cache",
     "FIFOCache",
@@ -140,11 +145,6 @@ class CronCacheMixin:
 
     def __init__(self, *args, cron="0 0 * * *", **kwargs):
         super().__init__(*args, **kwargs)
-        from apscheduler.triggers.cron import CronTrigger
-
-        from core.dispatcher import on_start
-        from services.apscheduler import sched
-
         on_start(partial(sched.add_schedule, self.clear, CronTrigger.from_crontab(cron)))
 
 

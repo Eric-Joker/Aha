@@ -35,6 +35,8 @@ from utils.container import SetList
 from .bot_register import get_bot_class
 from .i18n import _
 
+lazy from utils.string import halfwidth
+
 try:
     from ctypes import windll
 except ImportError:
@@ -372,7 +374,7 @@ class Config[
 
     def _first_load(self):
         if (path := Path(self._config_file)).exists():
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, "r") as f:
                 self._old_data = self._safe_yaml.load(f)
             if self._old_data is None:
                 self._old_data = OptionCommentedMap()
@@ -385,7 +387,7 @@ class Config[
         if not await self._config_file.exists():
             return
         try:
-            async with aioopen(self._config_file, "r", encoding="utf-8") as f:
+            async with aioopen(self._config_file, "r") as f:
                 self._old_data = self._safe_yaml.load(await f.read())
                 if self._old_data is None:
                     self._old_data = OptionCommentedMap()
@@ -712,7 +714,7 @@ class Config[
     async def reload_and_save(self):
         await self._config_file.parent.mkdir(parents=True, exist_ok=True)
         await self.load()
-        async with aioopen(self._config_file, "w", encoding="utf-8") as f:
+        async with aioopen(self._config_file, "w") as f:
             self._yaml.dump(self._data, output := StringIO())
             await f.write(output.getvalue())
 
@@ -777,8 +779,6 @@ class Config[
             data = self.get("msg_prefix", module="aha")
 
         if data and len(data) == 1:
-            from utils.string import halfwidth
-
             data = halfwidth(data)
 
         self._msg_prefix[module] = data

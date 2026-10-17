@@ -23,6 +23,12 @@ from ssrjson import dumps_to_bytes as json_dumps
 
 from models.exc import ExactlyOneTruthyValueError
 
+lazy from ruamel.yaml.comments import CommentedMap, CommentedSeq
+lazy from core.i18n import _
+lazy import asyncio
+lazy import asyncio.subprocess
+lazy import _winapi
+
 
 def round_decimal(num: Decimal, digits=2):
     return num.quantize(Decimal(f'0.{"0" * digits}'), rounding=ROUND_HALF_UP).normalize()
@@ -68,8 +74,6 @@ def uninstall_module(module_name):
 
 
 def commented2basic(obj):
-    from ruamel.yaml.comments import CommentedMap, CommentedSeq
-
     if isinstance(obj, CommentedMap):
         return {k: commented2basic(v) for k, v in obj.items()}
     elif isinstance(obj, CommentedSeq):
@@ -360,8 +364,6 @@ class PerProcessSingletonMeta(type):
         try:
             return getattr(cls._instances.get(cls), name)
         except AttributeError as e:
-            from core.i18n import _
-
             raise RuntimeError(_("models.pre_proc_singleton_meta.getattr_error") % cls.__qualname__) from e
 
 
@@ -370,8 +372,6 @@ class SingletonMeta(PerProcessSingletonMeta):
 
     def __call__(cls, *args, **kwargs):
         if current_process().name != "MainProcess":
-            from core.i18n import _
-
             raise ImportError(
                 f"Refusing to create class '{cls.__qualname__}' in a subprocess, as this may violate the singleton pattern."
             )
@@ -380,11 +380,6 @@ class SingletonMeta(PerProcessSingletonMeta):
 
 # region fuck cmd
 if os.name == "nt":
-    import asyncio
-    import asyncio.subprocess
-
-    import _winapi
-
     _original_CreateProcess = _winapi.CreateProcess
     VON_PATTERN = re.compile(r"/v:(?:on|off)", re.IGNORECASE)
 

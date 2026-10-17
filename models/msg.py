@@ -33,6 +33,12 @@ from .api.utils import AudioFormat
 from .base import BaseModel
 from .exc import DownloadFileMsgError, UnknownMessageTypeError
 
+lazy from core.i18n import _
+lazy from utils.aha import escape_aha
+lazy from core.api import API
+lazy from core.config import cfg
+lazy from services.file_cache import cache_file_sessionmaker
+
 if TYPE_CHECKING:
     from PIL.Image import Image as PilImage  # type: ignore
     from pydantic._internal._model_construction import NoInitField
@@ -52,8 +58,6 @@ class MsgSegMeta(ModelMetaclass):
         if issubclass(cls, Text):
             return r"(?P<text>[^\[]+)"
         if issubclass(cls, (Forward, Node)):
-            from core.i18n import _
-
             raise NotImplementedError(_("models.msg.cls2pattern.forward501"))
         return rf"\[Aha:{cls.__name__.lower()}{"".join(rf"(?:,{n}=(?P<{n}>[^,\]]*))?" for n, i in cls.model_fields.items() if not i.exclude)}\]"
 
@@ -61,8 +65,6 @@ class MsgSegMeta(ModelMetaclass):
         if issubclass(cls, Text):
             return rf"(?P<{prefix}text>[^\[]+)"
         if issubclass(cls, (Forward, Node)):
-            from core.i18n import _
-
             raise NotImplementedError(_("models.msg.cls2pattern.forward501"))
         return rf"\[Aha:{cls.__name__.lower()}{"".join(rf"(?:,{n}=(?P<{prefix}{n}>[^,\]]*))?" for n, i in cls.model_fields.items() if not i.exclude)}\]"
 
@@ -82,8 +84,6 @@ class MsgSeg(BaseModel, metaclass=MsgSegMeta):
         return {"type": self.__class__.__name__.lower(), "data": data}
 
     def __str__(self):
-        from utils.aha import escape_aha
-
         strings = [f"[Aha:{self.__class__.__name__.lower()}"]
         for k, v in self.model_dump(by_alias=True, exclude_none=True).items():
             if v.__class__ is list and (chain := getattr(self, k, None)) and isinstance(chain, MessageChain):
@@ -194,8 +194,6 @@ class MessageChain[T: MsgSeg](list[T]):
 
     async def plain_forward_msg(self: MessageChain[Forward], bot_id: int = None):
         """把转发id格式的消息展平为解析完毕的 Forward"""
-        from core.api import API
-
         return await API.get_forward_msg(self[0].id, bot=bot_id)
 
     def filter(self, cls: type[MsgSeg] | None = None):
@@ -349,9 +347,6 @@ class Downloadable(MsgSeg):
         if dir_:
             dir_ = Path(dir_)
 
-        from core.config import cfg
-        from services.file_cache import cache_file_sessionmaker
-
         async with cache_file_sessionmaker(name) as session:
             # 在标准文件缓存的远程文件
             if not dir_ and (path := await session.get_and_refresh(cfg.get("file_msg_ttl", module="cache"))):
@@ -362,8 +357,6 @@ class Downloadable(MsgSeg):
                 return await path.copy(dir_ / name) if dir_ else path
 
             # 更新文件源
-            from core.api import API
-
             if isinstance(self, File) and self.group_id:
                 self.file = await API.get_group_file_url(self.group_id, self.file_id, bot=bot_id or self.bot_id)
             else:
@@ -425,8 +418,6 @@ class Downloadable(MsgSeg):
                             cfg.get("file_msg_ttl", module="cache"), content_iter() if fix_ext else byte_iter
                         )
             except HTTPStatusError as e:
-                from core.i18n import _
-
                 raise DownloadFileMsgError(_("models.msg.downloadable.http_error") % e, e.request, e.response) from None
 
     if TYPE_CHECKING:
@@ -442,9 +433,6 @@ class Downloadable(MsgSeg):
         """
         if not self.file:
             return
-
-        from core.config import cfg
-        from services.file_cache import cache_file_sessionmaker
 
         async with cache_file_sessionmaker(self.name) as session:
             # 在标准文件缓存的远程文件
@@ -462,8 +450,6 @@ class Downloadable(MsgSeg):
                 return
 
             # 更新文件源
-            from core.api import API
-
             if isinstance(self, File) and self.group_id:
                 self.file = await API.get_group_file_url(self.group_id, self.file_id, bot=bot_id or self.bot_id)
             else:
@@ -490,8 +476,6 @@ class Downloadable(MsgSeg):
                         yield chunk
                     # await task
             except HTTPStatusError as e:
-                from core.i18n import _
-
                 raise DownloadFileMsgError(_("models.msg.downloadable.http_error") % e, e.request, e.response) from None
 
     @asynccontextmanager
@@ -517,8 +501,6 @@ class Downloadable(MsgSeg):
         ext: str = None,
         summary: str | None = None,
     ):
-        from services.file_cache import cache_file_sessionmaker
-
         async with cache_file_sessionmaker(name, ext if not ext or ext.startswith(".") else f".{ext}", 3) as session:
             return cls(file=(path := await session.register(ttl, data)), name=path.name, summary=summary)
 
@@ -533,8 +515,6 @@ class Text(MsgSeg):
         return self.text
 
     def __str__(self):
-        from utils.aha import escape_aha
-
         return escape_aha(self.text)
 
     def __repr__(self):
@@ -596,8 +576,6 @@ class Image(Downloadable):
         name: str = None,
         summary: str | None = None,
     ):
-        from services.file_cache import cache_file_sessionmaker
-
         async with cache_file_sessionmaker(name, f".{format_}", 3) as session:
             await to_thread(image.save, path := await session.register(ttl), format=format_)
         return cls(file=path, name=path.name, summary=summary)
@@ -724,8 +702,6 @@ class Forward(MsgSeg):
         return self
 
     async def get_content(self, bot_id: int = None):
-        from core.api import API
-
         self.content = (await API.get_forward_msg(self.id, bot=bot_id or self.bot_id)).content
         return self.content
 
@@ -737,8 +713,6 @@ class Forward(MsgSeg):
 
     @staticmethod
     async def _get_info(user_id, nickname, bot_id):
-        from core.api import API
-
         info = None
         if user_id is None:
             user_id = (info := await API.get_login_info(bot=bot_id)).user_id
@@ -836,8 +810,6 @@ class Markdown(Text):
     )
 
     def __str__(self):
-        from utils.aha import escape_aha
-
         return "".join(
             str(item) if item.__class__ is Image else escape_aha(item)
             for item in self._render_blocks(self._MD_parser(self.text))

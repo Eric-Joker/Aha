@@ -6,6 +6,10 @@ from re import compile
 from models.api import Message
 from models.msg import MsgSeg
 
+lazy from models.msg import MessageChain
+lazy from core.api import API, SS, select_bot
+lazy from core.config import cfg
+
 
 # region re
 def at_or_str(pattern: str = None):
@@ -40,8 +44,6 @@ AHA_CODE_PATTERN = compile(r"\[Aha:([^,\]]+)(?:,([^\]]+))?\]")
 
 def parse_aha_code(string):
     """将 Aha 码字符串解析为消息序列"""
-    from models.msg import MessageChain
-
     chain = MessageChain()
     last_pos = 0
     # 遍历所有匹配的 Aha 码
@@ -74,9 +76,6 @@ async def get_card_by_event(msg: Message):
 
 
 async def post_msg_to_supers(msg: str | Sequence[MsgSeg | str] | MsgSeg | None = None):
-    from core.api import API, SS, select_bot
-    from core.config import cfg
-
     for s in cfg.super:
         create_task(
             API.send_private_msg(s.user_id, msg, bot=await select_bot(SS.PLATFORM_NTH, platform=s.platform)), eager_start=True

@@ -15,6 +15,10 @@ from ..core import Group, User
 from ..msg import MessageChain, MsgSeg
 from .utils import Role  # , Sex
 
+lazy from core.identity import user2aha_id, group2aha_id
+lazy from utils.string import InlineStr
+lazy from core.api_service import call_api
+
 
 class BaseEvent(BaseModel):
     bot_id: int = Field(default=None, exclude=True, repr=False)
@@ -30,13 +34,9 @@ class BaseEvent(BaseModel):
     sub_type: EventSubType | None = None
 
     async def user_aha_id(self):
-        from core.identity import user2aha_id
-
         return await user2aha_id(self.platform, self.user_id)
 
     async def group_aha_id(self):
-        from core.identity import group2aha_id
-
         return await group2aha_id(self.platform, self.group_id)
 
     @property
@@ -63,16 +63,16 @@ class BaseEvent(BaseModel):
     def __eq__(self, other):
         return is_one_instance_of_other(self, other) and self.__hash__() == other.__hash__()
 
-    def _recursion_hash(self, obj, hasher: xxh3_64):
+    def _recursion_hash(self, obj: dict[str, Any], hasher: xxh3_64):
         if isinstance(obj, dict):
             for k, v in obj.items():
-                hasher.update(k)
+                hasher.update(k.encode())
                 self._recursion_hash(v, hasher)
         elif isinstance(obj, list):
             for i in obj:
                 self._recursion_hash(i, hasher)
         else:
-            hasher.update(str(obj))
+            hasher.update(str(obj).encode())
 
 
 class EventType(str, PureNameEnum):
@@ -154,8 +154,6 @@ class Message[T: MsgSeg](BaseEvent):
         Returns:
             InlineStr: 跨事件上下文不一致，不可直接用于调用 API 发送消息。
         """
-        from utils.string import InlineStr
-
         return InlineStr.from_iterable(self.message)
 
     @property
@@ -163,25 +161,17 @@ class Message[T: MsgSeg](BaseEvent):
         return self.event_type is MessageEventType.GROUP
 
     async def delete(self) -> None:
-        from core.api_service import call_api
-
         return await call_api("delete_msg", self.message_id, bot=self.bot_id)
 
     async def kick(self) -> None:
         if self.is_group_msg:
-            from core.api_service import call_api
-
             return await call_api("group_kick", self.group_id, self.user_id, bot=self.bot_id)
 
     async def ban(self, duration: int = 0) -> None:
         if self.is_group_msg:
-            from core.api_service import call_api
-
             return await call_api("group_ban", self.group_id, self.user_id, duration, bot=self.bot_id)
 
     async def reply(self, msg: str | Sequence[MsgSeg | str] | MsgSeg = None, at=False, image: str | Path = None) -> str:
-        from core.api_service import call_api
-
         return await call_api(
             "send_msg",
             user_id=self.user_id,
@@ -194,8 +184,6 @@ class Message[T: MsgSeg](BaseEvent):
         )
 
     async def send(self, msg: str | Sequence[MsgSeg | str] | MsgSeg = None, at=False, image: str | Path = None) -> str:
-        from core.api_service import call_api
-
         return await call_api(
             "send_msg",
             user_id=self.user_id,
@@ -207,18 +195,16 @@ class Message[T: MsgSeg](BaseEvent):
         )
 
     async def poke(self) -> None:
-        from core.api_service import call_api
-
         return await call_api("poke", user_id=self.user_id, group_id=self.group_id, bot=self.bot_id)
 
     def __hash__(self):
         hasher = xxh3_64()
-        hasher.update(self.event_type.value)
-        hasher.update(self.sub_type.value)
-        hasher.update(self.user_id)
-        hasher.update(self.group_id or "None")
-        hasher.update(str(self.time))
-        hasher.update(self.message_str)
+        hasher.update(self.event_type.value.encode())
+        hasher.update(self.sub_type.value.encode())
+        hasher.update(self.user_id.encode())
+        hasher.update((self.group_id or "None").encode())
+        hasher.update(str(self.time).encode())
+        hasher.update(self.message_str.encode())
         self._recursion_hash(self.extra, hasher)
         return hasher.intdigest()
 
@@ -287,15 +273,15 @@ class Notice(BaseEvent):
 
     def __hash__(self):
         hasher = xxh3_64()
-        hasher.update(self.event_type.value if isinstance(self.event_type, NoticeEventType) else self.event_type)
-        hasher.update(self.sub_type.value if isinstance(self.sub_type, NoticeSubType) else self.sub_type or "None")
-        hasher.update(self.user_id or "None")
-        hasher.update(self.group_id or "None")
-        hasher.update(str(self.time))
-        hasher.update(self.operator_id or "None")
-        hasher.update(str(self.duration))
-        hasher.update(self.message_id or "None")
-        hasher.update(self.target_id or "None")
+        hasher.update((self.event_type.value if isinstance(self.event_type, NoticeEventType) else self.event_type).encode())
+        hasher.update((self.sub_type.value if isinstance(self.sub_type, NoticeSubType) else self.sub_type or "None").encode())
+        hasher.update((self.user_id or "None").encode())
+        hasher.update((self.group_id or "None").encode())
+        hasher.update(str(self.time).encode())
+        hasher.update((self.operator_id or "None").encode())
+        hasher.update(str(self.duration).encode())
+        hasher.update((self.message_id or "None").encode())
+        hasher.update((self.target_id or "None").encode())
         self._recursion_hash(self.extra, hasher)
         return hasher.intdigest()
 
@@ -321,8 +307,6 @@ class Request(BaseEvent):
     flag: str = None
 
     async def process(self, approve: bool = True, *, remark: str = None, reason: str = None):
-        from core.api_service import call_api
-
         if self.event_type is RequestEventType.FRIEND:
             return await call_api("process_friend_add_request", self.flag, approve, remark)
         elif self.event_type is RequestEventType.GROUP:
@@ -330,9 +314,9 @@ class Request(BaseEvent):
 
     def __hash__(self):
         hasher = xxh3_64()
-        hasher.update(self.event_type.value)
-        hasher.update(self.sub_type.value if self.sub_type else "None")
-        hasher.update(self.flag or "None")
+        hasher.update(self.event_type.value.encode())
+        hasher.update((self.sub_type.value if self.sub_type else "None").encode())
+        hasher.update((self.flag or "None").encode())
         self._recursion_hash(self.extra, hasher)
         return hasher.intdigest()
 
@@ -388,18 +372,12 @@ class External(BaseEvent):
         return self.key
 
     def set_result(self, data):
-        from core.api_service import call_api
-
         return call_api("set_result", self.key, data, bot=self.bot_id)
 
     def send(self, msg, *_, **__):
-        from core.api_service import call_api
-
         return call_api("set_result", self.key, msg, bot=self.bot_id)
 
     def reply(self, msg, *_, **__):
-        from core.api_service import call_api
-
         return call_api("set_result", self.key, msg, bot=self.bot_id)
 
 

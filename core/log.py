@@ -23,6 +23,8 @@ from utils.aha import AHA_MODULE_PATTERN, caller_aha_module
 from utils.container import is_subsequence
 from utils.unit import parse_size
 
+lazy from core.config import cfg
+
 if TYPE_CHECKING:
     from multiprocessing.queues import Queue as PQueue
 
@@ -302,8 +304,6 @@ _IS_PROCESS_MODE = None
 def setup_logging(handler: HandlerConfig = None):
     global log_config, _log_queue, _log_handler, _log_instance, _IS_PROCESS_MODE
     if not handler:
-        from core.config import cfg
-
         # 创建统一文件日志线/进程
         if _IS_PROCESS_MODE := cfg.execution_mode == "process":
             _log_instance = Process(

@@ -50,6 +50,11 @@ from .config import Option, cfg
 from .i18n import _
 from .identity import group2aha_id, user2aha_id
 
+lazy from . import dispatcher
+lazy from .dispatcher import current_args, current_lang, current_match, current_module, current_event, cugp
+lazy from .api import API
+lazy from .perms import is_super
+
 # from models.exc import AhaExprTypeError
 
 
@@ -583,8 +588,6 @@ class BinaryExpr[Left, Right, Result](Expr[Result], metaclass=BinaryExprMeta):
         return result
 
     async def _evaluate_wrapper(self, *, left, right, event) -> tuple[Any, dict[ContextVar, Any]]:
-        from . import dispatcher
-
         left_val: Left = await left.evaluate(event) if isinstance(left, Expr) else left
         right_val: Right = await right.evaluate(event) if isinstance(right, Expr) else right
         if left_val.__class__ is AlwaysTrue or right_val.__class__ is AlwaysTrue:
@@ -632,8 +635,6 @@ class BoolExpr(Expr[bool]):
 # endregion
 # region 运算表达式
 def _command_evaluate(left, right):
-    from .dispatcher import current_args
-
     args = []
     for i, v in enumerate(right):
         if v != (arg := left[i]):
@@ -652,8 +653,6 @@ class Equal(BinaryExpr[Any, Any | LocalizedString, bool]):
             return _command_evaluate(left_val, right_val) if len(left_val) == len(right_val) else False
 
         elif self.left is PM.message and isinstance(right_val, LocalizedString):
-            from .dispatcher import current_lang
-
             for lang, i10n in right_val.translations.items():
                 if i10n == left_val:
                     current_lang.set(lang)
@@ -692,8 +691,6 @@ class StartsWith(BinaryExpr[Sequence | str, Sequence | str, bool]):
     async def _evaluate_logic(self, left_val, right_val):
         if self.left is PM.command:
             if len(left_val) >= (rl := len(right_val)) and _command_evaluate(left_val, right_val):
-                from .dispatcher import current_args
-
                 current_args.get().extend(left_val[rl:])
                 return True
             return False
@@ -766,8 +763,6 @@ class IsOnly(BinaryExpr[Sequence, TypeAdapter, bool]):
         if len(left_val) != 1:
             return False
         if self.left is PM.command and right_val.__class__ is TypeAdapter:
-            from .dispatcher import current_args
-
             try:
                 current_args.set((right_val.validate_python(left_val[0]),))
                 return True
@@ -782,8 +777,6 @@ class IsNotOnly(IsOnly):
         if len(left_val) != 1:
             return True
         if self.left is PM.command and right_val.__class__ is TypeAdapter:
-            from .dispatcher import current_args
-
             try:
                 current_args.set((right_val.validate_python(left_val[0]),))
                 return False
@@ -804,8 +797,6 @@ class Match(BinaryExpr[str, re.Pattern | LocalizedString, re.Match | None]):
     convert_rhs = _convert_pattern_rhs
 
     async def _evaluate_logic(self, left_val, right_val):
-        from .dispatcher import current_lang, current_match
-
         if isinstance(right_val, LocalizedString):
             for lang, pattern in right_val.patterns.items():
                 if match := pattern.match(left_val):
@@ -822,8 +813,6 @@ class FullMatch(BinaryExpr[str, re.Pattern | LocalizedString, re.Match | None]):
     convert_rhs = _convert_pattern_rhs
 
     async def _evaluate_logic(self, left_val, right_val):
-        from .dispatcher import current_lang, current_match
-
         if isinstance(right_val, LocalizedString):
             for lang, pattern in right_val.patterns.items():
                 if match := pattern.fullmatch(left_val):
@@ -840,8 +829,6 @@ class Search(BinaryExpr[str, re.Pattern | LocalizedString, re.Match | None]):
     convert_rhs = _convert_pattern_rhs
 
     async def _evaluate_logic(self, left_val, right_val):
-        from .dispatcher import current_lang, current_match
-
         if isinstance(right_val, LocalizedString):
             for lang, pattern in right_val.patterns.items():
                 if match := pattern.search(left_val):
@@ -979,16 +966,12 @@ def not_(clause):
 
 # region 默认表达式工厂
 def _groups_default_factory(f: Expr):
-    from .dispatcher import current_module
-
     if l := cfg.get_group_whitelist(m := current_module.get()):
         return f.in_(l)
     return f.notin(l) if (l := cfg.get_group_blacklist(m)) else None
 
 
 def _users_default_factory(f: Expr):
-    from .dispatcher import current_module
-
     if l := cfg.get_user_whitelist(m := current_module.get()):
         return f.in_(l)
     return f.notin(l) if (l := cfg.get_user_blacklist(m)) else None
@@ -1138,8 +1121,6 @@ cprmc: ContextVar[MessageChain] = ContextVar("aha_prefix_removed_msg_chain", def
 
 
 def get_msg_str_without_prefix(msg: MessageChain):
-    from .dispatcher import current_event
-
     if (cache := msg is current_event.get().message) and (moded := cprms.get()):
         return moded
     moded = str(remove_msg_seq_prefix(msg))
@@ -1149,8 +1130,6 @@ def get_msg_str_without_prefix(msg: MessageChain):
 
 
 def remove_msg_seq_prefix(msg: MessageChain):
-    from .dispatcher import cugp, current_event, current_module
-
     if (prefix := cfg.msg_prefix if cugp.get() else cfg.get_msg_prefix(current_module.get())) is None:
         return msg
     # 缓存
@@ -1191,8 +1170,6 @@ def remove_msg_seq_prefix(msg: MessageChain):
 
 # endregion
 def _has_msg_prefix(event: Message):
-    from .dispatcher import cugp, current_module
-
     if event.message:
         if (prefix := cfg.msg_prefix if cugp.get() else cfg.get_msg_prefix(current_module.get())) is None:
             return True
@@ -1218,14 +1195,10 @@ async def _uid(event: BaseEvent):
 )
 async def _is_admin(event: BaseEvent):
     if (uid := getattr(event, "user_id", None)) and (gid := getattr(event, "group_id", None)):
-        from .api import API
-
         return await API.is_admin(gid, uid)
 
 
 async def _is_super(_):
-    from .perms import is_super
-
     return await is_super()
 
 

@@ -8,6 +8,16 @@ from pkgutil import iter_modules
 
 from anyio import Path
 
+lazy from core.i18n import _, load_locales
+lazy from core.cache import clear_all_cache
+lazy from core.config import cfg
+lazy from core.expr import extractor_registrations, redirect_extractors, unregister_module_fields
+lazy from core.i18n import _, load_locales
+lazy from core.dispatcher import clear_handlers, process_clean, process_start
+lazy from services.apscheduler import sched
+lazy from services.data_store import clean_data_store
+lazy from utils.misc import uninstall_module
+
 SYSTEM_MODULES = {"reload", "cache_manager", "id_mapper"}
 persist_blacklist = set()
 persist_whitelist = set()
@@ -41,8 +51,6 @@ async def init_load_mod(exclude: set = None):
     Args:
         exclude: 与 `__name__` 的相对模块名。
     """
-    from core.i18n import _, load_locales
-
     _checked_paths = set()
     modules = {}
 
@@ -80,15 +88,6 @@ async def init_load_mod(exclude: set = None):
 
 
 async def reload_modules(disable: set[str] = None):
-    from core.cache import clear_all_cache
-    from core.config import cfg
-    from core.expr import extractor_registrations, redirect_extractors, unregister_module_fields
-    from core.i18n import _, load_locales
-    from core.dispatcher import clear_handlers, process_clean, process_start
-    from services.apscheduler import sched
-    from services.data_store import clean_data_store
-    from utils.misc import uninstall_module
-
     clear_handlers()
     await process_clean()
     await sched.reset_temp_sched()
@@ -148,8 +147,6 @@ async def reload_modules(disable: set[str] = None):
 
 async def load_modules(*modules: str):
     """自动启用模块"""
-    from core.i18n import _, load_locales
-
     await load_locales(*(full_names := [f"{__name__}.{mod}" for mod in modules]))
     loaded = []
     for i, mod in enumerate(full_names):

@@ -12,6 +12,8 @@ from utils.network import local_srv
 from ..i18n import _
 from .base import ClientTransport, FastAPITransport
 
+lazy from httpx_sse import aconnect_sse
+
 
 class _HttpMixin(ClientTransport):
     """HTTP API调用。瞎写的且未经测试，估计用不了。"""
@@ -57,8 +59,6 @@ class _SseMixin(ClientTransport):
         self._local_srv = None
 
     async def open(self, *, sse_connect_config: dict, sse_client_config: dict = None, retry_config: dict = None, **kwargs):
-        from httpx_sse import aconnect_sse
-
         await super().open(**kwargs)
         args = set(get_arg_names(aconnect_sse))
         self._sse_config = {k: v for k, v in sse_connect_config.items() if k in args}
@@ -83,9 +83,6 @@ class _SseMixin(ClientTransport):
     async def _connect(self):
         if self._closed:
             return
-
-        from httpx_sse import aconnect_sse
-
         self.sse_connect = await aconnect_sse(self._sse_client, **self._sse_config).__aenter__()
         return True
 

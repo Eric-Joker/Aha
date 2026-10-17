@@ -50,7 +50,7 @@ def process(target_dir: str):
     title_pattern = compile(r"^(\s*)(#{1,6})(\s+.*)")
     (md_files := list(base_path.rglob("*.md"))).remove(base_path / "README.md")
     md_files.sort(key=lambda p: (len((rel := p.relative_to(base_path)).parents), tokenize(str(rel))))
-    with open(script_dir / "LLM.md", "w", encoding="utf-8") as out_f:
+    with open(script_dir / "LLM.md", "w") as out_f:
         for md in md_files:
             # 写入文件标题
             out_f.write(f"# File: {md.relative_to(base_path).as_posix()}\n\n")
@@ -58,7 +58,7 @@ def process(target_dir: str):
             in_code_block = False
             in_comment = False
 
-            with open(md, "r", encoding="utf-8") as in_f:
+            with open(md, "r") as in_f:
                 for line in in_f:
                     original_line = line
                     line = line.rstrip("\n")

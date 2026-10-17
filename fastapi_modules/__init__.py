@@ -3,12 +3,12 @@ import importlib
 from logging import getLogger
 from pkgutil import iter_modules
 
+lazy from core.i18n import load_locales, _
+
 _logger = getLogger("AHA")
 
 
 async def init_load_mod():
-    from core.i18n import load_locales, _
-
     _checked_paths = set()
     modules = {}
 

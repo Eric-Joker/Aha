@@ -9,6 +9,8 @@ from ..base import FrozenBaseModel
 from ..msg import MessageChain
 from .utils import Role, Sex
 
+lazy from utils.string import InlineStr
+
 
 class GroupInfo(FrozenBaseModel):
     group_all_shut: Annotated[bool, BeforeValidator(bool)]
@@ -188,8 +190,6 @@ class EssenceMessage(FrozenBaseModel):
         Returns:
             InlineStr: 跨事件上下文不一致，不可直接用于调用 API 发送消息。
         """
-        from utils.string import InlineStr
-
         return InlineStr.from_iterable(self.message)
 
 

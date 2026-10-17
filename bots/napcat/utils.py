@@ -37,6 +37,8 @@ from utils.aha import parse_aha_code
 from utils.aio import AsyncResult
 from utils.misc import AsyncBase64Encoder, stream_async_json
 
+lazy from core.config import cfg
+
 # from websockets import State
 
 if TYPE_CHECKING:
@@ -209,8 +211,6 @@ class Utils(BaseAPI):
             return str(path)
 
         if current_process().name == "MainProcess":
-            from core.config import cfg
-
             buffer = cfg.base64_buffer
         elif (buffer := core.status.base64_buffer) is None:
             raise RuntimeError("无法获取配置项，请勿在子进程调用该方法。")

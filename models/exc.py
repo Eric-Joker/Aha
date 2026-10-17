@@ -1,5 +1,7 @@
 from httpx import HTTPStatusError
 
+lazy from core.i18n import _
+
 
 class APIException(Exception):
     """请求 API 异常"""
@@ -10,8 +12,6 @@ class APIException(Exception):
         super().__init__(err_msg, code)
 
     def __str__(self):
-        from core.i18n import _
-
         return _("api.service.call.error") % {"code": self.code, "msg": self.err_msg}
 
 
@@ -19,8 +19,6 @@ class APITimeoutError(APIException, TimeoutError):
     """请求 API 超时"""
 
     def __init__(self):
-        from core.i18n import _
-
         super().__init__(_("api.service.call.timeout"))
 
 
@@ -52,8 +50,6 @@ class CodePointConflictError(ValueError):
     """用于 utils.string.InlineStr"""
 
     def __init__(self):
-        from core.i18n import _
-
         super().__init__(_("inlinestr.409"))
 
 

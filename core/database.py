@@ -24,6 +24,10 @@ from utils.aha import AHA_MODULE_PATTERN, caller_aha_module
 from .config import cfg
 from .i18n import _
 
+lazy from modules import SYSTEM_MODULES
+lazy from services.apscheduler import sched
+
+
 __all__ = ("db_engine", "dbBase", "metadata", "db_sessionmaker", "reg_once_rollback_callback")
 
 MODULE_AUTHOR_PATTERN = compile(r"^modules\.([^.]+)")
@@ -43,8 +47,6 @@ class CustomDeclarativeMeta(DeclarativeMeta):
             if all(comp not in DATABASEPATHS for comp in rel_path.split(os.sep)):
                 raise RuntimeError(_("database.path_error") & {"class": classname, "module": module.__name__})
             """
-            from modules import SYSTEM_MODULES
-
             if (module := match[1]) not in SYSTEM_MODULES:
                 cls.__tablename__ = f"{cls.__tablename__}__{module}"
 
@@ -60,9 +62,6 @@ _sync_engine = None
 
 def db_init():
     global database_initialized, _sync_engine, command, compare_metadata, Config, MigrationContext, _table_for_constraint, alembic_cfg
-
-    from services.apscheduler import sched
-
     with (_sync_engine := create_engine(cfg.database["green"])).begin() as conn:
         dbBase.metadata.create_all(conn)
         sched.data_store.get_table_definitions().create_all(conn)
@@ -123,8 +122,6 @@ alembic_cfg.set_main_option("sqlalchemy.url", cfg.database["green"])
 
 
 def check_migrations_needed():
-    from services.apscheduler import sched
-
     with (engine := create_engine(cfg.database["green"])).begin() as conn:
         diff = compare_metadata(
             MigrationContext.configure(conn, opts={"compare_type": compare_type}),
